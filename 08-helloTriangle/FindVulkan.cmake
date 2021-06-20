@@ -24,7 +24,7 @@ find_library(Vulkan_LIBRARY
 		/usr/local/lib
 )
 
-# find Vulkan library
+# find glslangValidator
 find_program(Vulkan_GLSLANG_VALIDATOR_EXECUTABLE
 	NAMES
 		glslangValidator

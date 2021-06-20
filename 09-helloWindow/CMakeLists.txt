@@ -32,7 +32,7 @@ if(UNIX)
 	find_package(Vulkan REQUIRED)
 	find_package(Wayland)
 
-	if(Wayland_client_FOUND)
+	if(Wayland_client_FOUND AND Wayland_SCANNER AND Wayland_PROTOCOLS_DIR)
 
 		# target
 		add_custom_command(OUTPUT xdg-shell-client-protocol.h

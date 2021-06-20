@@ -17,7 +17,7 @@ list(REMOVE_DUPLICATES Wayland_INCLUDE_DIR)
 #FIND_PACKAGE_HANDLE_STANDARD_ARGS(WAYLAND_SCANNER DEFAULT_MSG  WAYLAND_SCANNER)
 
 find_package(PkgConfig QUIET)
-pkg_check_modules(Wayland_PROTOCOLS wayland-protocols)
+pkg_check_modules(Wayland_PROTOCOLS wayland-protocols QUIET)
 if(wayland-protocols_FOUND)
     pkg_get_variable(Wayland_PROTOCOLS_DIR wayland-protocols pkgdatadir)
 endif()
