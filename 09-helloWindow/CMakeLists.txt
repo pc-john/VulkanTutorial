@@ -23,49 +23,42 @@ endif()
 
 if(UNIX)
 
+	# 09-helloWindow-Wayland
+	set(APP_NAME 09-helloWindow-Wayland)
+	project(${APP_NAME})
+
 	# dependencies
 	set(CMAKE_MODULE_PATH "${${APP_NAME}_SOURCE_DIR}/;${CMAKE_MODULE_PATH}")
 	find_package(Vulkan REQUIRED)
 	find_package(Wayland)
-	find_package(X11)
 
-	if(WAYLAND_FOUND)
-
-		set(APP_NAME tut09-helloWindow-Wayland)
-
-		project(${APP_NAME})
-
-		set(APP_SOURCES
-		    main-Wayland.cpp
-		   )
-
-		set(APP_INCLUDES
-		   )
+	if(Wayland_client_FOUND)
 
 		# target
-		add_executable(${APP_NAME} ${APP_SOURCES} ${APP_INCLUDES})
+		add_custom_command(OUTPUT xdg-shell-client-protocol.h
+		                   COMMAND ${Wayland_SCANNER} client-header ${Wayland_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml xdg-shell-client-protocol.h)
+		add_custom_command(OUTPUT xdg-shell-protocol.c
+		                   COMMAND ${Wayland_SCANNER} private-code ${Wayland_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml xdg-shell-protocol.c)
+		add_executable(${APP_NAME} main-Wayland.cpp xdg-shell-client-protocol.h xdg-shell-protocol.c)
 		set_property(TARGET ${APP_NAME} PROPERTY CXX_STANDARD 17)
 
 		# dependencies
-		target_link_libraries(${APP_NAME} Vulkan::Vulkan ${WAYLAND_CLIENT_LIBRARIES})
+		target_link_libraries(${APP_NAME} Vulkan::Vulkan Wayland::client -lrt)
+		target_include_directories(${APP_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
 	endif()
 
+	# 09-helloWindow-X11
+	set(APP_NAME 09-helloWindow-X11)
+	project(${APP_NAME})
+
+	# dependencies
+	find_package(X11)
+
 	if(X11_FOUND)
 
-		set(APP_NAME 09-helloWindow-X11)
-
-		project(${APP_NAME})
-
-		set(APP_SOURCES
-		    main-X11.cpp
-		   )
-
-		set(APP_INCLUDES
-		   )
-
 		# target
-		add_executable(${APP_NAME} ${APP_SOURCES} ${APP_INCLUDES})
+		add_executable(${APP_NAME} main-X11.cpp)
 		set_property(TARGET ${APP_NAME} PROPERTY CXX_STANDARD 17)
 
 		# dependencies

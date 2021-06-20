@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.8.0)
 
+project(VulkanTutorial)
+
 set(PACKAGES
     01-deviceList
     02-developmentSetup
