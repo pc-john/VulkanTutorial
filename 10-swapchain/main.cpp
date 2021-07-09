@@ -1,12 +1,14 @@
 #ifdef _WIN32
 # define VK_USE_PLATFORM_WIN32_KHR
+# define NOMINMAX  // avoid the definition of min and max macros by windows.h
+# include <windows.h>
 #elif USE_WAYLAND
-# include "xdg-shell-client-protocol.h"
 # define VK_USE_PLATFORM_WAYLAND_KHR
+# include "xdg-shell-client-protocol.h"
 #else
+# define VK_USE_PLATFORM_XLIB_KHR
 # include <X11/Xlib.h>
 # include <X11/Xutil.h>
-# define VK_USE_PLATFORM_XLIB_KHR
 #endif
 #include <vulkan/vulkan.hpp>
 #include <array>
