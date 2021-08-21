@@ -1,13 +1,13 @@
-<h1>Vulkan tutoriál: Posílání příkazů (5. díl)</h1>
+<h1>Vulkan: Posílání příkazů (5. díl)</h1>
 
-<p>Aby Vulkan zařízení odvedlo jakoukoliv práci musíme mu zaslat příkazy k provedení.
+<p>Aby Vulkan zařízení vykonalo jakoukoliv práci musíme mu zaslat příkazy k provedení.
 Dnes si ukážeme, jak na to.</p>
 
 <p>Jak poslat příkazy do zařízení? Zkráceně řečeno, požadované příkazy nejprve uložíme do
-command bufferu (příkazový buffer) a následně odešleme do fronty (Queue) ke zpracovnání.
+command bufferu (příkazový buffer) a následně odešleme do fronty (queue) ke zpracovnání.
 Zařízení, kterému patří daná fronta, pak tyto příkazy provede.</p>
 
-<p>Aplikaci si můžeme <a href="">stáhnout</a>, zkompilovat a spustit.
+<p>Aplikaci si můžeme <a href="05-commandSubmission.zip">stáhnout</a>, zkompilovat a spustit.
 Uvidíme výstup podobný tomuto:</p>
 
 <pre>
@@ -30,26 +30,26 @@ Done.
 tyto tři od různých výrobců, neboť nám v budoucích dílech umožní nahlédnout
 do různých rozdílů mezi nimi.</p>
 
-<p>Co tedy výpis obsahuje? Vidíme seznam Vulkan zařízení přítomných v tomto počítači.
-Zde jsou to tři grafické karty. Pak vidíme výpis kompatibilních zařízení,
-který opět obsahuje všechny tři karty. Nakonec vidíme vybranou grafickou kartu.
-Té pošleme práci. Počkáme, až ji dokončí, a ukončíme aplikaci.</p>
+<p>Co tedy výpis obsahuje? Vidíme seznam vulkanních zařízení přítomných v tomto počítači.
+V tomto případě jsou to tři grafické karty. Pak vidíme výpis kompatibilních zařízení,
+který opět obsahuje všechny tři karty. Nakonec vidíme název vybraného zařízení.
+Tomuto zařízení pošleme práci. Počkáme, až ji dokončí, a ukončíme aplikaci.</p>
 
 <h3>Globální proměnné</h3>
 
 <p>Pojďme se nyní podívat na kód v main.cpp.
 Hned na začátku souboru nám přibylo množství proměnných, které jsou nyní globální,
-nikoliv lokální. To nám umožňuje strukturovat kód do funkcí, niž bychom museli
-všechny potřebné proměnné neustále předávat skrz parametry jednotlivých funkcí.</p>
+nikoliv lokální. To nám umožňí strukturovat kód do funkcí, aniž bychom museli
+potřebné proměnné neustále předávat jako parametry do jednotlivých funkcí.</p>
 
 <pre>
 // Vulkan instance
-// (must be destructed as the last one)
+// (it must be destructed as the last one)
 static vk::UniqueInstance instance;
 
 // Vulkan handles and objects
-// (they need to be placed in particular (not arbitrary) order;
-// this is because of their destruction order from bottom to up)
+// (they need to be placed in particular (not arbitrary) order
+// because they are destructed from the last one to the first one)
 static vk::PhysicalDevice physicalDevice;
 static uint32_t graphicsQueueFamily;
 static vk::UniqueDevice device;
@@ -62,9 +62,9 @@ static vk::UniqueFence renderingFinishedFence;
 <p>Význam jednotlivých proměnných si vysvětlíme až v kódu.
 Podstatné také je, že pořadí proměnných není úplně náhodné, neboť definuje,
 v jakém pořadí se budou objekty likvidovat při ukončování aplikace.
-Připomeňme, že destruktory nejnižších funkcí jsou volány prvně.
+Připomeňme, že destruktory nejnižších proměnných jsou volány jako první.
 Takže například instance je až úplně nahoře,
-neboť z Vulkan objektů musí být uvolněna až jako poslední.</p>
+neboť z Vulkan objektů musí být zlikvidována až jako poslední.</p>
 
 <h3>Kompatibilní zařízení</h3>
 
@@ -75,39 +75,40 @@ vybírá ty, které jsou "kompatibilní" s požadavky naší aplikace:</p>
 <pre>
 // find compatible devices
 // (the device must have a queue supporting graphics operations)
-vector&lt;vk::PhysicalDevice&gt; deviceList=instance-&gt;enumeratePhysicalDevices();
-vector&lt;tuple&lt;vk::PhysicalDevice,uint32_t&gt;&gt; compatibleDevices;
-for(vk::PhysicalDevice pd:deviceList) {
+vector&lt;vk::PhysicalDevice&gt; deviceList = instance-&gt;enumeratePhysicalDevices();
+vector&lt;tuple&lt;vk::PhysicalDevice, uint32_t&gt;&gt; compatibleDevices;
+for(vk::PhysicalDevice pd : deviceList) {
 
-	// select queue for graphics rendering
-	vector&lt;vk::QueueFamilyProperties&gt; queueFamilyList=pd.getQueueFamilyProperties();
-	for(uint32_t i=0,c=uint32_t(queueFamilyList.size()); i&lt;c; i++) {
-		if(queueFamilyList[i].queueFlags &amp; vk::QueueFlagBits::eGraphics)
-			compatibleDevices.emplace_back(pd,i);
-	}
+   // select queue for graphics rendering
+   vector&lt;vk::QueueFamilyProperties&gt; queueFamilyList = pd.getQueueFamilyProperties();
+   for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i&lt;c; i++) {
+      if(queueFamilyList[i].queueFlags &amp; vk::QueueFlagBits::eGraphics)
+         compatibleDevices.emplace_back(pd, i);
+   }
 }
 </pre>
 
-<p>Na prvním řádku do proměnné deviceList přiřadíme seznam všech Vulkan
+<p>Na prvním řádku do proměnné deviceList přiřadíme seznam všech vulkanních
 zařízení na tomto počítači. Na dalším řádku si definujeme proměnnou,
-kam uložíme jen všechna kompatibilní zařízení.</p>
+kam uložíme pouze kompatibilní zařízení.</p>
 
 <p>A jakéže zařízení je kompatibilní? V následujících dílech se chystáme
 vytvářet grafickou aplikaci. Budeme tedy vyžadovat pouze zařízení
-podporující grafické operace nad alespoň jednou z jejich front (Queues).
-Potřebujeme tedy seznam všech Vulkan zařízení "profiltrovat".
-Sledujeme-li tedy dále náš kód, děláme si cyklus přes všechna fyzická zařízení
-a u každého zařízení se zeptáme na seznam tříd front (queueFamilyList).
-Tento seznam projdeme a hledáme v něm třídu, která podporuje grafické operace.
+podporující grafické operace nad alespoň jednou z jejich front (queues).
+Potřebujeme tedy seznam všech zařízení "profiltrovat".
+Sledujeme-li tedy dále náš kód, provedeme cyklus přes všechna fyzická zařízení
+a u každého zařízení se zeptáme na seznam tříd front (queue family list).
+Tento seznam projdeme a hledáme v něm třídu front, která podporuje grafické operace.
 Řečeno prakticky: hledáme třídu, která má v queueFlags nastaven bit vk::QueueFlagBits::eGraphics.
 Pokud alespoň jedna ze tříd front podporuje grafické operace, umí daná grafická karta
 rendrovat. Zařadíme ji tedy do seznamu kompatibilních zařízení.
-Do tohoto seznamu si uložíme i index do seznamu tříd front, který budeme v zápětí potřebovat.</p>
+Do tohoto seznamu si uložíme i index do seznamu tříd front, kde jsme našli podporu pro grafické operace.
+Tento index budeme brzy potřebovat.</p>
 
 <p>Někdo by se mohl zeptat, co je to za nesmysl ptát se,
 zda grafická karta umí rendrovat? Nicméně není všechno grafická karta, co umí Vulkan.
 V dnešní době máme vypočetní akcelerátory, které jsou určeny výlučně na počítání,
-podporují Vulkan, a vůbec žádný konektor na připojení monitoru nemají.
+podporují Vulkan a vůbec žádný konektor na připojení monitoru nemají.
 Tyto čistě vypočetní zařízení chceme určitě přeskočit,
 pokud píšeme klasickou rendrovací aplikaci, což je případ našeho tutoriálu.</p>
 
@@ -115,12 +116,12 @@ pokud píšeme klasickou rendrovací aplikaci, což je případ našeho tutoriá
 
 <pre>
 // print devices
-cout&lt;&lt;"Vulkan devices:"&lt;&lt;endl;
-for(vk::PhysicalDevice pd:deviceList)
-	cout&lt;&lt;"   "&lt;&lt;pd.getProperties().deviceName&lt;&lt;endl;
-cout&lt;&lt;"Compatible devices:"&lt;&lt;endl;
-for(auto&amp; t:compatibleDevices)
-	cout&lt;&lt;"   "&lt;&lt;get&lt;0&gt;(t).getProperties().deviceName&lt;&lt;endl;
+cout &lt;&lt; "Vulkan devices:" &lt;&lt; endl;
+for(vk::PhysicalDevice pd : deviceList)
+   cout &lt;&lt; "   " &lt;&lt; pd.getProperties().deviceName &lt;&lt; endl;
+cout &lt;&lt; "Compatible devices:" &lt;&lt; endl;
+for(auto&amp; t : compatibleDevices)
+   cout &lt;&lt; "   " &lt;&lt; get&lt;0&gt;(t).getProperties().deviceName &lt;&lt; endl;
 </pre>
 
 <p>Kód neobsahuje nic, s čím bychom se nesetkali již dříve. Proto pojďme
@@ -129,108 +130,104 @@ na další blok kódu:</p>
 <pre>
 // choose device
 if(compatibleDevices.empty())
-	throw runtime_error("No compatible devices.");
-physicalDevice=get&lt;0&gt;(compatibleDevices.front());
-graphicsQueueFamily=get&lt;1&gt;(compatibleDevices.front());
-cout&lt;&lt;"Using device:\n"
-		"   "&lt;&lt;physicalDevice.getProperties().deviceName&lt;&lt;endl;
+   throw runtime_error("No compatible devices.");
+physicalDevice = get&lt;0&gt;(compatibleDevices.front());
+graphicsQueueFamily = get&lt;1&gt;(compatibleDevices.front());
+cout &lt;&lt; "Using device:\n"
+        "   " &lt;&lt; physicalDevice.getProperties().deviceName &lt;&lt; endl;
 </pre>
 
 <p>Potřebujeme vybrat jedno z kompatibilních zařízení. V našem tutoriálu
 nebudeme vymýšlet žádnou složitost a vezmeme první kompatibilní zařízení.
 Do proměnné physicalDevice si tedy uložíme vybrané fyzické zařízení
-a do graphicsQueueFamily index do tříd front (queue family index).</p>
+a do proměnné graphicsQueueFamily index do tříd front, kde jsme našli podporu pro grafické operace.</p>
 
 <h3>Logické zařízení</h3>
 
 <p>Nyní se dostáváme k přelomovému bodu: vytvoření logického zařízení (logical device).
 Zde budeme respektovat zaběhané konvence a budeme-li hovořit pouze o zařízení (device),
-budeme mít na mysli logické zařízení, jak jsem již řekl v jednom z dřívějších dílů tohoto tutoriálu.
-Tato konvence vznikla, protože ve Vulkanu programátoři drtivou většinu času
-pracují s logickými zařízeními. Proto se i třída pro logické zařízení jmenuje
-vk::Device a ne vk::LogicalDevice.</p>
+budeme mít na mysli logické zařízení, jak jsem již znímil v jednom z dřívějších dílů tohoto tutoriálu.
+Ve Vulkan obyčejně drtivou většinu času pracujeme s logickými zařízeními,
+má tedy smysl hovořit zkráceně pouze o zařízeních. A pokud už někdy budeme mít na mysli fyzické zařízení,
+použijeme obě slova.</p>
 
 <p>Logické zařízení vytvoříme takto:</p>
 
 <pre>
 // create device
-device=
-	physicalDevice.createDeviceUnique(
-		vk::DeviceCreateInfo{
-			vk::DeviceCreateFlags(),  // flags
-			1,                        // queueCreateInfoCount
-			&amp;(const vk::DeviceQueueCreateInfo&amp;)vk::DeviceQueueCreateInfo{  // pQueueCreateInfos
-				vk::DeviceQueueCreateFlags(),  // flags
-				graphicsQueueFamily,  // queueFamilyIndex
-				1,  // queueCount
-				&amp;(const float&amp;)1.f,  // pQueuePriorities
-			},
-			0,nullptr,  // no layers
-			0,nullptr,  // number of enabled extensions, enabled extension names
-			nullptr,    // enabled features
-		}
-	);
+device =
+   physicalDevice.createDeviceUnique(
+      vk::DeviceCreateInfo{
+         vk::DeviceCreateFlags(),  // flags
+         1,                        // queueCreateInfoCount
+         array{                    // pQueueCreateInfos
+            vk::DeviceQueueCreateInfo{
+               vk::DeviceQueueCreateFlags(),  // flags
+               graphicsQueueFamily,  // queueFamilyIndex
+               1,                    // queueCount
+               &amp;(const float&amp;)1.f,   // pQueuePriorities
+            },
+         }.data(),
+         0, nullptr,  // no layers
+         0, nullptr,  // number of enabled extensions, enabled extension names
+         nullptr,     // enabled features
+      }
+   );
 </pre>
 
 <p>Jak vidíme, metoda createDeviceUnique bere jako parametr strukturu vk::DeviceCreateInfo.
 Parametr flags (česky přepínače) je rezervován pro budoucí použití,
 proto jej vytvoříme jeho defaultním konstruktorem.
-Více si o flags řekneme někdy, až je opravdu použijeme. Další parametr je počet front, které
-budeme používat. V našem případě jedna. Následuje ukazatel na seznam front.
-V tomto případě ukazatel na jedinou strukturu vk::DeviceQueueCreateInfo.
-Prvnímu ampersandu rozumíme - ten dělá ze dáné struktury ukazatel na strukturu.
-Proč je tam ale to přetypování? Protože jinak kód nejde zkompilovat g++ kompilátorem,
-s chybovou hláškou "error: taking address of temporary". Testováno na verzi g++ 7.5.
-Chybová hláška si sice stěžuje na temporary variable, ale to je v našem případě přesně to,
-co chceme udělat a kompilátor nám to odmítá splnit. Toto přetypování kompletně odstraní problém.</p>
+Další parametr je počet front, které budeme používat. V našem případě jedna.
+Následuje ukazatel na pole front obsahující jedinou strukturu vk::DeviceQueueCreateInfo.</p>
 
-<p>Pro vytvoření vk::DeviceQueueCreateInfo předáváme čtyři parametry. První z nich je flags,
-který opět necháme prázdný.
-Pak queueFamilyIndex - ten nastavíme na frontu, kterou jsme si našli, když jsme hledali kompatibilní zařízení.
+<p>Pro vytvoření vk::DeviceQueueCreateInfo předáváme čtyři parametry.
+První z nich je flags, který opět necháme prázdný.
+Pak queueFamilyIndex - ten nastavíme na frontu, kterou jsme si našli dříve a která podporuje grafické operace.
 Další parametr po nás žádá počet front, které budeme chtít alokovat z této třídy front.
+Nám stačí jedna.
 A jako poslední parametr předáme prioritu fronty.
-Pro detailnější popis parametrů opět odkazuji do Vulkan dokumentace.</p>
+Pro detailnější popis parametrů opět odkazuji do dokumentace Vulkan.</p>
 
 <p>Ze zbývajících parametrů vk::DeviceCreateInfo nám zůstávají layers (vrstvy),
 extensions (rozšíření) a features (funkcionality), přičemž žádnou z těchto věcí
-v tomto díle nevyužijeme. Jejich význam si objasníme v jednom z dalších dílů,
+v tomto díle tutoriálu nevyužijeme. Jejich význam si objasníme v jednom z dalších dílů,
 až je budeme používat.</p>
 
-<h3>Fronta, command pool a command buffer</h3>
+<h3>Queue (fronta), command pool a command buffer</h3>
 
-<p>Frontu potřebujeme pro odesílání příkazů do logického zařízení.
+<p>Frontu (queue) potřebujeme pro odesílání příkazů do logického zařízení.
 Fronta byla již alokována při vytvoření vk::Device, takže
 si na ni pouze vezmeme handle:</p>
 
 <pre>
 // get queues
-graphicsQueue=device-&gt;getQueue(graphicsQueueFamily,0);
+graphicsQueue = device-&gt;getQueue(graphicsQueueFamily, 0);
 </pre>
 
 <p>Jen opět upozorňuji, že frontu získáváme funkcí začínající slovem get,
-nikoliv create nebo allocate. Uvolňování handlu z paměti tedy není naší prací.
+nikoliv create nebo allocate. Uvolňování handlu z paměti tedy není naše práce.
 Handle fronty bylo vytvořeno interně ve funkci vytvářenící logické zařízení
 a bude uvolněno automaticky, až budeme logické zařízení rušit.
 Má jej tedy ve vlastnictví logické zařízení.
 Fronta sama nemá metodu destroy a nic jako vk::UniqueQueue neexistuje.</p>
 
-<p>Další v pořadí je command pool (čti: komand půl).
-Česky něco jako "zásobárna" na příkazy:</p>
+<p>Další v pořadí je command pool:</p>
 
 <pre>
 // command pool
-commandPool=
-	device-&gt;createCommandPoolUnique(
-		vk::CommandPoolCreateInfo(
-			vk::CommandPoolCreateFlags(),  // flags
-			graphicsQueueFamily  // queueFamilyIndex
-		)
-	);
+commandPool =
+   device-&gt;createCommandPoolUnique(
+      vk::CommandPoolCreateInfo(
+         vk::CommandPoolCreateFlags(),  // flags
+         graphicsQueueFamily            // queueFamilyIndex
+      )
+   );
 </pre>
 
-<p>Command pool je objekt, ze kterého alokujeme command buffery (čti: komand bafr).
+<p>Command pool je objekt, ze kterého alokujeme command buffery.
 Slouží pro amortizaci ceny alokace každého command bufferu zvlášť.
-Command pool interně předalokuje určité množství zdrojů
+Command pool může například interně předalokovat určité množství zdrojů
 a alokace jednotlivých command bufferů je pak podstatně efektivnější.</p>
 
 <p>Podíváme-li se na parametry pro vytvoření command pool,
@@ -242,22 +239,22 @@ kterou jsme alokovali při vytváření logického zařízení.</p>
 
 <pre>
 // allocate command buffer
-commandBuffer=std::move(
-	device-&gt;allocateCommandBuffersUnique(
-		vk::CommandBufferAllocateInfo(
-			commandPool.get(),                 // commandPool
-			vk::CommandBufferLevel::ePrimary,  // level
-			1                                  // commandBufferCount
-		)
-	)[0]);
+commandBuffer = std::move(
+   device-&gt;allocateCommandBuffersUnique(
+      vk::CommandBufferAllocateInfo(
+         commandPool.get(),                 // commandPool
+         vk::CommandBufferLevel::ePrimary,  // level
+         1                                  // commandBufferCount
+      )
+   )[0]);
 </pre>
 
 <p>Command buffer je kus paměti, do které ukládáme příkazy,
-které pak odešleme k provedení do Vulkan zařízení.
+které pak odešleme k provedení do zařízení.
 A proč příkazy neposíláme přímo, ale musíme jej nejprve naskládat do bufferu?
-Komunikace se zařízením může být relativně velmi časově náročná.
+Jeden z důvodů je, že komunikace se zařízením může být relativně velmi časově náročná.
 Například s klasickou grafickou kartou musíme komunikovat po PCIe sběrnici
-a posílání každého příkazu zvlášť by bylo velmi neefektivní.
+a posílání každého příkazu zvlášť by bylo neefektivní.
 Často totiž můžeme posílat tisíce nebo i statisíce příkazů.
 Takhle je všechny uložíme do bufferu a odešleme naráz.</p>
 
@@ -287,19 +284,18 @@ std::vectoru do naší proměnné.</p>
 
 <h3>Command buffer recording</h3>
 
-<p>Nyní je potřeba nahrát příkazy do command bufferu.
-Anglické slovo pro "nahrát" je record.
-My v tomto díle pouze zahájíme nahrávání a ukončíme jej.
-Nahrání jednotlivých příkazů si ukážeme příště.
+<p>Nyní je potřeba příkazy do command bufferu nahrát (record).
+My v tomto díle pouze zahájíme nahrávání příkazem begin a ukončíme jej příkazem end.
+Zadávání jednotlivých příkazů mezi begin a end si necháme na příště.
 Nahrávání tedy provedeme takto:</p>
 
 <pre>
 // begin command buffer
 commandBuffer-&gt;begin(
-	vk::CommandBufferBeginInfo(
-		vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
-		nullptr  // pInheritanceInfo
-	)
+   vk::CommandBufferBeginInfo(
+      vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
+      nullptr  // pInheritanceInfo
+   )
 );
 
 // end command buffer
@@ -307,7 +303,7 @@ commandBuffer-&gt;end();
 </pre>
 
 <p>Metoda begin zavolaná nad command bufferem zahájí nahrávání.
-Technicky řečeno je command buffer je vyprázdněn,
+Technicky řečeno, zavoláním begin je command buffer vyprázdněn,
 pokud již měl z dřívějška nahrané nějaké příkazy,
 a pak je převeden do stavu "recording", kdy přijímá příkazy.
 Parametr funkce je struktura vk::CommandBufferBeginInfo
@@ -318,11 +314,12 @@ určité optimalizace.
 Druhý parametr pInheritanceInfo se používá u sekundárních command bufferů.
 My jej tedy směle nastavíme na nullptr, neboť dle specifikace bude ignorován.</p>
 
-<p>Pro ukončení nahrávání command bufferu pouze zavoláme metodu end.</p>
+<p>Pro ukončení nahrávání command bufferu pouze zavoláme metodu end.
+V tu chvíli je command buffer převeden do stavu "executable", tedy připraven k provedení.</p>
 
 <h3>Odeslání command bufferu k provedení</h3>
 
-<p>Dříve, než odešleme naši práci k provedení, potřebujeme si vytvořit Fence (čti: fens),
+<p>Dříve, než odešleme naši práci k provedení, potřebujeme si vytvořit Fence,
 česky plot či překážka. Fence slouží k synchronizaci mezi zařízením a procesorem.
 Fence má dva stavy: signaled a unsignaled, česky asi signálovaná a nesignálovaná.
 Typické použití je: Pošleme příkazy do fronty spolu s fence. Na procesoru pak na fence počkáme.
@@ -331,12 +328,12 @@ Jednoduchý příklad, jak se s ní pracuje, uvidíme v kódu. Nesignálovanou f
 
 <pre>
 // fence
-renderingFinishedFence=
-	device-&gt;createFenceUnique(
-		vk::FenceCreateInfo{
-			vk::FenceCreateFlags()  // flags
-		}
-	);
+renderingFinishedFence =
+   device-&gt;createFenceUnique(
+      vk::FenceCreateInfo{
+         vk::FenceCreateFlags()  // flags
+      }
+   );
 </pre>
 
 <p>Metoda createFenceUnique bere jediný parametr, kterým je struktura vk::FenceCreateInfo,
@@ -346,14 +343,14 @@ a ta zase jediný parametr flags, který necháme prázdný.</p>
 
 <pre>
 // submit work
-cout&lt;&lt;"Submiting work..."&lt;&lt;endl;
+cout &lt;&lt; "Submiting work..." &lt;&lt; endl;
 graphicsQueue.submit(
-	vk::SubmitInfo(  // submits (of vk::ArrayProxy&lt;vk::SubmitInfo&gt; type)
-		0,nullptr,nullptr,               // waitSemaphoreCount, pWaitSemaphores, pWaitDstStageMask
-		1,&amp;commandBuffer.get(),          // commandBufferCount, pCommandBuffers
-		0,nullptr                        // signalSemaphoreCount, pSignalSemaphores
-	),
-	renderingFinishedFence.get()  // fence
+   vk::SubmitInfo(  // submits (of vk::ArrayProxy&lt;vk::SubmitInfo&gt; type)
+      0, nullptr, nullptr,       // waitSemaphoreCount, pWaitSemaphores, pWaitDstStageMask
+      1, &amp;commandBuffer.get(),   // commandBufferCount, pCommandBuffers
+      0, nullptr                 // signalSemaphoreCount, pSignalSemaphores
+   ),
+   renderingFinishedFence.get()  // fence
 );
 </pre>
 
@@ -368,73 +365,93 @@ std::initializer_list, ale i z reference na jediný prvek.
 Pro více informací doporučuji nahlédnout na implementaci ArrayProxy ve vulkan.hpp.</p>
 
 <p>Samotná vk::SubmitInfo bere jako parametry seznam semaforů, na které bude command buffer
-čekat, než se začne provádět - v našem případě zatím nepoužíváme žádné semafory.
+čekat, než se začne provádět. My zatím žádné semafory nepoužíváme, proto jej nastavíme na nullptr.
 Třetí parametr je seznam masek, který se váže k semaforům. Je tedy také nastaven na nullptr.
 Konečně čtvrtý a pátý parametr udávají seznam command bufferů k provedení.
 Šestý a sedmý parametr jsou pak semafory, které budou signalizovány
-pro dokončení provádění tohoto command bufferu.
+po dokončení provádění předaných command bufferů.
 Na závěr ještě vidíme druhý parametr funkce submit, kterým je naše fence,
-kterou jsme před chvílí vytvořili.</p>
+kterou jsme před chvílí vytvořili. Její význam si vyjasníme v zápětí.</p>
 
-<p>V tuto chíli by se zdálo, že práce byla odeslána a že máme odpracováno.
+<p>V tuto chíli by se zdálo, že práce byla odeslána do zařízení a že máme odpracováno.
 Není tomu tak. Než ukončíme aplikaci, musíme počkat na dodělání práce:</p>
 
 <pre>
 // wait for the work
-cout&lt;&lt;"Waiting for the work..."&lt;&lt;endl;
-vk::Result r=device-&gt;waitForFences(
-	renderingFinishedFence.get(),  // fences (vk::ArrayProxy)
-	VK_TRUE,       // waitAll
-	uint64_t(3e9)  // timeout (3s)
+cout &lt;&lt; "Waiting for the work..." &lt;&lt; endl;
+vk::Result r = device-&gt;waitForFences(
+   renderingFinishedFence.get(),  // fences (vk::ArrayProxy)
+   VK_TRUE,       // waitAll
+   uint64_t(3e9)  // timeout (3s)
 );
-if(r==vk::Result::eTimeout)
-	throw std::runtime_error("GPU timeout. Task is probably hanging.");
+if(r == vk::Result::eTimeout)
+   throw std::runtime_error("GPU timeout. Task is probably hanging.");
 
-cout&lt;&lt;"Done."&lt;&lt;endl;
+cout &lt;&lt; "Done." &lt;&lt; endl;
 </pre>
 
 <p>Metoda waitForFences zavolaná nad logickým zařízením počká na
-naši fence, než bude signalizovaná, kterou jsme předali při odesílání
-našeho command listu. A proč že musíme čekat?
+naši fence, než bude signalizovaná. Tuto fence jsme předali při odesílání
+našeho command bufferu a bude signalizovaná po dokončení jeho provádění.
+A proč že musíme čekat?
 Obyčejně si chceme převzít hotové výsledky.
-A i kdybychom je již nechtěli, tak by nám destruktory command listu
-a možná i logického zařízení hlásily chybu, že je nelze uvolnit,
-pokud aktuálně běží, či jsou používány. Takže počkáme.</p>
+A i kdybychom je již nechtěli a zkusili zlikvidovat vulkanní objekty při ukončování aplikace,
+tak se dopustíme nesprávného použití Vulkan API.
+Dokumentace command pool od nás explicitně žádá,
+aby při uvolňování command pool nebyl žádný jeho command buffer prováděn.
+Takže počkáme, než začneme vulkanní objekty likvidovat.</p>
 
-<p>Parametry metody waitForFences jsou fence či seznam fences,
-na které se má počkat. Tento parametr je opět vk::ArrayProxy.
+<p>Parametry metody waitForFences jsou seznam fences,
+na které se má počkat. Tento parametr je opět vk::ArrayProxy, tedy vezme jak jednu vk::Fence,
+tak i std::array, std::vector a std::initializer_list.
 Druhý parametr waitAll říká, zda čekáme až jsou všechny fences ve stavu signalled
 nebo zda stačí jedna fence ve stavu signalled.</p>
 
-<p>Poslední parametr je timeout, tedy časový limit, do kterého bude funkce čekat,
+<p>Poslední parametr je timeout, tedy časový limit, do kterého bude funkce čekat na dokončení práce,
 než skončí s návratovým kódem vk::Result::eTimeout.
 Hodnota je v nanosekundách jako uint64_t. Jakou hodnotu zvolit?
 Můžeme tam dát maximální hodnotu uint64_t, což dá Vulkanu půl tisíciletí na dokončení výpočtu,
 nebo zvolit nějakou hodnotu v sekundách. Například 3 sekundy.
 Popravdě řečeno, je špatný nápad posílat jakoukoliv úlohu,
-která trvá řádově sekundy. Takovou je lépe rozdělit na více úloh.
-Ovladače i samotný operační systém občas detekují zamrzlé úlohy například na grafické kartě.
-Pokud výpočet běží déle jak množství sekund a počítač vypadá zamrzle a možná ani myš se nehýbe,
-dojde k odstranění úlohy, případně kompletnímu resetu grafické karty.
-Po takovémto resetu dostaneme návratovou hodnotu vk::Result::eErrorDeviceLost.
+která trvá řádově sekundy. Takovou úlohu je lépe rozdělit na více menších úloh.
+Ovladače i samotný operační systém mohou detekovat zamrzlé úlohy na vulkanních zařízeních.
+Pokud výpočet běží na grafické kartě déle než určité množství sekund a počítač vypadá zamrzle a možná ani myš se nehýbe,
+může být driver schopen provést odstranění úlohy z karty. Některé, hlavně starší karty, nemusí tuto funkci podporovat,
+ale mohou podporovat kompletní reset grafické karty.
+Po takovémto resetu pravděpodobně dostaneme návratovou hodnotu vk::Result::eErrorDeviceLost.
 Naštěstí nás tyto problémy v real-time renderingu obyčejně netrápí,
-neboť zde cílíme obyčejně na provedení všech příkazů snímku v desítkách milisekund.
-V našich příkladech tedy budeme používat 3 sekundy, po které dovolíme funkci tvářit se vytuhle,
-kdybychom náhodou v shaderu napsali nekonečnou smyčku.</p>
+neboť zde cílíme na výpočet snímku řádově v desítkách milisekund.
+V každém případě v našich příkladech budeme používat tři sekundy,
+po které dovolíme aplikaci tvářit se vytuhle,
+kdybychom náhodou v shaderu omylem napsali nekonečnou smyčku.</p>
 
-<h3>Závěr</h3>
+<h3>Čekání na nečinnost</h3>
 
-<p>A pokud vidíme na obrazovce "Done.", můžeme si pogratulovat.
-Podařilo se nám odeslat command list na zařízení a počkat na jeho provedení.
-Command list byl sice prázdný, ale to napravíme hned příště,
-kdy uděláme první pokus vyrendrovat trojúhelník.</p>
+<p>Na samém konci funkce main nám přibyl nový kus kódu:</p>
 
+<pre>
+// wait device idle
+// this is important if there was an exception and device is still busy
+// (device need to be idle before destruction of buffers and other stuff)
+if(device)
+   device->waitIdle();
+</pre>
 
+<p>Komentář nám vysvětluje, že při výskytu výjimky může nastat situace,
+že nějaký výpočet ještě stále běží. V tom případě by nebylo dobré
+provádět destrukci našich globálních vulkanních objektů.
+Proto nejprve počkáme, až je práce dokončena, a pak až opustíme funkci main.
+Metoda waitIdle() nemá timeout, ale nemusíme mít strach, že bude blokovat
+nekonečně dlouho při zatuhlé úloze. Jak jsem již psal,
+lepší zařízení a operační systémy umí tyto úlohy po chvíli sestřelit
+a my v aplikaci uvidíme chybu vk::Result::eErrorDeviceLost.</p>
 
-Vůbec flagy ve vulkan.hpp jsou zapouzdřeny jako DeviceCreateFlags typ vyvozený z šablony vk::Flags a enumu
-pro jednotlivé bity nazvaný vk::DeviceCreateFlagBits. Vidíme konvenci, kter
+<h3>Shrnutí</h3>
 
-
-- projít text všech dílů a rozhodnout zda používat počeštělé "Fronta" nebo anglické Queue a podobně
-- na začátku uvést seznam proměnných a zmínit důležitost pořadí pro destruction order
-- promyslet, kde popsat QFlags
+<p>Pokud po spuštění tohoto příkladu vidíme na obrazovce "Done.",
+můžeme si pogratulovat.
+Podařilo se nám vytvořit logické zařízení,
+použít frontu (queue) a command pool, vytvořit command buffer,
+odeslat jej na zařízení a počkat na jeho provedení.
+Command buffer byl sice prázdný, ale to napravíme hned příště,
+kdy uděláme první pokus s rendrováním.</p>
