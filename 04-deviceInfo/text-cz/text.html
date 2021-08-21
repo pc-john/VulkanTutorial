@@ -1,16 +1,16 @@
-<h1>Vulkan tutoriál: Informace o zařízení (4. díl)</h1>
+<h1>Vulkan: informace o zařízení (4. díl)</h1>
 
-<p>Každé zařízení ve Vulkan má hromadu vlastností, schopností, limitů,
-dostupné paměti a dalších informací, které o zařízení můžeme zjistit
+<p>Každé zařízení ve Vulkan má hromadu vlastností, funkcionalit, limitů,
+dostupné paměti a dalších informací, které si o zařízení můžeme zjistit
 a které často potřebujeme, než vytvoříme konkrétní logické zařízení.
 Dnes si tedy ukážeme, jak na tyto informace, které jsou často důležité i při běhu aplikace.</p>
 
 <p>Při startu aplikace potřebujeme často ověřit, zda je podporována požadovaná
 verze Vulkan, požadovaný formát textur, zda je k dispozici geometry shader,
 a kolik grafické paměti je k dispozici, atd. Podle těchto informací můžeme z více zařízení,
-pokud jsou k dispozici, vybrat to, které více odpovídá našim požadavkům.</p>
+pokud jsou k dispozici, vybrat to, které více odpovídá našim potřebám.</p>
 
-<p>Pojďme tedy na věc. Můžeme si stáhnout <a href="">zdrojové kódy</a> a zkusit je zkompilovat.
+<p>Pojďme tedy na věc. Můžeme si <a href="04-deviceInfo.zip">stáhnout zdrojové kódy</a> a zkusit je zkompilovat.
 Po jejich spuštění bychom měli vidět výstup podobný tomuto:</p>
 
 <pre>
@@ -61,16 +61,18 @@ Physical devices:
          Buffers: no
 </pre>
 
-<p>V tomto výpise vidíme, že Vulkan verze instance je 1.1.
-Pak vidíme tři grafické karty v daném počítači, na kterém byla aplikace spuštěna.
-V praxi uvidíme častěji jedinou grafickou kartu, či dvě tam, kde je integrovaný Intel i diskrétní grafika.
+<p>V tomto výpise vidíme, že verze instance je 1.1.
+Pak vidíme výpis informací o grafických kartách v daném počítači, na kterém byla aplikace spuštěna.
+Zde opět vidíme tři karty.
+V praxi však uvidíme nejčastěji asi jen jedinou grafickou kartu, či dvě tam,
+kde je integrovaný Intel i diskrétní grafika.
 Podíváme-li se dále, může nás zmást, že každá karta má svou verzi Vulkan.
-A opravdu je tak. V minulém díle jsme hovořili o Vulkan loader a driverech zařízení
-(ICD, Installable Client Driver). Verze instance je pak verzí Vulkan loader knihovny,
-kdežto Vulkanní verze driveru je Vulkan verze daného ICD.
-Pro více informací odkazuji do Vulkanní dokumentace.</p>
+A opravdu je tak. V minulém díle jsme hovořili o Vulkan loader a Vulkan ovladačích
+(ICD, Installable Client Driver). Verze instance je verzí Vulkan loader knihovny,
+kdežto verze driveru je verze daného ICD.
+Pro více informací odkazuji do Vulkan dokumentace.</p>
 
-<p>Dále ve výpisu vidíme maximální velikost textury, či zda je podporován geometry shader,
+<p>Ve výpisu dále vidíme maximální velikost textury, zda je podporován geometry shader,
 kolik máme hald paměti a jejich velikosti, kolik máme typů front a co umí (g - graphics
 rendering, c - compute, t - transfer) a na závěr podpora různých formátů.
 Nicméně, začněme náš výklad od kódu.</p>
@@ -79,18 +81,18 @@ Nicméně, začněme náš výklad od kódu.</p>
 
 <pre>
 // Vulkan version
-auto vkEnumerateInstanceVersion=reinterpret_cast&lt;PFN_vkEnumerateInstanceVersion&gt;(
-		vkGetInstanceProcAddr(nullptr,"vkEnumerateInstanceVersion"));
+auto vkEnumerateInstanceVersion = reinterpret_cast&lt;PFN_vkEnumerateInstanceVersion&gt;(
+   vkGetInstanceProcAddr(nullptr, "vkEnumerateInstanceVersion"));
 if(vkEnumerateInstanceVersion) {
-	uint32_t version;
-	vkEnumerateInstanceVersion(&amp;version);
-	cout&lt;&lt;"Vulkan instance version: "&lt;&lt;VK_VERSION_MAJOR(version)&lt;&lt;"."&lt;&lt;VK_VERSION_MINOR(version)
-			&lt;&lt;"."&lt;&lt;VK_VERSION_PATCH(version)&lt;&lt;endl;
+   uint32_t version;
+   vkEnumerateInstanceVersion(&amp;version);
+   cout &lt;&lt; "Vulkan instance version: " &lt;&lt; VK_VERSION_MAJOR(version) &lt;&lt; "."
+        &lt;&lt; VK_VERSION_MINOR(version) &lt;&lt; "." &lt;&lt; VK_VERSION_PATCH(version) &lt;&lt; endl;
 } else
-	cout&lt;&lt;"Vulkan version: 1.0"&lt;&lt;endl;
+   cout &lt;&lt; "Vulkan version: 1.0" &lt;&lt; endl;
 </pre>
 
-<p>Pro zjištění Vulkan verze instance používáme funkci vkEnumerateInstanceVersion.
+<p>Pro zjištění verze instance používáme funkci vkEnumerateInstanceVersion.
 Tato funkce je přítomná až od Vulkan verze 1.1, proto ji nevoláme staticky,
 neboť nemusí být přítomna. Místo toho si na ni vezmeme funkční pointer.
 Je-li null, jedná se o verzi 1.0. Není-li null, zavoláme ji.
@@ -104,40 +106,47 @@ aplikace používat. Daný řádek jsem zvýraznil tučně v následujícím kó
 <pre>
 // Vulkan instance
 vk::UniqueInstance instance(
-	vk::createInstanceUnique(
-		vk::InstanceCreateInfo{
-			vk::InstanceCreateFlags(),  // flags
-			&amp;(const vk::ApplicationInfo&amp;)vk::ApplicationInfo{
-				"04-deviceInfo",         // application name
-				VK_MAKE_VERSION(0,0,0),  // application version
-				nullptr,                 // engine name
-				VK_MAKE_VERSION(0,0,0),  // engine version
-				<b>VK_API_VERSION_1_0,      // api version</b>
-			},
-			0,nullptr,  // no layers
-			0,nullptr,  // no extensions
-		}));
+   vk::createInstanceUnique(
+      vk::InstanceCreateInfo{
+         vk::InstanceCreateFlags(),  // flags
+         &amp;(const vk::ApplicationInfo&amp;)vk::ApplicationInfo{
+            "04-deviceInfo",         // application name
+            VK_MAKE_VERSION(0,0,0),  // application version
+            nullptr,                 // engine name
+            VK_MAKE_VERSION(0,0,0),  // engine version
+            <b>VK_API_VERSION_1_0,      // api version</b>
+         },
+         0, nullptr,  // no layers
+         0, nullptr,  // no extensions
+      }));
 </pre>
 
-<p>Pokud zadáme verzi 1.0, nevzniká žádný problém. Můžeme používat různé Vulkan extensions,
-ale neměli bychom používat funkce Vulkan 1.1 a novější. Nepožádali jsme o ně, neměli bychom je tedy používat.
-Pokud ale zadáme vyšší verzi, mohou nastat dvě situace.
+<p>Pokud zadáme verzi 1.0, nevzniká žádný problém.
+Ale nesmíme používat funkce Vulkan 1.1 a novější.
+Můžeme používat různá Vulkan rozšíření (extensions),
+kterými zpravidla dosáhneme všeho, co umí nejnovější verze Vulkan,
+ale samotné API spadající pod Vulkan 1.1 a novější používat nesmíme.
+Nepožádali jsme o ně, neměli bychom je tedy používat.</p>
+
+<p>Pokud ale zadáme vyšší verzi, mohou nastat dvě situace.
 Pokud je podprována pouze verze 1.0, dojde k chybě při vytváření instance.
-Pokud je ale podporována verze alespoň 1.1, dochází ke změně chování.
-Driver již nikdy nevyhodí chybu, ať požádáme o libovolnou verzi Vulkan, která je větší nebo rovna 1.1.
+Pokud je ale podporována verze alespoň 1.1, dochází ke změně chování,
+pro které se lidé z Khronosu rozhodli od této verze.
+Vulkan loader již nikdy nevyhodí chybu, ať požádáme o libovolnou verzi Vulkan,
+která je větší nebo rovna 1.1.
 Můžeme požádat i o verzi z daleké budoucnosti. Nicméně je naší povinností si ověřit,
 jakou verzi a jakou funkcionalitu podporuje vk::Instance a jakou vk::Device a nezkoušet použít nic,
-co nepodporují. Pokud tedy požádáme o Vulkan 1.2 a daná device podporuje pouze verzi 1.1,
+co nepodporují. Pokud tedy požádáme o Vulkan 1.2 a vk::Device podporuje pouze verzi 1.0,
 neobdržíme chybu. Je to jako bychom řekli: "Naše aplikace umí Vulkan 1.2."
-Ze strany Vulkan jsme si zjistili: "Já instance umím verzi x.y a já device umím verzi u.v."
-Zbývá poslední věc: nechtít po instanci nebo device věc, kterou neumí.
+Ze strany Vulkan jsme si zjistili například: "Já instance umím verzi 1.1 a já device umím verzi 1.0."
+Zbývá poslední věc: nechtít po instanci nic nad verzi 1.1 a po device nic nad 1.0.
 Případné zbylé nejasnosti vysvětluje Vulkan dokumentace
-v části pojednávající o struktuře VkApplicationInfo a případně funkci vkCreateInstance.</p>
+v části pojednávající o struktuře VkApplicationInfo a případně o funkci vkCreateInstance.</p>
 
-<p>V tomto tutoriálu si dlouhou dobu vystačíme pouze s Vulkan 1.0 a použitím extensions.
+<p>V tomto tutoriálu si nějakou dobu vystačíme pouze s Vulkan 1.0 a použitím extensions.
 Nicméně všem, kteří chtějí používat novější verze Vulkan a zároveň chtějí, aby jejich aplikace
 fungovala i na Vulkan 1.0, doporučuji, aby si nejprve zjistili přítomnost
-vkEnumerateInstanceVersion a zavolali si ji.</p>
+vkEnumerateInstanceVersion funkce a zavolali si ji, aby si ověřili, zda jsou nebo nejsou na Vulkan 1.0.</p>
 
 <p>Další kód prochází jednotlivá fyzická zařízení.
 Pro každé zařízení pak volá několik funkcí, které si nyní popíšeme.</p>
@@ -146,12 +155,12 @@ Pro každé zařízení pak volá několik funkcí, které si nyní popíšeme.<
 
 <pre>
 // device properties
-vk::PhysicalDeviceProperties p=pd.getProperties();
-cout&lt;&lt;"   "&lt;&lt;p.deviceName&lt;&lt;endl;
+vk::PhysicalDeviceProperties p = pd.getProperties();
+cout &lt;&lt; "   " &lt;&lt; p.deviceName &lt;&lt; endl;
 
 // device Vulkan version
-cout&lt;&lt;"      Vulkan version: "&lt;&lt;VK_VERSION_MAJOR(p.apiVersion)&lt;&lt;"."&lt;&lt;VK_VERSION_MINOR(p.apiVersion)
-		&lt;&lt;"."&lt;&lt;VK_VERSION_PATCH(p.apiVersion)&lt;&lt;endl;
+cout &lt;&lt; "      Vulkan version: " &lt;&lt; VK_VERSION_MAJOR(p.apiVersion) &lt;&lt; "."
+     &lt;&lt; VK_VERSION_MINOR(p.apiVersion) &lt;&lt; "." &lt;&lt; VK_VERSION_PATCH(p.apiVersion) &lt;&lt; endl;
 </pre>
 
 <p>Metoda getProperties nám pro dané fyzické zařízení vrátí strukturu
@@ -160,21 +169,21 @@ nese množství zajímavých proměnných. Nám již notoricky známá je šest�
 deviceName, kterou si vypisujeme na obrazovku jako název zařízení.</p>
 
 <p>Další zajímavou položkou je apiVersion. Toto je verze Vulkan API, kterou
-dané zařízení poskytuje. Na obrzovku si jej vypíšeme za použití stejných maker
+dané zařízení poskytuje. Na obrazovku si jej vypíšeme za použití stejných maker
 jako u Vulkan verze instance.</p>
 
-<p>Další proměnné jsou driverVersion, vendorId, deviceId, deviceType,
-pipelineCacheUUID. V případě zájmu odkazuji na jejich význam do dokumentace.</p>
+<p>Další proměnné jsou například driverVersion, vendorId, deviceId a deviceType.
+V případě zájmu odkazuji na jejich význam do dokumentace.</p>
 
 <h3>Device limits (limity zařízení)</h3>
 
 <p>Základní limity zařízení jsou uloženy ve struktuře vk::PhysicalDeviceLimits,
-která je součástí vk::PhysicalDeviceProperties. Velmi snadno si tedy
-vypíšeme maximální rozlišení 2D textury.
+která je součástí vk::PhysicalDeviceProperties.
+Můžeme si tedy velmi snadno vypsat například maximální rozlišení 2D textury:
 
 <pre>
 // device limits
-cout&lt;&lt;"      MaxTextureSize: "&lt;&lt;p.limits.maxImageDimension2D&lt;&lt;endl;
+cout &lt;&lt; "      MaxTextureSize: " &lt;&lt; p.limits.maxImageDimension2D &lt;&lt; endl;
 </pre>
 
 <p>Limitů je obrovské množství. Samotná Vulkan dokumentace se na ně z různých míst odkazuje.
@@ -189,12 +198,12 @@ zavolání metody getFeatures nad daným fyzickým zařízením.</p>
 
 <pre>
 // device features
-vk::PhysicalDeviceFeatures f=pd.getFeatures();
-cout&lt;&lt;"      Geometry shader: ";
+vk::PhysicalDeviceFeatures f = pd.getFeatures();
+cout &lt;&lt; "      Geometry shader: ";
 if(f.geometryShader)
-	cout&lt;&lt;"supported"&lt;&lt;endl;
+   cout &lt;&lt; "supported" &lt;&lt; endl;
 else
-	cout&lt;&lt;"not supported"&lt;&lt;endl;
+   cout &lt;&lt; "not supported" &lt;&lt; endl;
 </pre>
 
 <p>Vrácená struktura vk::PhysicalDeviceFeatures obsahuje 55 booleanů indikujících,
@@ -209,35 +218,40 @@ Ty získáme zavoláním metody getMemoryProperties:</p>
 
 <pre>
 // memory properties
-vk::PhysicalDeviceMemoryProperties m=pd.getMemoryProperties();
-cout&lt;&lt;"      Memory heaps:"&lt;&lt;endl;
+vk::PhysicalDeviceMemoryProperties m = pd.getMemoryProperties();
+cout &lt;&lt; "      Memory heaps:" &lt;&lt; endl;
 for(uint32_t i=0,c=m.memoryHeapCount; i&lt;c; i++)
-	cout&lt;&lt;"         "&lt;&lt;i&lt;&lt;": "&lt;&lt;m.memoryHeaps[i].size/1024/1024&lt;&lt;"MiB"&lt;&lt;endl;
+   cout &lt;&lt; "         " &lt;&lt; i &lt;&lt; ": " &lt;&lt; m.memoryHeaps[i].size/1024/1024 &lt;&lt; "MiB" &lt;&lt; endl;
 </pre>
 
 <p>Vrácená struktura vk::PhysicalDeviceMemoryProperties obsahuje informace o dostupných typech paměti (memory types)
 a o haldách (memory heaps), které jsou k dispozici. Začněme u hald, které si vypisujeme na obrazovku.
 Haldy jsou často jedna, dvě nebo tři. Jednu můžeme najít například na některých integrovaných grafikách,
-protože tam je paměť jediná a sdílená s procesorem. Dvě je velmi častý případ a řekl bych nejtypičtější:
-jedna halda je lokální rychlá paměť na grafice a druhá halda je klasická paměť počítače nebo její část.
-Tato paměť není pro grafický chip tak rychle přístupná, nicméně přístupná nějakým způsobem je.
+protože tam je paměť jediná a sdílená s procesorem. Dvě haldy jsou velmi častý případ a řekl bych nejtypičtější:
+jedna paměť na grafice a druhá klasická paměť počítače nebo její část.
+Paměť na grafické kartě je obyčejně ta nejrychlejší pro grafický čip.
+Klasická paměť počítače bývá zpravidla pomalejší,
+ale zase je snadno přístupná procesorem, čehož budeme využívat.
 Tři haldy vidívám v dnešní době například na AMD grafikách. AMD se rozhodlo vzít malou část paměti grafiky
 a zpřístupnit ji jak grafickému čipu tak procesoru. Tato třetí halda tedy umožňuje zvlášť efektivně
-sdílet data mezi grafikou a procesorem. Obecně ale můžeme mít různé konfigurace hald,
-třeba i mnohem složitěji navržené. Záleží na výrobci, jak věci implementuje.</p>
+sdílet data mezi grafikou a procesorem.
+S příchodem Resizable Bar technologie možná dojde k dalším změnám,
+které třeba na svém osobním výpisu budete časem vidět. Ale nechme se překvapit.
+Určitě ale obecně platí, že můžeme mít různé konfigurace hald, třeba i mnohem složitěji navržené.
+Záleží na výrobci, jak věci implementuje.</p>
 
-<p>Struktura vk::PhysicalDeviceMemoryProperties obsahuje i informace o typech paměti (memory types),
+<p>Struktura vk::PhysicalDeviceMemoryProperties obsahuje i informace o typech pamětí (memory types),
 ale ty si necháme na později, až budeme alokovat paměť.</p>
 
 <h3>Queues (fronty)</h3>
 
-<p>A k čemu jsou fronty (anglicky: queues), které vidíme ve výpisu?</p>
+<p>A k čemu jsou fronty (queues), které vidíme ve výpisu?</p>
 
 <pre>
 Queue families:
-	0: gct  (count: 16)
-	1: t  (count: 1)
-	2: c  (count: 8)
+   0: gct  (count: 16)
+   1: t  (count: 1)
+   2: c  (count: 8)
 </pre>
 
 <p>Zjednodušeně můžeme říci, že práci zadáváme grafické kartě skrze příkazy.
@@ -247,24 +261,23 @@ Můžeme mít třídu, která umí pouze počítat (compute operations support).
 V našem výpisu jsou uvedeny písmenem "c".
 Dále můžeme mít třídu, která umí rendrovat grafiku (graphics operations support)
 - ve výpisu vidíme "g". Další důležitá funkcionalita front jsou také
-přenosy (transfer operations) - ve výpisu "t". Mnoho front umí
+přenosy dat (transfer operations) - ve výpisu "t". Mnoho front umí
 více funkcionalit naráz. V každé třídě je pak uveden i počet front, které
 jsou k dispozici.</p>
 
 <pre>
 // queue family properties
-vector&lt;vk::QueueFamilyProperties&gt; queueFamilyList=pd.getQueueFamilyProperties();
-cout&lt;&lt;"      Queue families:"&lt;&lt;endl;
+vector&lt;vk::QueueFamilyProperties&gt; queueFamilyList = pd.getQueueFamilyProperties();
+cout &lt;&lt; "      Queue families:" &lt;&lt; endl;
 for(uint32_t i=0,c=uint32_t(queueFamilyList.size()); i&lt;c; i++) {
-	cout&lt;&lt;"         "&lt;&lt;i&lt;&lt;": ";
-	if(queueFamilyList[i].queueFlags &amp; vk::QueueFlagBits::eGraphics)
-		cout&lt;&lt;"g";
-	if(queueFamilyList[i].queueFlags &amp; vk::QueueFlagBits::eCompute)
-		cout&lt;&lt;"c";
-	if(queueFamilyList[i].queueFlags &amp; vk::QueueFlagBits::eTransfer)
-		cout&lt;&lt;"t";
-	cout&lt;&lt;"  (count: "&lt;&lt;queueFamilyList[i].queueCount&lt;&lt;")";
-	cout&lt;&lt;endl;
+   cout &lt;&lt; "         " &lt;&lt; i &lt;&lt; ": ";
+   if(queueFamilyList[i].queueFlags &amp; vk::QueueFlagBits::eGraphics)
+      cout &lt;&lt; "g";
+   if(queueFamilyList[i].queueFlags &amp; vk::QueueFlagBits::eCompute)
+      cout &lt;&lt; "c";
+   if(queueFamilyList[i].queueFlags &amp; vk::QueueFlagBits::eTransfer)
+      cout &lt;&lt; "t";
+   cout &lt;&lt; "  (count: " &lt;&lt; queueFamilyList[i].queueCount &lt;&lt; ")" &lt;&lt; endl;
 }
 </pre>
 
@@ -275,16 +288,20 @@ Následně cyklíme přes tyto třídy a z queueFlags zjišťujeme,
 které operace jsou nad danou frontou podporovány.
 Na závěr vypíšeme počet front.</p>
 
+<p>V dokumentaci je skryta jedna podstatná informace: Pokud fronta podporuje grafické nebo výpočetní operace,
+pak vždycky automaticky podporuje i přenosy (transfer). A to dokonce i kdyby jsme u dané fronty transfer bit
+nenalezli. Uvedení transfer bitu je v tomto případě, dle dokumentace, nepovinné.</p>
+
 <h3>Format properties (vlastnosti formátů)</h3>
 
-<p>Poslední oblast, kterou si uvedeme je podpora formátů. Vulkan podporuje přehršel
+<p>Poslední oblast, kterou si uvedeme, je podpora formátů. Vulkan podporuje přehršel
 různých formátů uložení dat. Stačí se podívat na VkFormat ve Vulkan dokumentaci.
 Abychom si uvedli jeden příklad: R8G8B8A8Unorm je typický formát
-ukládající červenou, zelenou a modrou složku s alfa kanálem (RGBA).
-Každá z těchto složek má 8 bitů, tedy bajt. Proto je za každým písmenem
+ukládající červenou, zelenou a modrou složku a alfa kanál (RGBA).
+Každá z těchto složek má 8 bitů, tedy byte. Proto je za každým písmenem
 RGBA připojena osmička. "U" pak stojí za unsigned, tedy bez znaménka.
-Rozsah hodnot je tedy 0..255. Norm pak značí normalizaci, neboli konverzi
-na hodnotu s plovoucí desetinou čárkou v rozsahu 0.0 až 1.0.
+Osm bitů bez znaménka dává rozsah hodnot 0..255. Norm pak značí normalizaci, neboli konverzi
+na hodnotu s plovoucí desetinou čárkou v rozsahu 0.0 až 1.0. Nula se tedy zkonvertuje na 0.0 a 255 na 1.0.
 Více opět najdeme ve Vulkan dokumentaci, ať už v sekci "Format Definition",
 kde se pojednává o VkFormat, či v sekci "Fixed-Point Data Conversions"
 o konverzi numerických hodnot.</p>
@@ -293,18 +310,22 @@ o konverzi numerických hodnot.</p>
 
 <pre>
 R8G8B8A8Unorm format support for color attachment:
-	Images with linear tiling: no
-	Images with optimal tiling: yes
-	Buffers: no
+   Images with linear tiling: no
+   Images with optimal tiling: yes
+   Buffers: no
 </pre>
 
-<p>Vidíme, že tento formát není podporován automaticky vždy.
+<p>Vidíme ne, ano a ne. Tedy tento formát není podporován automaticky vždy.
 Také vidíme, že se dotazujeme na jeho podporu při specifickém použití,
-zde jako "color attachment". Jinými slovy, zda do něj můžeme rendrovat.
-Vidíme, že na GeForce 1050 je podporován pouze pro "Images with optimal tiling".
-Opět zjednodušeně řečeno, pokud rendrujeme do textury s optimálním uložením v paměti,
-je tento formát podporován.
-Ale pro "linear tiling", tedy linearní uložení, podporován není.
+v našem případě jako "color attachment". Color attachment znamená jinými slovy, zda do něj můžeme rendrovat.
+V prvním případě vidíme,
+že na GeForce 1050 rendering do obrázků s linearním uložením
+(linear tiling) v tomto formátu podporován není.
+Linear tiling znamená klasické uložení pixelů po řádcích.
+Naproti tomu je ale podporován rendering do obrázků s optimálním uložením (optimal tiling).
+Při optimal tiling není specifikováno v jakém pořadí si grafika body ukládá,
+a může to být například <a href="https://en.wikipedia.org/wiki/Z-order_curve">z-order curve</a>
+pro větší lokalitu přístupů do paměti.
 Rendrování do bufferu rovněž podporováno není, což pokud vím, vůbec nejde.</p>
 
 <p>Jak tedy zjišťujeme podporu jednotlivých formátů?</p>
@@ -312,23 +333,23 @@ Rendrování do bufferu rovněž podporováno není, což pokud vím, vůbec nej
 <pre>
 // color attachment R8G8B8A8Unorm format support
 vk::FormatProperties fp = pd.getFormatProperties(vk::Format::eR8G8B8A8Unorm);
-cout&lt;&lt;"      R8G8B8A8Unorm format support for color attachment:"&lt;&lt;endl;
-cout&lt;&lt;"         Images with linear tiling: "&lt;&lt;
-	string(fp.linearTilingFeatures &amp; vk::FormatFeatureFlagBits::eColorAttachment ? "yes" : "no")&lt;&lt;endl;
-cout&lt;&lt;"         Images with optimal tiling: "&lt;&lt;
-	string(fp.optimalTilingFeatures &amp; vk::FormatFeatureFlagBits::eColorAttachment ? "yes" : "no")&lt;&lt;endl;
-cout&lt;&lt;"         Buffers: "&lt;&lt;
-	string(fp.bufferFeatures &amp; vk::FormatFeatureFlagBits::eColorAttachment ? "yes" : "no")&lt;&lt;endl;
+cout &lt;&lt; "      R8G8B8A8Unorm format support for color attachment:" &lt;&lt; endl;
+cout &lt;&lt; "         Images with linear tiling: " &lt;&lt;
+   string(fp.linearTilingFeatures &amp; vk::FormatFeatureFlagBits::eColorAttachment ? "yes" : "no") &lt;&lt; endl;
+cout &lt;&lt; "         Images with optimal tiling: " &lt;&lt;
+   string(fp.optimalTilingFeatures &amp; vk::FormatFeatureFlagBits::eColorAttachment ? "yes" : "no") &lt;&lt; endl;
+cout &lt;&lt; "         Buffers: " &lt;&lt;
+   string(fp.bufferFeatures &amp; vk::FormatFeatureFlagBits::eColorAttachment ? "yes" : "no") &lt;&lt; endl;
 </pre>
 
 <p>Nahradíme-li vk::FormatFeatureFlagBits::eColorAttachment za jiný flag, můžeme se ptát,
 zda je daný formát podporován pro čtení dat z textury a podobně.</p>
 
-<h3>Závěr</h3>
+<h3>Shrnutí</h3>
 
-<p>V tomto díle jsme prošli vpodstatě veškeré základní get funkce kolem fyzického zařízení z Vulkan 1.0.
+<p>V tomto díle jsme prošli vpodstatě veškeré základní funkce pro získání informací z fyzického zařízení ve Vulkan 1.0.
 Zároveň jsme si představili mnoho ze základních pojmů Vulkan jako fronty (queues), haldy (memory heaps),
-vlastnosti, funkcionality a limity zařízení (device properties, features and limits), formáty
+vlastnosti zařízení (device properties), funkcionality a limity zařízení (device features and limits), formáty
 a Vulkan verze instance a zařízení.
-Mnoho z toho nám poslouží příště, kdy se pustíme do první aplikace, která udělá první krůčky
-v oblasti renderingu.</p>
+Mnoho z toho nám poslouží jako základ v dalších dílech tutoriálu,
+ve kterých se pustíme vztříc prvním krůčkům k renderingu.</p>
