@@ -20,8 +20,12 @@ if(UNIX)
                            COMMAND ${Wayland_SCANNER} client-header ${Wayland_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml xdg-shell-client-protocol.h)
         add_custom_command(OUTPUT xdg-shell-protocol.c
                            COMMAND ${Wayland_SCANNER} private-code ${Wayland_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml xdg-shell-protocol.c)
-        list(APPEND APP_SOURCES xdg-shell-protocol.c)
-        list(APPEND APP_INCLUDES xdg-shell-client-protocol.h)
+        add_custom_command(OUTPUT xdg-decoration-client-protocol.h
+                           COMMAND ${Wayland_SCANNER} client-header ${Wayland_PROTOCOLS_DIR}/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml xdg-decoration-client-protocol.h)
+        add_custom_command(OUTPUT xdg-decoration-protocol.c
+                           COMMAND ${Wayland_SCANNER} private-code ${Wayland_PROTOCOLS_DIR}/unstable/xdg-decoration/xdg-decoration-unstable-v1.xml xdg-decoration-protocol.c)
+        list(APPEND APP_SOURCES xdg-shell-protocol.c xdg-decoration-protocol.c)
+        list(APPEND APP_INCLUDES xdg-shell-client-protocol.h xdg-decoration-client-protocol.h)
         set(deps Vulkan::Vulkan Wayland::client -lrt)
 
     else()

@@ -1,14 +1,15 @@
 #ifdef _WIN32
-# define VK_USE_PLATFORM_WIN32_KHR
 # define NOMINMAX  // avoid the definition of min and max macros by windows.h
 # include <windows.h>
+# define VK_USE_PLATFORM_WIN32_KHR
 #elif USE_WAYLAND
-# define VK_USE_PLATFORM_WAYLAND_KHR
 # include "xdg-shell-client-protocol.h"
+# include "xdg-decoration-client-protocol.h"
+# define VK_USE_PLATFORM_WAYLAND_KHR
 #else
-# define VK_USE_PLATFORM_XLIB_KHR
 # include <X11/Xlib.h>
 # include <X11/Xutil.h>
+# define VK_USE_PLATFORM_XLIB_KHR
 #endif
 #include <vulkan/vulkan.hpp>
 #include <array>
@@ -19,14 +20,34 @@ using namespace std;
 #ifdef _WIN32
 static HWND window=nullptr;
 #elif USE_WAYLAND
-static wl_display* display = nullptr;
-static wl_registry* registry = nullptr;
-static wl_compositor* compositor = nullptr;
-static xdg_wm_base* xdg = nullptr;
-static wl_surface* wlSurface = nullptr;
-static xdg_surface* xdgSurface = nullptr;
-static xdg_toplevel* xdgTopLevel = nullptr;
-static bool xdgSurfaceConfigured = false;
+struct WaylandData {
+	// globals
+	wl_display* display = nullptr;
+	wl_registry* registry;
+	wl_compositor* compositor;
+	xdg_wm_base* xdg = nullptr;
+	zxdg_decoration_manager_v1* zxdgDecorationManagerV1;
+	// objects
+	wl_surface* wlSurface = nullptr;
+	xdg_surface* xdgSurface = nullptr;
+	xdg_toplevel* xdgTopLevel = nullptr;
+	// state
+	bool xdgSurfaceConfigured;
+	// destructor
+	~WaylandData() {
+		if(xdgTopLevel)
+			xdg_toplevel_destroy(xdgTopLevel);
+		if(xdgSurface)
+			xdg_surface_destroy(xdgSurface);
+		if(wlSurface)
+			wl_surface_destroy(wlSurface);
+		if(xdg)
+			xdg_wm_base_destroy(xdg);
+		if(display)
+			wl_display_disconnect(display);
+	}
+};
+static WaylandData wl;
 static bool running = true;
 #else
 static Display* display=nullptr;
@@ -132,94 +153,112 @@ int main(int,char**)
 			);
 
 #elif USE_WAYLAND
+
 		// open Wayland connection
-		display = wl_display_connect(nullptr);
-		if(display == nullptr)
+		wl.display = wl_display_connect(nullptr);
+		if(wl.display == nullptr)
 			throw runtime_error("Cannot connect to Wayland display. No Wayland server is running or invalid WAYLAND_DISPLAY variable.");
 
-		// initialize global objects
-		registry = wl_display_get_registry(display);
-		wl_registry_add_listener(
-			registry,
-			&(const wl_registry_listener&)wl_registry_listener{
-				.global = registryHandleGlobal,
-				.global_remove = registryRemoveGlobal,
-			},
-			nullptr
-		);
-		wl_display_roundtrip(display);
-		if(compositor == nullptr)
-			throw runtime_error("Cannot get Wayland compositor object.");
-		if(xdg == nullptr)
-			throw runtime_error("Cannot get Wayland xdg_wm_base object.");
+		// registry listener
+		wl.registry = wl_display_get_registry(wl.display);
+		if(wl.registry == nullptr)
+			throw runtime_error("Cannot get Wayland registry object.");
+		const wl_registry_listener registryListener{
+				.global =
+					[](void*, wl_registry* registry, uint32_t name, const char* interface, uint32_t version) {
+						if(strcmp(interface, wl_compositor_interface.name) == 0)
+							wl.compositor = static_cast<wl_compositor*>(
+								wl_registry_bind(registry, name, &wl_compositor_interface, 1));
+						else if(strcmp(interface, xdg_wm_base_interface.name) == 0)
+							wl.xdg = static_cast<xdg_wm_base*>(
+								wl_registry_bind(registry, name, &xdg_wm_base_interface, 1));
+						else if(strcmp(interface, zxdg_decoration_manager_v1_interface.name) == 0)
+							wl.zxdgDecorationManagerV1 = static_cast<zxdg_decoration_manager_v1*>(
+								wl_registry_bind(registry, name, &zxdg_decoration_manager_v1_interface, 1));
+					},
+				.global_remove =
+					[](void*, wl_registry*, uint32_t) {
+					},
+			};
+		if(wl_registry_add_listener(wl.registry, &registryListener, nullptr))
+			throw runtime_error("wl_registry_add_listener() failed.");
 
-		xdg_wm_base_add_listener(
-			xdg,
-			&(const xdg_wm_base_listener&)xdg_wm_base_listener{
+		// get and init global objects
+		wl.compositor = nullptr;
+		wl.xdg = nullptr;
+		if(wl_display_roundtrip(wl.display) == -1)
+			throw runtime_error("wl_display_roundtrip() failed.");
+		if(wl.compositor == nullptr)
+			throw runtime_error("Cannot get Wayland compositor object.");
+		if(wl.xdg == nullptr)
+			throw runtime_error("Cannot get Wayland xdg_wm_base object.");
+		const xdg_wm_base_listener xdgWmBaseListener{
 				.ping =
 					[](void*, xdg_wm_base* xdg, uint32_t serial) {
 						xdg_wm_base_pong(xdg, serial);
 					}
-			},
-			nullptr
-		);
+			};
+		if(xdg_wm_base_add_listener(wl.xdg, &xdgWmBaseListener, nullptr))
+			throw runtime_error("xdg_wm_base_add_listener() failed.");
 
 		// create window
-		wlSurface = wl_compositor_create_surface(compositor);
-		xdgSurface = xdg_wm_base_get_xdg_surface(xdg, wlSurface);
-
-		xdg_surface_add_listener(
-			xdgSurface,
-			&(const xdg_surface_listener&)xdg_surface_listener{
+		wl.wlSurface = wl_compositor_create_surface(wl.compositor);
+		if(wl.wlSurface == nullptr)
+			throw runtime_error("wl_compositor_create_surface() failed.");
+		wl.xdgSurface = xdg_wm_base_get_xdg_surface(wl.xdg, wl.wlSurface);
+		if(wl.xdgSurface == nullptr)
+			throw runtime_error("xdg_wm_base_get_xdg_surface() failed.");
+		wl.xdgSurfaceConfigured = false;
+		const xdg_surface_listener xdgSurfaceListener{
 				.configure =
 					[](void* data, xdg_surface* xdgSurface, uint32_t serial) {
-						xdg_surface_ack_configure(xdgSurface, serial);
-						wl_surface_commit(wlSurface);
-						xdgSurfaceConfigured = true;
 						cout<<"surface configure"<<endl;
+						xdg_surface_ack_configure(xdgSurface, serial);
+						wl_surface_commit(wl.wlSurface);
+						wl.xdgSurfaceConfigured = true;
 					},
-			},
-			nullptr
-		);
-		wl_region* region = wl_compositor_create_region(compositor);
-		wl_region_add(region, 0, 0, 128, 128);
-		wl_surface_set_opaque_region(wlSurface, region);
-		wl_region_destroy(region);
-		wl_surface_commit(wlSurface);
-		wl_display_flush(display);
-		wl_surface_commit(wlSurface);
-		wl_display_flush(display);
+			};
+		if(xdg_surface_add_listener(wl.xdgSurface, &xdgSurfaceListener, nullptr))
+			throw runtime_error("xdg_surface_add_listener() failed.");
+		uint32_t windowWidth = 128;
+		uint32_t windowHeight = 128;
 
-		xdgTopLevel = xdg_surface_get_toplevel(xdgSurface);
-		cout<<"TopLevel: "<<xdgTopLevel<<endl;
-		xdg_toplevel_set_title(xdgTopLevel, "Example");
-		xdg_toplevel_add_listener(
-			xdgTopLevel,
-			&(const xdg_toplevel_listener&)xdg_toplevel_listener{
-				.configure = [](void*, xdg_toplevel* toplevel, int32_t w, int32_t h, wl_array*)->void{ cout<<"toplevel "<<toplevel<<" configure "<<w<<"x"<<h<<endl; },
+		// init xdg toplevel
+		wl.xdgTopLevel = xdg_surface_get_toplevel(wl.xdgSurface);
+		if(wl.xdgTopLevel == nullptr)
+			throw runtime_error("xdg_surface_get_toplevel() failed.");
+		if(wl.zxdgDecorationManagerV1) {
+			zxdg_toplevel_decoration_v1* decoration =
+				zxdg_decoration_manager_v1_get_toplevel_decoration(wl.zxdgDecorationManagerV1, wl.xdgTopLevel);
+			zxdg_toplevel_decoration_v1_set_mode(decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+		}
+		cout<<"TopLevel: "<<wl.xdgTopLevel<<endl;
+		xdg_toplevel_set_title(wl.xdgTopLevel, "Example");
+		const xdg_toplevel_listener xdgToplevelListener{
+				.configure =
+					[](void*, xdg_toplevel* toplevel, int32_t w, int32_t h, wl_array*)->void{
+						cout<<"toplevel "<<toplevel<<" configure "<<w<<"x"<<h<<endl;
+						//windowWidth = w;
+						//windowHeight = h;
+					},
 				.close =
 					[](void* data, xdg_toplevel* xdgTopLevel) {
 						running = false;
 					},
-			},
-			nullptr
-		);
-		cout<<"init done"<<endl;
-		wl_surface_commit(wlSurface);
-		wl_display_roundtrip(display);
-		//wl_surface_frame(wlSurface);
-		wl_display_flush(display);
-		while(!xdgSurfaceConfigured) {
-			wl_display_flush(display);
-			wl_display_dispatch(display);
-		}
-		cout<<"configured"<<endl;
+			};
+		if(xdg_toplevel_add_listener(wl.xdgTopLevel, &xdgToplevelListener, nullptr))
+			throw runtime_error("xdg_toplevel_add_listener() failed.");
+		wl_surface_commit(wl.wlSurface);
+		if(wl_display_flush(wl.display) == -1)
+			throw runtime_error("wl_display_flush() failed.");
 
 		// create surface
 		vk::UniqueSurfaceKHR surface=
 			instance->createWaylandSurfaceKHRUnique(
-				vk::WaylandSurfaceCreateInfoKHR(vk::WaylandSurfaceCreateFlagsKHR(), display, wlSurface)
+				vk::WaylandSurfaceCreateInfoKHR(vk::WaylandSurfaceCreateFlagsKHR(), wl.display, wl.wlSurface)
 			);
+
+		cout<<"init done"<<endl;
 
 #else
 
@@ -264,8 +303,12 @@ int main(int,char**)
 		vector<vk::PhysicalDevice> deviceList=instance->enumeratePhysicalDevices();
 		vector<tuple<vk::PhysicalDevice,uint32_t>> compatibleDevicesSingleQueue;
 		vector<tuple<vk::PhysicalDevice,uint32_t,uint32_t>> compatibleDevicesTwoQueues;
+		cout<<"Got "<<deviceList.size()<<" devices."<<endl;
+		deviceList.erase(deviceList.begin());
+		deviceList.erase(deviceList.begin());
 		for(vk::PhysicalDevice pd:deviceList) {
 
+			cout<<"Trying "<<pd.getProperties().deviceName<<endl;
 			// skip devices without VK_KHR_swapchain
 			auto extensionList=pd.enumerateDeviceExtensionProperties();
 			for(vk::ExtensionProperties& e:extensionList)
@@ -273,9 +316,10 @@ int main(int,char**)
 					goto swapchainSupported;
 			continue;
 			swapchainSupported:
+			cout<<"Extension supported."<<endl;
 
 			// skip devices without surface formats and presentation modes
-			uint32_t formatCount;
+			/*uint32_t formatCount;
 			vk::createResultValue(
 				pd.getSurfaceFormatsKHR(surface.get(),&formatCount,nullptr,vk::DispatchLoaderStatic()),
 				VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfaceFormatsKHR");
@@ -284,7 +328,7 @@ int main(int,char**)
 				pd.getSurfacePresentModesKHR(surface.get(),&presentationModeCount,nullptr,vk::DispatchLoaderStatic()),
 				VULKAN_HPP_NAMESPACE_STRING"::PhysicalDevice::getSurfacePresentModesKHR");
 			if(formatCount==0||presentationModeCount==0)
-				continue;
+				continue;*/
 
 			// select queues (for graphics rendering and for presentation)
 			uint32_t graphicsQueueFamily=UINT32_MAX;
@@ -576,10 +620,15 @@ int main(int,char**)
 
 #elif USE_WAYLAND
 
+		cout<<"Before showWindow..."<<endl;
+		if(wl_display_roundtrip(wl.display) == -1)
+			throw runtime_error("wl_display_roundtrip() failed.");
+
 		// run event loop
-		while(wl_display_dispatch(display) != -1 && running) {
-			wl_display_flush(display);
-		}
+		cout<<"Entering main loop..."<<endl;
+		while(running) {
+			if(wl_display_dispatch_pending(wl.display) == -1)
+				throw std::runtime_error("wl_display_dispatch_pending() failed.");
 
 #else
 

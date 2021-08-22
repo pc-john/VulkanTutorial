@@ -46,6 +46,14 @@ if(UNIX)
 		target_link_libraries(${APP_NAME} Vulkan::Vulkan Wayland::client -lrt)
 		target_include_directories(${APP_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 
+
+		add_executable(${APP_NAME}-demo main-demo.cpp xdg-shell-client-protocol.h xdg-shell-protocol.c)
+		set_property(TARGET ${APP_NAME}-demo PROPERTY CXX_STANDARD 17)
+
+		# dependencies
+		target_link_libraries(${APP_NAME}-demo Vulkan::Vulkan Wayland::client -lrt -lxkbcommon)
+		target_include_directories(${APP_NAME}-demo PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+
 	endif()
 
 	# 09-helloWindow-X11
