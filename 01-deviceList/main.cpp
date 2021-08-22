@@ -4,10 +4,10 @@
 using namespace std;
 
 
-int main(int,char**)
+int main(int, char**)
 {
 	// catch exceptions
-	// (vulkan.hpp functions throws if they fail)
+	// (vulkan.hpp functions throw if they fail)
 	try {
 
 		// Vulkan instance
@@ -29,20 +29,20 @@ int main(int,char**)
 				}));
 
 		// print device list
-		vector<vk::PhysicalDevice> deviceList=instance->enumeratePhysicalDevices();
-		cout<<"Physical devices:"<<endl;
-		for(vk::PhysicalDevice pd:deviceList) {
-			vk::PhysicalDeviceProperties p=pd.getProperties();
-			cout<<"   "<<p.deviceName<<endl;
+		vector<vk::PhysicalDevice> deviceList = instance->enumeratePhysicalDevices();
+		cout << "Physical devices:" << endl;
+		for(vk::PhysicalDevice pd : deviceList) {
+			vk::PhysicalDeviceProperties p = pd.getProperties();
+			cout << "   " << p.deviceName << endl;
 		}
 
 	// catch exceptions
-	} catch(vk::Error &e) {
-		cout<<"Failed because of Vulkan exception: "<<e.what()<<endl;
-	} catch(exception &e) {
-		cout<<"Failed because of exception: "<<e.what()<<endl;
+	} catch(vk::Error& e) {
+		cout << "Failed because of Vulkan exception: " << e.what() << endl;
+	} catch(exception& e) {
+		cout << "Failed because of exception: " << e.what() << endl;
 	} catch(...) {
-		cout<<"Failed because of unspecified exception."<<endl;
+		cout << "Failed because of unspecified exception." << endl;
 	}
 
 	return 0;

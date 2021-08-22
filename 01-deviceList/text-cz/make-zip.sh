@@ -7,7 +7,7 @@ if test -f $NAME.zip; then
 fi
 mkdir tmp
 cp ../main.cpp tmp/
-echo "cmake_minimum_required(VERSION 3.8.0)" > tmp/CMakeLists.txt
+echo "cmake_minimum_required(VERSION 3.10.2)" > tmp/CMakeLists.txt
 echo >> tmp/CMakeLists.txt
 cat < ../CMakeLists.txt >> tmp/CMakeLists.txt
 cp text.html tmp/
