@@ -5,14 +5,14 @@ prakticky nejvýznamějším API, ke kterému se obrací jak herní tak i profes
 Toto je první díl tutoriálu, který nás do Vulkan API uvede.</p>
 
 <p>Vulkan 1.0 přišel na svět v roce 2016. Je tedy téměř o 25 let modernějším API v porovnání s OpenGL.
-Dvacet pět let před vydáním Vulkan byly mainstreamové grafické karty, zjednodušeně řečeno, pouze zobrazovadlo:
+Dvacet pět let před vydáním Vulkanu byly mainstreamové grafické karty, zjednodušeně řečeno, pouze zobrazovadlo:
 paměť, ke které byl připojen výstup na monitor. Co jste do paměti zapsali, to se objevilo
 na obrazovce. Dnes je grafická karta programovatelný vysoce paralelizovaný vypočetní stroj,
 který může svým hrubým vypočetním výkonem nahradit desítky i stovky moderních procesorů.
 Vulkan je navržen tak, aby poskytoval větší flexibilitu pro využití tohoto potenciálu,
 který dřímá v dnešních grafických kartách.</p>
 
-<p>Další pohled: 25 let před vydáním Vulkan měly téměř všechny počítače jen jeden procesor s jedním jádrem.
+<p>Další pohled: 25 let před vydáním Vulkanu měly téměř všechny počítače jen jeden procesor s jedním jádrem.
 Toto odpovídalo konceptu jednoho aktivního grafického kontextu v OpenGL, který ne úplně odpovídá tomu,
 co bychom dnes očekávali od moderního rozhraní podporující vícevláknové zpracování.
 Dnes je vícejádrový počítač standardem a není tedy divu, že Vulkanu je od svého počátku
@@ -40,7 +40,7 @@ a základní principy, na kterých je Vulkan postaven.</p>
 Nebudeme tedy používat standardní Vulkan include &lt;vulkan/vulkan.h&gt;,
 ale nadstavbu Vulkan-Hpp (include &lt;vulkan/vulkan.hpp&gt;, která je součástí Vulkan SDK.
 Vulkan-Hpp je navržena s důrazem na maximální efektivitu a pokud možno nulovou extra
-CPU zátěž. Vulkan.hpp se zrodil pod křídly Nvidie, ale velmi záhy v Khronosu "zdomácněl"
+zátěž CPU. Vulkan.hpp se zrodil pod křídly Nvidie, ale velmi záhy v Khronosu "zdomácněl"
 a už po půl roce existence Vulkan API se stal standardní součástí Vulkan SDK.</p>
 
 <p>Druhá věc může být pro některé poněkud kontroverzní. Jsou jí C++ výjimky.
