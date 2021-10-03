@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.8.0)
+cmake_minimum_required(VERSION 3.10.2)
 
 project(VulkanTutorial)
 
@@ -13,6 +13,7 @@ set(PACKAGES
     08-helloTriangle
     09-helloWindow
     10-swapchain
+    11-resizableWindow
    )
 
 foreach(pkg ${PACKAGES})
