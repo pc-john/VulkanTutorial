@@ -3,10 +3,10 @@
 #if defined(VK_USE_PLATFORM_WAYLAND_KHR)
 # include "xdg-shell-client-protocol.h"
 # include "xdg-decoration-client-protocol.h"
-# include <vulkan/vulkan.hpp>
 #elif defined(VK_USE_PLATFORM_WIN32_KHR)
 #elif defined(VK_USE_PLATFORM_XLIB_KHR)
 #endif
+# include <vulkan/vulkan.hpp>
 
 namespace vk {
 	class Instance;
@@ -38,11 +38,6 @@ protected:
 
 	// state
 	bool running;
-#if 1
-	bool swapchainResizePending = true;
-	vk::Extent2D m_surfaceExtent = vk::Extent2D(0,0);
-	RecreateSwapchainCallback *recreateSwapchainCallback = nullptr;
-#endif
 
 	// listeners
 	wl_registry_listener registryListener;
@@ -52,7 +47,7 @@ protected:
 
 #elif defined(VK_USE_PLATFORM_WIN32_KHR)
 
-	HWND window = nullptr;
+	HWND hwnd = nullptr;
 
 #elif defined(VK_USE_PLATFORM_XLIB_KHR)
 
@@ -61,6 +56,10 @@ protected:
 	Atom wmDeleteMessage;
 
 #endif
+
+	vk::Extent2D m_surfaceExtent = vk::Extent2D(0,0);
+	bool swapchainResizePending = true;
+	RecreateSwapchainCallback *recreateSwapchainCallback = nullptr;
 
 public:
 

@@ -1,3 +1,12 @@
+#define NOMINMAX
+//#include <windows.h>
+typedef struct HINSTANCE__* HINSTANCE;
+typedef struct HWND__* HWND;
+typedef struct HMONITOR__* HMONITOR;
+typedef void* HANDLE;
+typedef /*_Null_terminated_*/ const wchar_t *LPCWSTR;
+typedef unsigned long DWORD;
+typedef struct _SECURITY_ATTRIBUTES SECURITY_ATTRIBUTES;
 #include <vulkan/vulkan.hpp>
 #include <array>
 #include <iostream>
@@ -91,7 +100,7 @@ int main(int, char**)
 			uint32_t presentationQueueFamily = UINT32_MAX;
 			vector<vk::QueueFamilyProperties> queueFamilyList = pd.getQueueFamilyProperties();
 			uint32_t i = 0;
-			for(uint32_t i=0, c=queueFamilyList.size(); i<c; i++) {
+			for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
 				bool p = pd.getSurfaceSupportKHR(i, surface.get()) != 0;
 				if(queueFamilyList[i].queueFlags & vk::QueueFlagBits::eGraphics) {
 					if(p) {
