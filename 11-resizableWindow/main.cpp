@@ -175,25 +175,30 @@ int main(int, char**)
 		presentationQueue = device->getQueue(presentationQueueFamily, 0);
 
 		// choose surface format
-		constexpr array wantedSurfaceFormats{
-			vk::SurfaceFormatKHR{ vk::Format::eR8G8B8A8Unorm, vk::ColorSpaceKHR::eSrgbNonlinear },
-			vk::SurfaceFormatKHR{ vk::Format::eB8G8R8A8Unorm, vk::ColorSpaceKHR::eSrgbNonlinear },
+		constexpr array supportedSurfaceFormats{
+			vk::SurfaceFormatKHR{ vk::Format::eB8G8R8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear },
+			vk::SurfaceFormatKHR{ vk::Format::eR8G8B8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear },
+			vk::SurfaceFormatKHR{ vk::Format::eA8B8G8R8SrgbPack32, vk::ColorSpaceKHR::eSrgbNonlinear },
 		};
-		vector<vk::SurfaceFormatKHR> supportedSurfaceFormats = physicalDevice.getSurfaceFormatsKHR(surface.get());
-		if(supportedSurfaceFormats.size()==1 && supportedSurfaceFormats[0].format==vk::Format::eUndefined)
-			// Vulkan spec allowed single eUndefined value until 1.1.111 (2019-06-10) with the meaning you can use any valid vk::Format value
-			surfaceFormat = wantedSurfaceFormats[0];
+		vector<vk::SurfaceFormatKHR> availableSurfaceFormats = physicalDevice.getSurfaceFormatsKHR(surface.get());
+			for(vk::SurfaceFormatKHR sf : availableSurfaceFormats)
+				cout << vk::to_string(sf.format) << " " << vk::to_string(sf.colorSpace) << endl;
+		if(availableSurfaceFormats.size()==1 && availableSurfaceFormats[0].format==vk::Format::eUndefined)
+			// Vulkan spec allowed single eUndefined value until 1.1.111 (2019-06-10)
+			// with the meaning you can use any valid vk::Format value;
+			// now it is forbidden, but let's handle any old driver
+			surfaceFormat = supportedSurfaceFormats[0];
 		else {
-			for(vk::SurfaceFormatKHR sf : supportedSurfaceFormats) {
-				auto it = std::find(wantedSurfaceFormats.begin(), wantedSurfaceFormats.end(), sf);
-				if(it != wantedSurfaceFormats.end()) {
+			for(vk::SurfaceFormatKHR sf : availableSurfaceFormats) {
+				auto it = std::find(supportedSurfaceFormats.begin(), supportedSurfaceFormats.end(), sf);
+				if(it != supportedSurfaceFormats.end()) {
 					surfaceFormat = *it;
 					goto surfaceFormatFound;
 				}
 			}
-			if(supportedSurfaceFormats.size() == 0)  // Vulkan must return at least one format (this is mandated since Vulkan 1.0.37 (2016-10-10), but was missing before probably because of omission)
+			if(availableSurfaceFormats.size() == 0)  // Vulkan must return at least one format (this is mandated since Vulkan 1.0.37 (2016-10-10), but was missing before probably because of omission)
 				throw std::runtime_error("Vulkan error: getSurfaceFormatsKHR() returned empty list.");
-			surfaceFormat = supportedSurfaceFormats[0];
+			surfaceFormat = availableSurfaceFormats[0];
 		surfaceFormatFound:;
 		}
 

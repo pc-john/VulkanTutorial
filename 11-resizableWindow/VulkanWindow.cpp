@@ -3,6 +3,7 @@
 #elif defined(VK_USE_PLATFORM_WIN32_KHR)
 # define NOMINMAX  // avoid the definition of min and max macros by windows.h
 # include <windows.h>
+# include <tchar.h>
 #elif defined(VK_USE_PLATFORM_XLIB_KHR)
 #endif
 #include <vulkan/vulkan.hpp>
@@ -14,13 +15,13 @@ using namespace std;
 
 #if defined(VK_USE_PLATFORM_WAYLAND_KHR)
 #elif defined(VK_USE_PLATFORM_WIN32_KHR)
-static const wchar_t* windowClassName = L"VulkanWindow";
+static const _TCHAR* windowClassName = _T("VulkanWindow");
 static HINSTANCE hInstance;
 static uint32_t numVulkanWindows = 0;
 #elif defined(VK_USE_PLATFORM_XLIB_KHR)
 #endif
 
-#if defined(VK_USE_PLATFORM_WIN32_KHR)
+#if defined(VK_USE_PLATFORM_WIN32_KHR) && defined(_UNICODE)
 static wstring utf8toWString(const char* s)
 {
 	// get string lengths
@@ -66,13 +67,13 @@ VulkanWindow::~VulkanWindow()
 	if(hwnd)
 		DestroyWindow(hwnd);
 	if(--numVulkanWindows == 0)
-		UnregisterClassW(windowClassName, hInstance);
+		UnregisterClass(windowClassName, hInstance);
 #else
 	if(hwnd)
 		if(!DestroyWindow(hwnd))
 			assert(0 && "DestroyWindow(): The function failed.");
 	if(--numVulkanWindows == 0)
-		if(!UnregisterClassW(windowClassName, hInstance))
+		if(!UnregisterClass(windowClassName, hInstance))
 			assert(0 && "UnregisterClass(): The function failed.");
 #endif
 
@@ -228,7 +229,7 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 				PostQuitMessage(0);
 				return 0;
 			default:
-				return DefWindowProcW(hwnd, msg, wParam, lParam);
+				return DefWindowProc(hwnd, msg, wParam, lParam);
 		}
 	};
 
@@ -237,7 +238,7 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 	{
 		hInstance = GetModuleHandle(NULL);
 
-		WNDCLASSEXW wc;
+		WNDCLASSEX wc;
 		wc.cbSize        = sizeof(WNDCLASSEX);
 		wc.style         = 0;
 		wc.lpfnWndProc   = wndProc;
@@ -250,15 +251,19 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 		wc.lpszMenuName  = NULL;
 		wc.lpszClassName = windowClassName;
 		wc.hIconSm       = LoadIcon(NULL, IDI_APPLICATION);
-		if(!RegisterClassExW(&wc))
+		if(!RegisterClassEx(&wc))
 			throw runtime_error("RegisterClassEx(): The function failed.");
 	}
 
 	// create window
-	hwnd = CreateWindowExW(
+	hwnd = CreateWindowEx(
 		WS_EX_CLIENTEDGE,  // dwExStyle
 		windowClassName,  // lpClassName
+	#if _UNICODE
 		utf8toWString(title).c_str(),  // lpWindowName
+	#else
+		title,  // lpWindowName
+	#endif
 		WS_OVERLAPPEDWINDOW,  // dwStyle
 		CW_USEDEFAULT, CW_USEDEFAULT,  // x,y
 		surfaceExtent.width, surfaceExtent.height,  // width, height
@@ -267,7 +272,7 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 		throw runtime_error("CreateWindowEx(): The function failed.");
 
 	// store this pointer with the window data
-	SetWindowLongPtrW(hwnd, 0, (LONG_PTR)this);
+	SetWindowLongPtr(hwnd, 0, (LONG_PTR)this);
 
 	// create surface
 	return 
@@ -360,7 +365,7 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 			
 			// do not allow swapchain creation and rendering when currentExtent is 0,0
 			if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0)) {
-				if(!WaitMessage())
+				if(!WaitMessage())  // make application sleep until there is a message to process
 					throw runtime_error("WaitMessage(): The function failed.");
 				continue;
 			}
