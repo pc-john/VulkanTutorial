@@ -45,21 +45,22 @@ protected:
 	xdg_surface_listener xdgSurfaceListener;
 	xdg_toplevel_listener xdgToplevelListener;
 
+#elif defined(VK_USE_PLATFORM_XLIB_KHR)
+
+	Display* m_display = nullptr;
+	Window m_window = 0;
+	bool m_mapped = false;
+	Atom m_wmDeleteMessage;
+
 #elif defined(VK_USE_PLATFORM_WIN32_KHR)
 
 	HWND hwnd = nullptr;
 
-#elif defined(VK_USE_PLATFORM_XLIB_KHR)
-
-	Display* display = nullptr;
-	Window window = 0;
-	Atom wmDeleteMessage;
-
 #endif
 
 	vk::Extent2D m_surfaceExtent = vk::Extent2D(0,0);
-	bool swapchainResizePending = true;
-	RecreateSwapchainCallback *recreateSwapchainCallback = nullptr;
+	bool m_swapchainResizePending = true;
+	RecreateSwapchainCallback *m_recreateSwapchainCallback = nullptr;
 
 public:
 
@@ -80,6 +81,6 @@ public:
 
 // inline methods
 inline vk::UniqueSurfaceKHR VulkanWindow::initUnique(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title)  { return vk::UniqueSurfaceKHR(init(instance, surfaceExtent, title), {instance}); }
-inline void VulkanWindow::setRecreateSwapchainCallback(RecreateSwapchainCallback cb)  { recreateSwapchainCallback = cb; }
+inline void VulkanWindow::setRecreateSwapchainCallback(RecreateSwapchainCallback cb)  { m_recreateSwapchainCallback = cb; }
 inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return m_surfaceExtent; }
-inline void VulkanWindow::scheduleSwapchainResize()  { swapchainResizePending = true; }
+inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; }
