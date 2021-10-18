@@ -358,7 +358,6 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 #elif defined(VK_USE_PLATFORM_XLIB_KHR)
 
 	// run Xlib event loop
-	XIconifyWindow(m_display, m_window, XDefaultScreen(m_display));
 	XEvent e;
 	while(true) {
 
@@ -386,7 +385,8 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 			vk::SurfaceCapabilitiesKHR surfaceCapabilities(physicalDevice.getSurfaceCapabilitiesKHR(surface));
 
 			// do not allow swapchain creation and rendering when currentExtent is 0,0
-			// (this never happened on my KDE 5.44.0, window minimalizing just unmaps the window)
+			// (this never happened on my KDE 5.80.0 (Kubuntu 21.04) and KDE 5.44.0 (Kubuntu 18.04.5),
+			// window minimalizing just unmaps the window)
 			if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0))
 				goto waitNextEvent;
 
