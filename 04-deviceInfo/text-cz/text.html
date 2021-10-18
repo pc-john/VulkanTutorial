@@ -345,6 +345,14 @@ cout &lt;&lt; "         Buffers: " &lt;&lt;
 <p>Nahradíme-li vk::FormatFeatureFlagBits::eColorAttachment za jiný flag, můžeme se ptát,
 zda je daný formát podporován pro čtení dat z textury a podobně.</p>
 
+<p>Vulkan sám nám garantuje podporu množství formátů pro určitá použití.
+Co je garantováno standardem zjistíme ve specifikaci Vulkan
+v kapitole Formats a podkapitole Required Format Support.</p>
+
+<p>Obecně řečeno, pokud chceme používat nějaký formát pro nějaké použití,
+měli bychom si být jistí, že jeho podpora je buď garantována Vulkanem,
+nebo se zeptat Vulkanu, zda jej pro dané použití podporuje na našem hardware.</p>
+
 <h3>Shrnutí</h3>
 
 <p>V tomto díle jsme prošli vpodstatě veškeré základní funkce pro získání informací z fyzického zařízení ve Vulkan 1.0.
