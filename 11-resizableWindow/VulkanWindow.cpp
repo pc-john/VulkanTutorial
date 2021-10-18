@@ -219,13 +219,8 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 		throw runtime_error("Can not open display. No X-server running or wrong DISPLAY variable.");
 
 	// create window
-	int blackColor = BlackPixel(m_display, DefaultScreen(m_display));
-	//m_window = XCreateSimpleWindow(m_display, DefaultRootWindow(m_display), 0, 0,
-	//                               m_surfaceExtent.width, m_surfaceExtent.height,
-	//                               0, blackColor, blackColor);
-	//XSelectInput(m_display, m_window, StructureNotifyMask);
 	XSetWindowAttributes attr;
-	attr.event_mask = StructureNotifyMask;
+	attr.event_mask = StructureNotifyMask | VisibilityChangeMask;
 	m_window =
 		XCreateWindow(
 			m_display,  // display
@@ -362,15 +357,22 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 	while(true) {
 
 		// process messages
-		while(!m_mapped || XPending(m_display)>0) {
+		while(!m_visible ||  // keep spinning the loop if window is hidden (XNextEvent will block whenever no more events)
+		      XPending(m_display)>0)  // if window is visible, process all events and then leave the loop for rendering
+		{
+			// process event
 		waitNextEvent:
 			XNextEvent(m_display, &e);
+
+			// handle window close
 			if(e.type==ClientMessage && ulong(e.xclient.data.l[0])==m_wmDeleteMessage)
 				return;
-			if(e.type==MapNotify)
-				m_mapped = true;
-			if(e.type==UnmapNotify)
-				m_mapped = false;
+
+			// handle visibility and mapping changes
+			if(e.type==MapNotify || (e.type==VisibilityNotify && e.xvisibility.state!=VisibilityFullyObscured))
+				m_visible = true;
+			if(e.type==UnmapNotify || (e.type==VisibilityNotify && e.xvisibility.state==VisibilityFullyObscured))
+				m_visible = false;
 		}
 
 		if(m_swapchainResizePending) {

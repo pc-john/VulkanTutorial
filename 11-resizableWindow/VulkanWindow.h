@@ -49,7 +49,7 @@ protected:
 
 	Display* m_display = nullptr;
 	Window m_window = 0;
-	bool m_mapped = false;
+	bool m_visible = false;
 	Atom m_wmDeleteMessage;
 
 #elif defined(VK_USE_PLATFORM_WIN32_KHR)
