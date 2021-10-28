@@ -14,6 +14,7 @@
 
 using namespace std;
 
+// global variables
 #if defined(VK_USE_PLATFORM_WAYLAND_KHR)
 #elif defined(VK_USE_PLATFORM_WIN32_KHR)
 static const _TCHAR* windowClassName = _T("VulkanWindow");
@@ -22,6 +23,7 @@ static uint32_t numVulkanWindows = 0;
 #elif defined(VK_USE_PLATFORM_XLIB_KHR)
 #endif
 
+// string utf8 to wstring conversion
 #if defined(VK_USE_PLATFORM_WIN32_KHR) && defined(_UNICODE)
 static wstring utf8toWString(const char* s)
 {
@@ -251,6 +253,11 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 	auto wndProc = [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) -> LRESULT {
 		switch(msg)
 		{
+			case WM_PAINT: {
+				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
+				w->onWmPaint();
+				return DefWindowProc(hwnd, msg, wParam, lParam);
+			}
 			case WM_SIZE: {
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				w->m_surfaceExtent.width  = LOWORD(lParam);
@@ -332,6 +339,7 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 		throw runtime_error("wl_display_roundtrip() failed.");
 
 	while(running) {
+
 		if(wl_display_dispatch_pending(display) == -1)
 			throw std::runtime_error("wl_display_dispatch_pending() failed.");
 
@@ -349,6 +357,11 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 			device.waitIdle();
 			recreateSwapchainCallback(surfaceCapabilities, m_surfaceExtent);
 		}
+
+		// render scene
+		exposeCallback();
+	}
+}
 
 #elif defined(VK_USE_PLATFORM_XLIB_KHR)
 
@@ -387,7 +400,7 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 			vk::SurfaceCapabilitiesKHR surfaceCapabilities(physicalDevice.getSurfaceCapabilitiesKHR(surface));
 
 			// do not allow swapchain creation and rendering when currentExtent is 0,0
-			// (this never happened on my KDE 5.80.0 (Kubuntu 21.04) and KDE 5.44.0 (Kubuntu 18.04.5),
+			// (this never happened on my KDE 5.80.0 (Kubuntu 21.04) and KDE 5.44.0 (Kubuntu 18.04.5);
 			// window minimalizing just unmaps the window)
 			if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0))
 				goto waitNextEvent;
@@ -399,51 +412,57 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 			m_recreateSwapchainCallback(surfaceCapabilities, m_surfaceExtent);
 		}
 
+		// render scene
+		exposeCallback();
+	}
+}
+
 #elif defined(VK_USE_PLATFORM_WIN32_KHR)
+
+	// channel the arguments into onWmPaint()
+	m_physicalDevice = physicalDevice;
+	m_device = device;
+	m_surface = surface;
+	m_exposeCallback = exposeCallback;
 
 	// show window
 	ShowWindow(hwnd, SW_SHOWDEFAULT);
 
 	// run Win32 event loop
 	MSG msg;
-	while(true){
-
-		// process messages
-		while(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE)) {
-			if(msg.message == WM_QUIT)
-				return;
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-		}
-
-		if(swapchainResizePending) {
-
-			// get surface capabilities
-			// On Win32, currentExtent, minImageExtent and maxImageExtent are all equal.
-			// It means we can create a new swapchain only with imageExtent being equal
-			// to the window size.
-			// The currentExtent of 0,0 means the window is minimized with the result
-			// we cannot create swapchain for such window. If the currentExtent is not 0,0,
-			// both width and height must be greater than 0.
-			vk::SurfaceCapabilitiesKHR surfaceCapabilities(physicalDevice.getSurfaceCapabilitiesKHR(surface));
-			
-			// do not allow swapchain creation and rendering when currentExtent is 0,0
-			if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0)) {
-				if(!WaitMessage())  // make application sleep until there is a message to process
-					throw runtime_error("WaitMessage(): The function failed.");
-				continue;
-			}
-
-			// recreate swapchain
-			swapchainResizePending = false;
-			device.waitIdle();
-			recreateSwapchainCallback(surfaceCapabilities, m_surfaceExtent);
-		}
-
-#endif
-
-		// call
-		exposeCallback();
-
+	BOOL r;
+	while((r = GetMessage(&msg, NULL, 0, 0)) != 0) {
+		if(r == -1)
+			throw runtime_error("GetMessage(): The function failed.");
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
 	}
 }
+
+void VulkanWindow::onWmPaint()
+{
+	if(m_swapchainResizePending) {
+
+		// get surface capabilities
+		// On Win32, currentExtent, minImageExtent and maxImageExtent are all equal.
+		// It means we can create a new swapchain only with imageExtent being equal
+		// to the window size.
+		// The currentExtent of 0,0 means the window is minimized with the result
+		// we cannot create swapchain for such window. If the currentExtent is not 0,0,
+		// both width and height must be greater than 0.
+		vk::SurfaceCapabilitiesKHR surfaceCapabilities(m_physicalDevice.getSurfaceCapabilitiesKHR(m_surface));
+			
+		// do not allow swapchain creation and rendering when currentExtent is 0,0
+		if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0))
+			return;
+
+		// recreate swapchain
+		m_swapchainResizePending = false;
+		m_device.waitIdle();
+		m_recreateSwapchainCallback(surfaceCapabilities, m_surfaceExtent);
+	}
+
+	m_exposeCallback();
+}
+
+#endif

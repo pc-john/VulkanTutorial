@@ -55,12 +55,17 @@ protected:
 #elif defined(VK_USE_PLATFORM_WIN32_KHR)
 
 	HWND hwnd = nullptr;
+	vk::PhysicalDevice m_physicalDevice;
+	vk::Device m_device;
+	vk::SurfaceKHR m_surface; 
+	ExposeCallback* m_exposeCallback;
+	void onWmPaint();
 
 #endif
 
 	vk::Extent2D m_surfaceExtent = vk::Extent2D(0,0);
 	bool m_swapchainResizePending = true;
-	RecreateSwapchainCallback *m_recreateSwapchainCallback = nullptr;
+	RecreateSwapchainCallback* m_recreateSwapchainCallback = nullptr;
 
 public:
 
