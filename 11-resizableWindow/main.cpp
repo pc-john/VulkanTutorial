@@ -9,6 +9,8 @@ typedef unsigned long DWORD;
 typedef struct _SECURITY_ATTRIBUTES SECURITY_ATTRIBUTES;
 #include <vulkan/vulkan.hpp>
 #include <array>
+#include <chrono>
+#include <iomanip>
 #include <iostream>
 #include "VulkanWindow.h"
 
@@ -39,9 +41,22 @@ static vk::UniqueSwapchainKHR swapchain;
 static vector<vk::UniqueImageView> swapchainImageViews;
 static vector<vk::UniqueFramebuffer> framebuffers;
 static vk::UniqueCommandPool commandPool;
-static vector<vk::UniqueCommandBuffer> commandBuffers;
+static vk::CommandBuffer commandBuffer;
 static vk::UniqueSemaphore imageAvailableSemaphore;
 static vk::UniqueSemaphore renderFinishedSemaphore;
+static vk::UniqueShaderModule vsModule;
+static vk::UniqueShaderModule fsModule;
+static vk::UniquePipelineLayout pipelineLayout;
+static vk::UniquePipeline pipeline;
+static size_t frameID = 0;
+
+// shader code in SPIR-V binary
+static const uint32_t vsSpirv[] = {
+#include "shader.vert.spv"
+};
+static const uint32_t fsSpirv[] = {
+#include "shader.frag.spv"
+};
 
 
 
@@ -256,15 +271,6 @@ int main(int, char**)
 				)
 			);
 
-		// command pool
-		commandPool=
-			device->createCommandPoolUnique(
-				vk::CommandPoolCreateInfo(
-					vk::CommandPoolCreateFlags(),  // flags
-					graphicsQueueFamily  // queueFamilyIndex
-				)
-			);
-
 		// semaphores
 		imageAvailableSemaphore=
 			device->createSemaphoreUnique(
@@ -279,13 +285,61 @@ int main(int, char**)
 				)
 			);
 
+		// commandPool and commandBuffer
+		commandPool =
+			device->createCommandPoolUnique(
+				vk::CommandPoolCreateInfo(
+					vk::CommandPoolCreateFlagBits::eTransient |  // flags
+						vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+					graphicsQueueFamily  // queueFamilyIndex
+				)
+			);
+		commandBuffer =
+			device->allocateCommandBuffers(
+				vk::CommandBufferAllocateInfo(
+					commandPool.get(),                 // commandPool
+					vk::CommandBufferLevel::ePrimary,  // level
+					1                                  // commandBufferCount
+				)
+			)[0];
+
+		// create shader modules
+		vsModule =
+			device->createShaderModuleUnique(
+				vk::ShaderModuleCreateInfo(
+					vk::ShaderModuleCreateFlags(),  // flags
+					sizeof(vsSpirv),  // codeSize
+					vsSpirv  // pCode
+				)
+			);
+		fsModule =
+			device->createShaderModuleUnique(
+				vk::ShaderModuleCreateInfo(
+					vk::ShaderModuleCreateFlags(),  // flags
+					sizeof(fsSpirv),  // codeSize
+					fsSpirv  // pCode
+				)
+			);
+
+		// pipeline layout
+		pipelineLayout =
+			device->createPipelineLayoutUnique(
+				vk::PipelineLayoutCreateInfo{
+					vk::PipelineLayoutCreateFlags(),  // flags
+					0,       // setLayoutCount
+					nullptr, // pSetLayouts
+					0,       // pushConstantRangeCount
+					nullptr  // pPushConstantRanges
+				}
+			);
+
+
 		// Recreate swapchain and pipeline callback.
 		// The function is usually called after the window resize and on the application start.
 		window.setRecreateSwapchainCallback(
 			[](const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent){
 
 				// clear resources
-				commandBuffers.clear();
 				framebuffers.clear();
 				swapchainImageViews.clear();
 
@@ -319,9 +373,9 @@ int main(int, char**)
 					);
 
 				// swapchain images and image views
-				vector<vk::Image> swapchainImages=device->getSwapchainImagesKHR(swapchain.get());
+				vector<vk::Image> swapchainImages = device->getSwapchainImagesKHR(swapchain.get());
 				swapchainImageViews.reserve(swapchainImages.size());
-				for(vk::Image image:swapchainImages)
+				for(vk::Image image : swapchainImages)
 					swapchainImageViews.emplace_back(
 						device->createImageViewUnique(
 							vk::ImageViewCreateInfo(
@@ -343,7 +397,7 @@ int main(int, char**)
 
 				// framebuffers
 				framebuffers.reserve(swapchainImages.size());
-				for(size_t i=0,c=swapchainImages.size(); i<c; i++)
+				for(size_t i=0, c=swapchainImages.size(); i<c; i++)
 					framebuffers.emplace_back(
 						device->createFramebufferUnique(
 							vk::FramebufferCreateInfo(
@@ -358,40 +412,124 @@ int main(int, char**)
 						)
 					);
 
-				// reallocate command buffers
-				if(commandBuffers.size()!=swapchainImages.size()) {
-					commandBuffers=
-						device->allocateCommandBuffersUnique(
-							vk::CommandBufferAllocateInfo(
-								commandPool.get(),                 // commandPool
-								vk::CommandBufferLevel::ePrimary,  // level
-								uint32_t(swapchainImages.size())   // commandBufferCount
-							)
-						);
-				}
+				// pipeline
+				tie(ignore, pipeline) =
+					device->createGraphicsPipelineUnique(
+						nullptr,  // pipelineCache
+						vk::GraphicsPipelineCreateInfo(
+							vk::PipelineCreateFlags(),  // flags
 
-				// record command buffers
-				for(size_t i=0,c=swapchainImages.size(); i<c; i++) {
-					vk::CommandBuffer& cb=commandBuffers[i].get();
-					cb.begin(
-						vk::CommandBufferBeginInfo(
-							vk::CommandBufferUsageFlagBits::eSimultaneousUse,  // flags
-							nullptr  // pInheritanceInfo
+							// shader stages
+							2,  // stageCount
+							array{  // pStages
+								vk::PipelineShaderStageCreateInfo{
+									vk::PipelineShaderStageCreateFlags(),  // flags
+									vk::ShaderStageFlagBits::eVertex,      // stage
+									vsModule.get(),  // module
+									"main",  // pName
+									nullptr  // pSpecializationInfo
+								},
+								vk::PipelineShaderStageCreateInfo{
+									vk::PipelineShaderStageCreateFlags(),  // flags
+									vk::ShaderStageFlagBits::eFragment,    // stage
+									fsModule.get(),  // module
+									"main",  // pName
+									nullptr  // pSpecializationInfo
+								},
+							}.data(),
+
+							// vertex input
+							&(const vk::PipelineVertexInputStateCreateInfo&)vk::PipelineVertexInputStateCreateInfo{  // pVertexInputState
+								vk::PipelineVertexInputStateCreateFlags(),  // flags
+								0,        // vertexBindingDescriptionCount
+								nullptr,  // pVertexBindingDescriptions
+								0,        // vertexAttributeDescriptionCount
+								nullptr   // pVertexAttributeDescriptions
+							},
+
+							// input assembly
+							&(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{  // pInputAssemblyState
+								vk::PipelineInputAssemblyStateCreateFlags(),  // flags
+								vk::PrimitiveTopology::eTriangleList,  // topology
+								VK_FALSE  // primitiveRestartEnable
+							},
+
+							// tessellation
+							nullptr, // pTessellationState
+
+							// viewport
+							&(const vk::PipelineViewportStateCreateInfo&)vk::PipelineViewportStateCreateInfo{  // pViewportState
+								vk::PipelineViewportStateCreateFlags(),  // flags
+								1,  // viewportCount
+								array{  // pViewports
+									vk::Viewport(0.f, 0.f, float(newSurfaceExtent.width), float(newSurfaceExtent.height), 0.f, 1.f),
+								}.data(),
+								1,  // scissorCount
+								array{  // pScissors
+									vk::Rect2D(vk::Offset2D(0,0), newSurfaceExtent)
+								}.data(),
+							},
+
+							// rasterization
+							&(const vk::PipelineRasterizationStateCreateInfo&)vk::PipelineRasterizationStateCreateInfo{  // pRasterizationState
+								vk::PipelineRasterizationStateCreateFlags(),  // flags
+								VK_FALSE,  // depthClampEnable
+								VK_FALSE,  // rasterizerDiscardEnable
+								vk::PolygonMode::eFill,  // polygonMode
+								vk::CullModeFlagBits::eNone,  // cullMode
+								vk::FrontFace::eCounterClockwise,  // frontFace
+								VK_FALSE,  // depthBiasEnable
+								0.f,  // depthBiasConstantFactor
+								0.f,  // depthBiasClamp
+								0.f,  // depthBiasSlopeFactor
+								1.f   // lineWidth
+							},
+
+							// multisampling
+							&(const vk::PipelineMultisampleStateCreateInfo&)vk::PipelineMultisampleStateCreateInfo{  // pMultisampleState
+								vk::PipelineMultisampleStateCreateFlags(),  // flags
+								vk::SampleCountFlagBits::e1,  // rasterizationSamples
+								VK_FALSE,  // sampleShadingEnable
+								0.f,       // minSampleShading
+								nullptr,   // pSampleMask
+								VK_FALSE,  // alphaToCoverageEnable
+								VK_FALSE   // alphaToOneEnable
+							},
+
+							// depth and stencil
+							nullptr,  // pDepthStencilState
+
+							// blending
+							&(const vk::PipelineColorBlendStateCreateInfo&)vk::PipelineColorBlendStateCreateInfo{  // pColorBlendState
+								vk::PipelineColorBlendStateCreateFlags(),  // flags
+								VK_FALSE,  // logicOpEnable
+								vk::LogicOp::eClear,  // logicOp
+								1,  // attachmentCount
+								array{  // pAttachments
+									vk::PipelineColorBlendAttachmentState{
+										VK_FALSE,  // blendEnable
+										vk::BlendFactor::eZero,  // srcColorBlendFactor
+										vk::BlendFactor::eZero,  // dstColorBlendFactor
+										vk::BlendOp::eAdd,       // colorBlendOp
+										vk::BlendFactor::eZero,  // srcAlphaBlendFactor
+										vk::BlendFactor::eZero,  // dstAlphaBlendFactor
+										vk::BlendOp::eAdd,       // alphaBlendOp
+										vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+											vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA  // colorWriteMask
+									},
+								}.data(),
+								array<float,4>{0.f,0.f,0.f,0.f}  // blendConstants
+							},
+
+							nullptr,  // pDynamicState
+							pipelineLayout.get(),  // layout
+							renderPass.get(),  // renderPass
+							0,  // subpass
+							vk::Pipeline(nullptr),  // basePipelineHandle
+							-1 // basePipelineIndex
 						)
-					);
-					cb.beginRenderPass(
-						vk::RenderPassBeginInfo(
-							renderPass.get(),       // renderPass
-							framebuffers[i].get(),  // framebuffer
-							vk::Rect2D(vk::Offset2D(0,0), newSurfaceExtent),  // renderArea
-							1,                      // clearValueCount
-							&(const vk::ClearValue&)vk::ClearValue(vk::ClearColorValue(array<float,4>{0.f,1.f,0.f,1.f}))  // pClearValues
-						),
-						vk::SubpassContents::eInline
-					);
-					cb.endRenderPass();
-					cb.end();
-				}
+					).asTuple();
+
 			});
 
 		window.mainLoop(
@@ -399,6 +537,17 @@ int main(int, char**)
 			device.get(),
 			surface.get(),
 			[](){
+
+				// print FPS after each 120 frames
+				if(frameID % 120 == 0) {
+					static chrono::high_resolution_clock::time_point firstFrameTS;
+					if(frameID > 0) {
+						auto timeDelta = chrono::duration<double>(chrono::high_resolution_clock::now() - firstFrameTS);
+						cout << "FPS: " << setprecision(4) << 120.f/timeDelta.count()
+						     << ", total frames rendered: " << frameID << endl;
+					}
+					firstFrameTS = chrono::high_resolution_clock::now();
+				}
 
 				// acquire image
 				uint32_t imageIndex;
@@ -420,6 +569,37 @@ int main(int, char**)
 						throw runtime_error("Vulkan function vkAcquireNextImageKHR failed.");
 				}
 
+				// increment frame counter
+				frameID++;
+
+				// record command buffer
+				commandBuffer.begin(
+					vk::CommandBufferBeginInfo(
+						vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
+						nullptr  // pInheritanceInfo
+					)
+				);
+				commandBuffer.beginRenderPass(
+					vk::RenderPassBeginInfo(
+						renderPass.get(),       // renderPass
+						framebuffers[imageIndex].get(),  // framebuffer
+						vk::Rect2D(vk::Offset2D(0,0), window.surfaceExtent()),  // renderArea
+						1,                      // clearValueCount
+						&(const vk::ClearValue&)vk::ClearValue(  // pClearValues
+							vk::ClearColorValue(array<float,4>{0.f,0.f,0.f,1.f})
+						)
+					),
+					vk::SubpassContents::eInline
+				);
+
+				// rendering commands
+				commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline.get());  // bind pipeline
+				commandBuffer.draw(3,1,0,uint32_t(frameID));  // draw single triangle
+
+				// end render pass and command buffer
+				commandBuffer.endRenderPass();
+				commandBuffer.end();
+
 				// submit frame
 				graphicsQueue.submit(
 					vk::ArrayProxy<const vk::SubmitInfo>(
@@ -427,9 +607,10 @@ int main(int, char**)
 						&(const vk::SubmitInfo&)vk::SubmitInfo(
 							1,                               // waitSemaphoreCount
 							&imageAvailableSemaphore.get(),  // pWaitSemaphores
-							&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(vk::PipelineStageFlagBits::eColorAttachmentOutput),  // pWaitDstStageMask
+							&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(  // pWaitDstStageMask
+								vk::PipelineStageFlagBits::eColorAttachmentOutput),
 							1,                               // commandBufferCount
-							&commandBuffers[imageIndex].get(),  // pCommandBuffers
+							&commandBuffer,                  // pCommandBuffers
 							1,                               // signalSemaphoreCount
 							&renderFinishedSemaphore.get()   // pSignalSemaphores
 						)
@@ -458,6 +639,7 @@ int main(int, char**)
 
 				// wait for completion
 				presentationQueue.waitIdle();
+				window.scheduleNextFrame();
 
 			});
 

@@ -79,8 +79,8 @@ VulkanWindow::~VulkanWindow()
 	if(--numVulkanWindows == 0)
 		UnregisterClass(windowClassName, hInstance);
 #else
-	if(hwnd)
-		if(!DestroyWindow(hwnd))
+	if(m_hwnd)
+		if(!DestroyWindow(m_hwnd))
 			assert(0 && "DestroyWindow(): The function failed.");
 	if(--numVulkanWindows == 0)
 		if(!UnregisterClass(windowClassName, hInstance))
@@ -253,23 +253,29 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 	auto wndProc = [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) -> LRESULT {
 		switch(msg)
 		{
+			case WM_ERASEBKGND:
+				return 1;
 			case WM_PAINT: {
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
+				if(!ValidateRect(hwnd, NULL))
+					throw runtime_error("ValidateRect(): The function failed.");
 				w->onWmPaint();
-				return DefWindowProc(hwnd, msg, wParam, lParam);
+				return 0;
 			}
 			case WM_SIZE: {
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				w->m_surfaceExtent.width  = LOWORD(lParam);
 				w->m_surfaceExtent.height = HIWORD(lParam);
 				w->scheduleSwapchainResize();
+				if(!InvalidateRect(hwnd, NULL, FALSE))
+					throw runtime_error("InvalidateRect(): The function failed.");
 				return DefWindowProc(hwnd, msg, wParam, lParam);
 			}
 			case WM_CLOSE: {
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				if(!DestroyWindow(hwnd))
 					throw runtime_error("DestroyWindow(): The function failed.");
-				w->hwnd = nullptr;
+				w->m_hwnd = nullptr;
 				return 0;
 			}
 			case WM_DESTROY:
@@ -303,7 +309,7 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 	}
 
 	// create window
-	hwnd = CreateWindowEx(
+	m_hwnd = CreateWindowEx(
 		WS_EX_CLIENTEDGE,  // dwExStyle
 		windowClassName,  // lpClassName
 	#if _UNICODE
@@ -315,16 +321,16 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 		CW_USEDEFAULT, CW_USEDEFAULT,  // x,y
 		surfaceExtent.width, surfaceExtent.height,  // width, height
 		NULL, NULL, hInstance, NULL);  // hWndParent, hMenu, hInstance, lpParam
-	if(hwnd == NULL)
+	if(m_hwnd == NULL)
 		throw runtime_error("CreateWindowEx(): The function failed.");
 
 	// store this pointer with the window data
-	SetWindowLongPtr(hwnd, 0, (LONG_PTR)this);
+	SetWindowLongPtr(m_hwnd, 0, (LONG_PTR)this);
 
 	// create surface
 	return 
 		instance.createWin32SurfaceKHR(
-			vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(), hInstance, hwnd)
+			vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(), hInstance, m_hwnd)
 		);
 
 #endif
@@ -426,7 +432,7 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 	m_exposeCallback = exposeCallback;
 
 	// show window
-	ShowWindow(hwnd, SW_SHOWDEFAULT);
+	ShowWindow(m_hwnd, SW_SHOWDEFAULT);
 
 	// run Win32 event loop
 	MSG msg;
@@ -463,6 +469,11 @@ void VulkanWindow::onWmPaint()
 	}
 
 	m_exposeCallback();
+}
+
+void VulkanWindow::scheduleNextFrame()
+{
+	InvalidateRect(m_hwnd, NULL, FALSE);
 }
 
 #endif

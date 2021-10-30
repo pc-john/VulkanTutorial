@@ -54,7 +54,7 @@ protected:
 
 #elif defined(VK_USE_PLATFORM_WIN32_KHR)
 
-	HWND hwnd = nullptr;
+	HWND m_hwnd = nullptr;
 	vk::PhysicalDevice m_physicalDevice;
 	vk::Device m_device;
 	vk::SurfaceKHR m_surface; 
@@ -79,6 +79,7 @@ public:
 
 	vk::Extent2D surfaceExtent() const;
 
+	void scheduleNextFrame();
 	void scheduleSwapchainResize();
 
 };
