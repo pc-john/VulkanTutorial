@@ -49,15 +49,16 @@ protected:
 
 	Display* m_display = nullptr;
 	Window m_window = 0;
-	bool m_visible = false;
 	Atom m_wmDeleteMessage;
+	bool m_visible = false;
+	bool m_exposePending = true;
 
 #elif defined(VK_USE_PLATFORM_WIN32_KHR)
 
 	HWND m_hwnd = nullptr;
 	vk::PhysicalDevice m_physicalDevice;
 	vk::Device m_device;
-	vk::SurfaceKHR m_surface; 
+	vk::SurfaceKHR m_surface;
 	ExposeCallback* m_exposeCallback;
 	void onWmPaint();
 
@@ -89,4 +90,8 @@ public:
 inline vk::UniqueSurfaceKHR VulkanWindow::initUnique(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title)  { return vk::UniqueSurfaceKHR(init(instance, surfaceExtent, title), {instance}); }
 inline void VulkanWindow::setRecreateSwapchainCallback(RecreateSwapchainCallback cb)  { m_recreateSwapchainCallback = cb; }
 inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return m_surfaceExtent; }
+#if defined(VK_USE_PLATFORM_XLIB_KHR)
+inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; m_exposePending = true; }
+#else
 inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; }
+#endif

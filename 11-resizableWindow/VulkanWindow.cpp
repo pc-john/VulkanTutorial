@@ -222,7 +222,7 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 
 	// create window
 	XSetWindowAttributes attr;
-	attr.event_mask = StructureNotifyMask | VisibilityChangeMask;
+	attr.event_mask = ExposureMask | StructureNotifyMask | VisibilityChangeMask;
 	m_window =
 		XCreateWindow(
 			m_display,  // display
@@ -375,51 +375,122 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 	XEvent e;
 	while(true) {
 
-		// process messages
-		while(!m_visible ||  // keep spinning the loop if window is hidden (XNextEvent will block whenever no more events)
-		      XPending(m_display)>0)  // if window is visible, process all events and then leave the loop for rendering
-		{
-			// process event
-		waitNextEvent:
-			XNextEvent(m_display, &e);
+		// get number of events in the queue
+		int numEvents = XPending(m_display);
+		if(numEvents == 0)
+			if(m_exposePending)
+				goto skipMessageLoop;  // render frame
+			else
+				numEvents = 1;  // want for events
 
-			// handle window close
-			if(e.type==ClientMessage && ulong(e.xclient.data.l[0])==m_wmDeleteMessage)
-				return;
+		// process events
+		do {
 
-			// handle visibility and mapping changes
-			if(e.type==MapNotify || (e.type==VisibilityNotify && e.xvisibility.state!=VisibilityFullyObscured))
-				m_visible = true;
-			if(e.type==UnmapNotify || (e.type==VisibilityNotify && e.xvisibility.state==VisibilityFullyObscured))
-				m_visible = false;
+			for(int i=0; i<numEvents; i++) {
+
+				// get event
+				XNextEvent(m_display, &e);
+
+				if(e.type==Expose) {
+					cout<<"e"<<flush;
+					m_exposePending = true;
+					continue;
+				}
+
+				if(e.type==ConfigureNotify) {
+					if(e.xconfigure.width!=m_surfaceExtent.width || e.xconfigure.height!=m_surfaceExtent.height) {
+						cout<<"Configure "<<e.xconfigure.width<<"x"<<e.xconfigure.height<<endl;
+						m_exposePending = true;
+						m_swapchainResizePending = true;
+					}
+					continue;
+				}
+
+				if(e.type==MapNotify || (e.type==VisibilityNotify && e.xvisibility.state!=VisibilityFullyObscured)) {
+					m_visible = true;
+					m_exposePending = true;
+					if(e.type==MapNotify) cout<<"m"<<flush;
+					else cout<<"v"<<flush;
+					continue;
+				}
+				if(e.type==UnmapNotify || (e.type==VisibilityNotify && e.xvisibility.state==VisibilityFullyObscured)) {
+					m_visible = false;
+					if(e.type==UnmapNotify) cout<<"u"<<flush;
+					else cout<<"o"<<flush;
+					continue;
+				}
+
+				// handle window close
+				if(e.type==ClientMessage && ulong(e.xclient.data.l[0])==m_wmDeleteMessage)
+					return;
+			}
+
+			// if more events came in the mean time, handle them as well
+			numEvents = XPending(m_display);
+		} while(numEvents > 0);
+	skipMessageLoop:
+
+		// render window
+		if(m_visible && m_exposePending) {
+
+			if(m_swapchainResizePending) {
+
+				// get surface capabilities
+				// On Xlib, currentExtent, minImageExtent and maxImageExtent are all equal.
+				// It means we can create a new swapchain only with imageExtent being equal
+				// to the window size.
+				// The currentExtent of 0,0 means the window is minimized with the result
+				// we cannot create swapchain for such window. If the currentExtent is not 0,0,
+				// both width and height must be greater than 0.
+				vk::SurfaceCapabilitiesKHR surfaceCapabilities(physicalDevice.getSurfaceCapabilitiesKHR(surface));
+
+				// do not allow swapchain creation and rendering when currentExtent is 0,0
+				// (this never happened on my KDE 5.80.0 (Kubuntu 21.04) and KDE 5.44.0 (Kubuntu 18.04.5);
+				// window minimalizing just unmaps the window)
+				if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0))
+					continue;
+
+				// recreate swapchain
+				device.waitIdle();
+				m_swapchainResizePending = false;
+				m_surfaceExtent = surfaceCapabilities.currentExtent;
+				m_recreateSwapchainCallback(surfaceCapabilities, m_surfaceExtent);
+			}
+
+			// render scene
+			cout<<"expose"<<m_surfaceExtent.width<<"x"<<m_surfaceExtent.height<<endl;
+			m_exposePending = false;
+			exposeCallback();
+
 		}
+	}
+}
 
-		if(m_swapchainResizePending) {
+void VulkanWindow::scheduleNextFrame()
+{
+	if(m_exposePending)
+		return;
 
-			// get surface capabilities
-			// On Xlib, currentExtent, minImageExtent and maxImageExtent are all equal.
-			// It means we can create a new swapchain only with imageExtent being equal
-			// to the window size.
-			// The currentExtent of 0,0 means the window is minimized with the result
-			// we cannot create swapchain for such window. If the currentExtent is not 0,0,
-			// both width and height must be greater than 0.
-			vk::SurfaceCapabilitiesKHR surfaceCapabilities(physicalDevice.getSurfaceCapabilitiesKHR(surface));
-
-			// do not allow swapchain creation and rendering when currentExtent is 0,0
-			// (this never happened on my KDE 5.80.0 (Kubuntu 21.04) and KDE 5.44.0 (Kubuntu 18.04.5);
-			// window minimalizing just unmaps the window)
-			if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0))
-				goto waitNextEvent;
-
-			// recreate swapchain
-			device.waitIdle();
-			m_swapchainResizePending = false;
-			m_surfaceExtent = surfaceCapabilities.currentExtent;
-			m_recreateSwapchainCallback(surfaceCapabilities, m_surfaceExtent);
-		}
-
-		// render scene
-		exposeCallback();
+	m_exposePending = true;
+	if(m_visible) {
+		XSendEvent(
+			m_display,
+			m_window,
+			False,
+			ExposureMask,
+			(XEvent*)&(const XExposeEvent&)
+				XExposeEvent{
+					Expose,
+					0,
+					True,
+					m_display,
+					m_window,
+					0,0,
+					0,0,
+					0
+				}
+		);
+		cout<<"s"<<flush;
 	}
 }
 
@@ -468,6 +539,7 @@ void VulkanWindow::onWmPaint()
 		m_recreateSwapchainCallback(surfaceCapabilities, m_surfaceExtent);
 	}
 
+	// render scene
 	m_exposeCallback();
 }
 

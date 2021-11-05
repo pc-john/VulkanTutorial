@@ -17,6 +17,9 @@ typedef struct _SECURITY_ATTRIBUTES SECURITY_ATTRIBUTES;
 using namespace std;
 
 
+// constants
+constexpr const char* appName = "11-resizableWindow";
+
 // Vulkan instance
 // (must be destructed as the last one, at least on Linux, it must be destroyed after display connection)
 static vk::UniqueInstance instance;
@@ -49,6 +52,8 @@ static vk::UniqueShaderModule fsModule;
 static vk::UniquePipelineLayout pipelineLayout;
 static vk::UniquePipeline pipeline;
 static size_t frameID = 0;
+enum class FrameUpdateMode { OnDemand, Continuous, MaxFrameRate };
+static FrameUpdateMode frameUpdateMode = FrameUpdateMode::Continuous;
 
 // shader code in SPIR-V binary
 static const uint32_t vsSpirv[] = {
@@ -61,11 +66,31 @@ static const uint32_t fsSpirv[] = {
 
 
 /// main function of the application
-int main(int, char**)
+int main(int argc, char** argv)
 {
 	// catch exceptions
 	// (vulkan.hpp fuctions throw if they fail)
 	try {
+
+		// process command-line arguments
+		for(int i=1; i<argc; i++)
+			if(strcmp(argv[i], "--on-demand") == 0)
+				frameUpdateMode = FrameUpdateMode::OnDemand;
+			else if(strcmp(argv[i], "--continuous") == 0)
+				frameUpdateMode = FrameUpdateMode::Continuous;
+			else if(strcmp(argv[i], "--max-frame-rate") == 0)
+				frameUpdateMode = FrameUpdateMode::MaxFrameRate;
+			else {
+				if(strcmp(argv[i], "--help") != 0 && strcmp(argv[i], "-h") != 0)
+					cout << "Unrecognized option: " << argv[i] << endl;
+				cout << appName << " usage:\n"
+				        "   --help or -h:  usage information\n"
+				        "   --on-demand:   on demand window content refresh\n"
+				        "   --continuous:  constantly update window content\n"
+				        "   --max-frame-rate:  ignore screen update frequency and update\n"
+				        "                      window content as often as possible\n" << endl;
+				exit(99);
+			}
 
 		// Vulkan instance
 		instance =
@@ -73,7 +98,7 @@ int main(int, char**)
 				vk::InstanceCreateInfo{
 					vk::InstanceCreateFlags(),  // flags
 					&(const vk::ApplicationInfo&)vk::ApplicationInfo{
-						"11-resizableWindow",    // application name
+						appName,                 // application name
 						VK_MAKE_VERSION(0,0,0),  // application version
 						nullptr,                 // engine name
 						VK_MAKE_VERSION(0,0,0),  // engine version
@@ -91,7 +116,7 @@ int main(int, char**)
 				});
 
 		// create surface
-		surface = window.initUnique(instance.get(), {1024, 768}, "11-resizableWindow");
+		surface = window.initUnique(instance.get(), {1024, 768}, appName);
 
 		// find compatible devices
 		// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
@@ -366,7 +391,23 @@ int main(int, char**)
 							(graphicsQueueFamily==presentationQueueFamily) ? nullptr : array<uint32_t,2>{graphicsQueueFamily,presentationQueueFamily}.data(),  // pQueueFamilyIndices
 							surfaceCapabilities.currentTransform,    // preTransform
 							vk::CompositeAlphaFlagBitsKHR::eOpaque,  // compositeAlpha
-							vk::PresentModeKHR::eFifo,  // presentMode
+							[](){  // presentMode
+
+								// Fifo is used unless MaxFrameRate was requested
+								if(frameUpdateMode != FrameUpdateMode::MaxFrameRate)
+									return vk::PresentModeKHR::eFifo;
+
+								// for MaxFrameRate, try Mailbox and Immediate if they are available
+								vector<vk::PresentModeKHR> modes = physicalDevice.getSurfacePresentModesKHR(surface.get());
+								if(find(modes.begin(), modes.end(), vk::PresentModeKHR::eMailbox) != modes.end())
+									return vk::PresentModeKHR::eMailbox;
+								if(find(modes.begin(), modes.end(), vk::PresentModeKHR::eImmediate) != modes.end())
+									return vk::PresentModeKHR::eImmediate;
+
+								// Fifo is always supported
+								return vk::PresentModeKHR::eFifo;
+
+							}(),
 							VK_TRUE,         // clipped
 							swapchain.get()  // oldSwapchain
 						)
@@ -560,10 +601,12 @@ int main(int, char**)
 						&imageIndex                       // pImageIndex
 					);
 				if(r != vk::Result::eSuccess) {
-					if(r == vk::Result::eSuboptimalKHR)
+					if(r == vk::Result::eSuboptimalKHR) {
 						window.scheduleSwapchainResize();
-					else if(r == vk::Result::eErrorOutOfDateKHR) {
+						cout<<"acquireSuboptimal"<<endl;
+					} else if(r == vk::Result::eErrorOutOfDateKHR) {
 						window.scheduleSwapchainResize();
+						cout<<"acquireOutOfData"<<endl;
 						return;
 					} else
 						throw runtime_error("Vulkan function vkAcquireNextImageKHR failed.");
@@ -628,10 +671,12 @@ int main(int, char**)
 						)
 					);
 				if(r != vk::Result::eSuccess) {
-					if(r == vk::Result::eSuboptimalKHR)
+					if(r == vk::Result::eSuboptimalKHR) {
 						window.scheduleSwapchainResize();
-					else if(r == vk::Result::eErrorOutOfDateKHR) {
+						cout<<"presentSuboptimal"<<endl;
+					} else if(r == vk::Result::eErrorOutOfDateKHR) {
 						window.scheduleSwapchainResize();
+						cout<<"presentOutOfDate"<<endl;
 						return;
 					} else
 						throw runtime_error("Vulkan function vkQueuePresentKHR failed.");
@@ -639,7 +684,8 @@ int main(int, char**)
 
 				// wait for completion
 				presentationQueue.waitIdle();
-				window.scheduleNextFrame();
+				if(frameUpdateMode != FrameUpdateMode::OnDemand)
+					window.scheduleNextFrame();
 
 			});
 
