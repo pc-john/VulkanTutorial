@@ -606,7 +606,7 @@ int main(int argc, char** argv)
 						cout<<"acquireSuboptimal"<<endl;
 					} else if(r == vk::Result::eErrorOutOfDateKHR) {
 						window.scheduleSwapchainResize();
-						cout<<"acquireOutOfData"<<endl;
+						cout<<"acquireOutOfDate"<<endl;
 						return;
 					} else
 						throw runtime_error("Vulkan function vkAcquireNextImageKHR failed.");

@@ -257,24 +257,32 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 				return 1;
 			case WM_PAINT: {
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
-				if(!ValidateRect(hwnd, NULL))
-					throw runtime_error("ValidateRect(): The function failed.");
-				w->onWmPaint();
+				try {
+					if(!ValidateRect(hwnd, NULL))
+						throw runtime_error("ValidateRect(): The function failed.");
+					w->onWmPaint();
+				} catch(...) {
+					w->m_wndProcException = std::current_exception();
+				}
 				return 0;
 			}
 			case WM_SIZE: {
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
-				w->m_surfaceExtent.width  = LOWORD(lParam);
-				w->m_surfaceExtent.height = HIWORD(lParam);
-				w->scheduleSwapchainResize();
-				if(!InvalidateRect(hwnd, NULL, FALSE))
-					throw runtime_error("InvalidateRect(): The function failed.");
+				try {
+					w->m_surfaceExtent.width  = LOWORD(lParam);
+					w->m_surfaceExtent.height = HIWORD(lParam);
+					w->scheduleSwapchainResize();
+					if(!InvalidateRect(hwnd, NULL, FALSE))
+						throw runtime_error("InvalidateRect(): The function failed.");
+				} catch(...) {
+					w->m_wndProcException = std::current_exception();
+				}
 				return DefWindowProc(hwnd, msg, wParam, lParam);
 			}
 			case WM_CLOSE: {
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				if(!DestroyWindow(hwnd))
-					throw runtime_error("DestroyWindow(): The function failed.");
+					w->m_wndProcException = make_exception_ptr(runtime_error("DestroyWindow(): The function failed."));
 				w->m_hwnd = nullptr;
 				return 0;
 			}
@@ -508,11 +516,14 @@ void VulkanWindow::scheduleNextFrame()
 	// run Win32 event loop
 	MSG msg;
 	BOOL r;
+	m_wndProcException = nullptr;
 	while((r = GetMessage(&msg, NULL, 0, 0)) != 0) {
 		if(r == -1)
 			throw runtime_error("GetMessage(): The function failed.");
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
+		if(m_wndProcException)  // handle exceptions raised in window procedure
+			rethrow_exception(m_wndProcException);
 	}
 }
 

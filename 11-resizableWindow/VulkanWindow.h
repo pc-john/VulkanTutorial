@@ -4,6 +4,7 @@
 # include "xdg-shell-client-protocol.h"
 # include "xdg-decoration-client-protocol.h"
 #elif defined(VK_USE_PLATFORM_WIN32_KHR)
+# include <exception>
 #elif defined(VK_USE_PLATFORM_XLIB_KHR)
 #endif
 # include <vulkan/vulkan.hpp>
@@ -56,6 +57,7 @@ protected:
 #elif defined(VK_USE_PLATFORM_WIN32_KHR)
 
 	HWND m_hwnd = nullptr;
+	std::exception_ptr m_wndProcException;
 	vk::PhysicalDevice m_physicalDevice;
 	vk::Device m_device;
 	vk::SurfaceKHR m_surface;
@@ -90,7 +92,9 @@ public:
 inline vk::UniqueSurfaceKHR VulkanWindow::initUnique(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title)  { return vk::UniqueSurfaceKHR(init(instance, surfaceExtent, title), {instance}); }
 inline void VulkanWindow::setRecreateSwapchainCallback(RecreateSwapchainCallback cb)  { m_recreateSwapchainCallback = cb; }
 inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return m_surfaceExtent; }
-#if defined(VK_USE_PLATFORM_XLIB_KHR)
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
+inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; scheduleNextFrame(); }
+#elif defined(VK_USE_PLATFORM_XLIB_KHR)
 inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; m_exposePending = true; }
 #else
 inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; }
