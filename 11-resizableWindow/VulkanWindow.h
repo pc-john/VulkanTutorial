@@ -26,25 +26,25 @@ protected:
 #if defined(VK_USE_PLATFORM_WAYLAND_KHR)
 
 	// globals
-	wl_display* display = nullptr;
-	wl_registry* registry;
-	wl_compositor* compositor;
-	xdg_wm_base* xdg = nullptr;
-	zxdg_decoration_manager_v1* zxdgDecorationManagerV1;
+	wl_display* m_display = nullptr;
+	wl_registry* m_registry;
+	wl_compositor* m_compositor;
+	xdg_wm_base* m_xdg = nullptr;
+	zxdg_decoration_manager_v1* m_zxdgDecorationManagerV1;
 
 	// objects
-	wl_surface* wlSurface = nullptr;
-	xdg_surface* xdgSurface = nullptr;
-	xdg_toplevel* xdgTopLevel = nullptr;
+	wl_surface* m_wlSurface = nullptr;
+	xdg_surface* m_xdgSurface = nullptr;
+	xdg_toplevel* m_xdgTopLevel = nullptr;
 
 	// state
-	bool running;
+	bool m_running;
 
 	// listeners
-	wl_registry_listener registryListener;
-	xdg_wm_base_listener xdgWmBaseListener;
-	xdg_surface_listener xdgSurfaceListener;
-	xdg_toplevel_listener xdgToplevelListener;
+	wl_registry_listener m_registryListener;
+	xdg_wm_base_listener m_xdgWmBaseListener;
+	xdg_surface_listener m_xdgSurfaceListener;
+	xdg_toplevel_listener m_xdgToplevelListener;
 
 #elif defined(VK_USE_PLATFORM_XLIB_KHR)
 

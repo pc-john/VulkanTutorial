@@ -51,16 +51,16 @@ VulkanWindow::~VulkanWindow()
 #if defined(VK_USE_PLATFORM_WAYLAND_KHR)
 
 	// release resources
-	if(xdgTopLevel)
-		xdg_toplevel_destroy(xdgTopLevel);
-	if(xdgSurface)
-		xdg_surface_destroy(xdgSurface);
-	if(wlSurface)
-		wl_surface_destroy(wlSurface);
-	if(xdg)
-		xdg_wm_base_destroy(xdg);
-	if(display)
-		wl_display_disconnect(display);
+	if(m_xdgTopLevel)
+		xdg_toplevel_destroy(m_xdgTopLevel);
+	if(m_xdgSurface)
+		xdg_surface_destroy(m_xdgSurface);
+	if(m_wlSurface)
+		wl_surface_destroy(m_wlSurface);
+	if(m_xdg)
+		xdg_wm_base_destroy(m_xdg);
+	if(m_display)
+		wl_display_disconnect(m_display);
 
 #elif defined(VK_USE_PLATFORM_XLIB_KHR)
 
@@ -99,84 +99,84 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 	m_surfaceExtent = surfaceExtent;
 
 	// open Wayland connection
-	display = wl_display_connect(nullptr);
-	if(display == nullptr)
+	m_display = wl_display_connect(nullptr);
+	if(m_display == nullptr)
 		throw runtime_error("Cannot connect to Wayland display. No Wayland server is running or invalid WAYLAND_DISPLAY variable.");
 
 	// registry listener
-	registry = wl_display_get_registry(display);
-	if(registry == nullptr)
+	m_registry = wl_display_get_registry(m_display);
+	if(m_registry == nullptr)
 		throw runtime_error("Cannot get Wayland registry object.");
-	compositor = nullptr;
-	xdg = nullptr;
-	registryListener = {
+	m_compositor = nullptr;
+	m_xdg = nullptr;
+	m_registryListener = {
 		.global =
 			[](void* data, wl_registry* registry, uint32_t name, const char* interface, uint32_t version) {
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(data);
 				if(strcmp(interface, wl_compositor_interface.name) == 0)
-					w->compositor = static_cast<wl_compositor*>(
+					w->m_compositor = static_cast<wl_compositor*>(
 						wl_registry_bind(registry, name, &wl_compositor_interface, 1));
 				else if(strcmp(interface, xdg_wm_base_interface.name) == 0)
-					w->xdg = static_cast<xdg_wm_base*>(
+					w->m_xdg = static_cast<xdg_wm_base*>(
 						wl_registry_bind(registry, name, &xdg_wm_base_interface, 1));
 				else if(strcmp(interface, zxdg_decoration_manager_v1_interface.name) == 0)
-					w->zxdgDecorationManagerV1 = static_cast<zxdg_decoration_manager_v1*>(
+					w->m_zxdgDecorationManagerV1 = static_cast<zxdg_decoration_manager_v1*>(
 						wl_registry_bind(registry, name, &zxdg_decoration_manager_v1_interface, 1));
 			},
 		.global_remove =
 			[](void*, wl_registry*, uint32_t) {
 			},
 	};
-	if(wl_registry_add_listener(registry, &registryListener, this))
+	if(wl_registry_add_listener(m_registry, &m_registryListener, this))
 		throw runtime_error("wl_registry_add_listener() failed.");
 
 	// get and init global objects
-	if(wl_display_roundtrip(display) == -1)
+	if(wl_display_roundtrip(m_display) == -1)
 		throw runtime_error("wl_display_roundtrip() failed.");
-	if(compositor == nullptr)
+	if(m_compositor == nullptr)
 		throw runtime_error("Cannot get Wayland compositor object.");
-	if(xdg == nullptr)
+	if(m_xdg == nullptr)
 		throw runtime_error("Cannot get Wayland xdg_wm_base object.");
-	xdgWmBaseListener = {
+	m_xdgWmBaseListener = {
 		.ping =
 			[](void*, xdg_wm_base* xdg, uint32_t serial) {
 				xdg_wm_base_pong(xdg, serial);
 			}
 	};
-	if(xdg_wm_base_add_listener(xdg, &xdgWmBaseListener, nullptr))
+	if(xdg_wm_base_add_listener(m_xdg, &m_xdgWmBaseListener, nullptr))
 		throw runtime_error("xdg_wm_base_add_listener() failed.");
 
 	// create window
-	wlSurface = wl_compositor_create_surface(compositor);
-	if(wlSurface == nullptr)
+	m_wlSurface = wl_compositor_create_surface(m_compositor);
+	if(m_wlSurface == nullptr)
 		throw runtime_error("wl_compositor_create_surface() failed.");
-	xdgSurface = xdg_wm_base_get_xdg_surface(xdg, wlSurface);
-	if(xdgSurface == nullptr)
+	m_xdgSurface = xdg_wm_base_get_xdg_surface(m_xdg, m_wlSurface);
+	if(m_xdgSurface == nullptr)
 		throw runtime_error("xdg_wm_base_get_xdg_surface() failed.");
-	xdgSurfaceListener = {
+	m_xdgSurfaceListener = {
 		.configure =
 			[](void* data, xdg_surface* xdgSurface, uint32_t serial) {
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(data);
 				cout<<"surface configure "<<serial<<endl;
 				xdg_surface_ack_configure(xdgSurface, serial);
-				wl_surface_commit(w->wlSurface);
+				wl_surface_commit(w->m_wlSurface);
 			},
 	};
-	if(xdg_surface_add_listener(xdgSurface, &xdgSurfaceListener, this))
+	if(xdg_surface_add_listener(m_xdgSurface, &m_xdgSurfaceListener, this))
 		throw runtime_error("xdg_surface_add_listener() failed.");
 
 	// init xdg toplevel
-	xdgTopLevel = xdg_surface_get_toplevel(xdgSurface);
-	if(xdgTopLevel == nullptr)
+	m_xdgTopLevel = xdg_surface_get_toplevel(m_xdgSurface);
+	if(m_xdgTopLevel == nullptr)
 		throw runtime_error("xdg_surface_get_toplevel() failed.");
-	if(zxdgDecorationManagerV1) {
+	if(m_zxdgDecorationManagerV1) {
 		zxdg_toplevel_decoration_v1* decoration =
-			zxdg_decoration_manager_v1_get_toplevel_decoration(zxdgDecorationManagerV1, xdgTopLevel);
+			zxdg_decoration_manager_v1_get_toplevel_decoration(m_zxdgDecorationManagerV1, m_xdgTopLevel);
 		zxdg_toplevel_decoration_v1_set_mode(decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 	}
-	xdg_toplevel_set_title(xdgTopLevel, title);
-	running = true;
-	xdgToplevelListener = {
+	xdg_toplevel_set_title(m_xdgTopLevel, title);
+	m_running = true;
+	m_xdgToplevelListener = {
 		.configure =
 			[](void* data, xdg_toplevel* toplevel, int32_t width, int32_t height, wl_array*) -> void {
 				cout<<"toplevel configure "<<width<<"x"<<height<<endl;
@@ -185,29 +185,29 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 					w->m_surfaceExtent.width = width;
 					if(height != 0)
 						w->m_surfaceExtent.height = height;
-					w->swapchainResizePending = true;
+					w->m_swapchainResizePending = true;
 				}
 				else if(height != 0) {
 					w->m_surfaceExtent.height = height;
-					w->swapchainResizePending = true;
+					w->m_swapchainResizePending = true;
 				}
 			},
 		.close =
 			[](void* data, xdg_toplevel* xdgTopLevel) {
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(data);
-				w->running = false;
+				w->m_running = false;
 			},
 	};
-	if(xdg_toplevel_add_listener(xdgTopLevel, &xdgToplevelListener, this))
+	if(xdg_toplevel_add_listener(m_xdgTopLevel, &m_xdgToplevelListener, this))
 		throw runtime_error("xdg_toplevel_add_listener() failed.");
-	wl_surface_commit(wlSurface);
-	if(wl_display_flush(display) == -1)
+	wl_surface_commit(m_wlSurface);
+	if(wl_display_flush(m_display) == -1)
 		throw runtime_error("wl_display_flush() failed.");
 
 	// create surface
 	return
 		instance.createWaylandSurfaceKHR(
-			vk::WaylandSurfaceCreateInfoKHR(vk::WaylandSurfaceCreateFlagsKHR(), display, wlSurface)
+			vk::WaylandSurfaceCreateInfoKHR(vk::WaylandSurfaceCreateFlagsKHR(), m_display, m_wlSurface)
 		);
 
 #elif defined(VK_USE_PLATFORM_XLIB_KHR)
@@ -349,17 +349,17 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 {
 #if defined(VK_USE_PLATFORM_WAYLAND_KHR)
 
-	if(wl_display_roundtrip(display) == -1)
+	if(wl_display_roundtrip(m_display) == -1)
 		throw runtime_error("wl_display_roundtrip() failed.");
 
-	while(running) {
+	while(m_running) {
 
-		if(wl_display_dispatch_pending(display) == -1)
+		if(wl_display_dispatch_pending(m_display) == -1)
 			throw std::runtime_error("wl_display_dispatch_pending() failed.");
 
-		if(swapchainResizePending) {
+		if(m_swapchainResizePending) {
 
-			swapchainResizePending = false;
+			m_swapchainResizePending = false;
 
 			// get surface capabilities
 			// On Wayland, currentExtent is 0xffffffff, 0xffffffff with the meaning that the extent
@@ -369,12 +369,16 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 
 			// recreate swapchain
 			device.waitIdle();
-			recreateSwapchainCallback(surfaceCapabilities, m_surfaceExtent);
+			m_recreateSwapchainCallback(surfaceCapabilities, m_surfaceExtent);
 		}
 
 		// render scene
 		exposeCallback();
 	}
+}
+
+void VulkanWindow::scheduleNextFrame()
+{
 }
 
 #elif defined(VK_USE_PLATFORM_XLIB_KHR)
