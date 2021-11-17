@@ -29,7 +29,7 @@ protected:
 	wl_display* m_display = nullptr;
 	wl_registry* m_registry;
 	wl_compositor* m_compositor;
-	xdg_wm_base* m_xdg = nullptr;
+	xdg_wm_base* m_xdgWmBase = nullptr;
 	zxdg_decoration_manager_v1* m_zxdgDecorationManagerV1;
 
 	// objects
@@ -39,6 +39,7 @@ protected:
 
 	// state
 	bool m_running;
+	bool m_exposePending = true;
 
 	// listeners
 	wl_registry_listener m_registryListener;
@@ -94,8 +95,6 @@ inline void VulkanWindow::setRecreateSwapchainCallback(RecreateSwapchainCallback
 inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return m_surfaceExtent; }
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
 inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; scheduleNextFrame(); }
-#elif defined(VK_USE_PLATFORM_XLIB_KHR)
-inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; m_exposePending = true; }
 #else
-inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; }
+inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; m_exposePending = true; }
 #endif

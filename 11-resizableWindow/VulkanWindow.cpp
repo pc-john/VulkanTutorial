@@ -57,8 +57,8 @@ VulkanWindow::~VulkanWindow()
 		xdg_surface_destroy(m_xdgSurface);
 	if(m_wlSurface)
 		wl_surface_destroy(m_wlSurface);
-	if(m_xdg)
-		xdg_wm_base_destroy(m_xdg);
+	if(m_xdgWmBase)
+		xdg_wm_base_destroy(m_xdgWmBase);
 	if(m_display)
 		wl_display_disconnect(m_display);
 
@@ -95,6 +95,10 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 {
 #if defined(VK_USE_PLATFORM_WAYLAND_KHR)
 
+	// no multiple init attempts
+	if(m_display)
+		throw runtime_error("Multiple VulkanWindow::init() calls are not allowed.");
+
 	// set surface extent
 	m_surfaceExtent = surfaceExtent;
 
@@ -108,7 +112,6 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 	if(m_registry == nullptr)
 		throw runtime_error("Cannot get Wayland registry object.");
 	m_compositor = nullptr;
-	m_xdg = nullptr;
 	m_registryListener = {
 		.global =
 			[](void* data, wl_registry* registry, uint32_t name, const char* interface, uint32_t version) {
@@ -117,7 +120,7 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 					w->m_compositor = static_cast<wl_compositor*>(
 						wl_registry_bind(registry, name, &wl_compositor_interface, 1));
 				else if(strcmp(interface, xdg_wm_base_interface.name) == 0)
-					w->m_xdg = static_cast<xdg_wm_base*>(
+					w->m_xdgWmBase = static_cast<xdg_wm_base*>(
 						wl_registry_bind(registry, name, &xdg_wm_base_interface, 1));
 				else if(strcmp(interface, zxdg_decoration_manager_v1_interface.name) == 0)
 					w->m_zxdgDecorationManagerV1 = static_cast<zxdg_decoration_manager_v1*>(
@@ -135,7 +138,7 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 		throw runtime_error("wl_display_roundtrip() failed.");
 	if(m_compositor == nullptr)
 		throw runtime_error("Cannot get Wayland compositor object.");
-	if(m_xdg == nullptr)
+	if(m_xdgWmBase == nullptr)
 		throw runtime_error("Cannot get Wayland xdg_wm_base object.");
 	m_xdgWmBaseListener = {
 		.ping =
@@ -143,14 +146,14 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 				xdg_wm_base_pong(xdg, serial);
 			}
 	};
-	if(xdg_wm_base_add_listener(m_xdg, &m_xdgWmBaseListener, nullptr))
+	if(xdg_wm_base_add_listener(m_xdgWmBase, &m_xdgWmBaseListener, nullptr))
 		throw runtime_error("xdg_wm_base_add_listener() failed.");
 
 	// create window
 	m_wlSurface = wl_compositor_create_surface(m_compositor);
 	if(m_wlSurface == nullptr)
 		throw runtime_error("wl_compositor_create_surface() failed.");
-	m_xdgSurface = xdg_wm_base_get_xdg_surface(m_xdg, m_wlSurface);
+	m_xdgSurface = xdg_wm_base_get_xdg_surface(m_xdgWmBase, m_wlSurface);
 	if(m_xdgSurface == nullptr)
 		throw runtime_error("xdg_wm_base_get_xdg_surface() failed.");
 	m_xdgSurfaceListener = {
@@ -181,15 +184,17 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 			[](void* data, xdg_toplevel* toplevel, int32_t width, int32_t height, wl_array*) -> void {
 				cout<<"toplevel configure "<<width<<"x"<<height<<endl;
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(data);
-				if(width != 0) {
+				if(width != w->m_surfaceExtent.width && width != 0) {
 					w->m_surfaceExtent.width = width;
-					if(height != 0)
+					if(height != w->m_surfaceExtent.height && height != 0)
 						w->m_surfaceExtent.height = height;
 					w->m_swapchainResizePending = true;
+					w->m_exposePending = true;
 				}
-				else if(height != 0) {
+				else if(height != w->m_surfaceExtent.height && height != 0) {
 					w->m_surfaceExtent.height = height;
 					w->m_swapchainResizePending = true;
+					w->m_exposePending = true;
 				}
 			},
 		.close =
@@ -354,12 +359,24 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 
 	while(m_running) {
 
-		if(wl_display_dispatch_pending(m_display) == -1)
-			throw std::runtime_error("wl_display_dispatch_pending() failed.");
+		// dispatch events
+		if(m_exposePending) {
+			// do not block if there are no events
+			if(wl_display_dispatch_pending(m_display) == -1)
+				throw std::runtime_error("wl_display_dispatch_pending() failed.");
+		} else
+			// block if there are no events
+			if(wl_display_dispatch(m_display) == -1)
+				throw std::runtime_error("wl_display_dispatch() failed.");
+
+		if(!m_exposePending)
+			continue;
 
 		if(m_swapchainResizePending) {
 
-			m_swapchainResizePending = false;
+			// make sure that we finished all the rendering
+			// (this is necessary for swapchain re-creation)
+			device.waitIdle();
 
 			// get surface capabilities
 			// On Wayland, currentExtent is 0xffffffff, 0xffffffff with the meaning that the extent
@@ -368,17 +385,21 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 			vk::SurfaceCapabilitiesKHR surfaceCapabilities(physicalDevice.getSurfaceCapabilitiesKHR(surface));
 
 			// recreate swapchain
-			device.waitIdle();
+			m_swapchainResizePending = false;
 			m_recreateSwapchainCallback(surfaceCapabilities, m_surfaceExtent);
 		}
 
 		// render scene
+		cout<<"expose"<<m_surfaceExtent.width<<"x"<<m_surfaceExtent.height<<endl;
+		m_exposePending = false;
 		exposeCallback();
+
 	}
 }
 
 void VulkanWindow::scheduleNextFrame()
 {
+	m_exposePending = true;
 }
 
 #elif defined(VK_USE_PLATFORM_XLIB_KHR)
@@ -447,6 +468,10 @@ void VulkanWindow::scheduleNextFrame()
 
 			if(m_swapchainResizePending) {
 
+				// make sure that we finished all the rendering
+				// (this is necessary for swapchain re-creation)
+				m_device.waitIdle();
+
 				// get surface capabilities
 				// On Xlib, currentExtent, minImageExtent and maxImageExtent are all equal.
 				// It means we can create a new swapchain only with imageExtent being equal
@@ -463,7 +488,6 @@ void VulkanWindow::scheduleNextFrame()
 					continue;
 
 				// recreate swapchain
-				device.waitIdle();
 				m_swapchainResizePending = false;
 				m_surfaceExtent = surfaceCapabilities.currentExtent;
 				m_recreateSwapchainCallback(surfaceCapabilities, m_surfaceExtent);
@@ -535,6 +559,10 @@ void VulkanWindow::onWmPaint()
 {
 	if(m_swapchainResizePending) {
 
+		// make sure that we finished all the rendering
+		// (this is necessary for swapchain re-creation)
+		m_device.waitIdle();
+
 		// get surface capabilities
 		// On Win32, currentExtent, minImageExtent and maxImageExtent are all equal.
 		// It means we can create a new swapchain only with imageExtent being equal
@@ -550,7 +578,6 @@ void VulkanWindow::onWmPaint()
 
 		// recreate swapchain
 		m_swapchainResizePending = false;
-		m_device.waitIdle();
 		m_recreateSwapchainCallback(surfaceCapabilities, m_surfaceExtent);
 	}
 
