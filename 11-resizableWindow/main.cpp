@@ -393,19 +393,24 @@ int main(int argc, char** argv)
 							vk::CompositeAlphaFlagBitsKHR::eOpaque,  // compositeAlpha
 							[](){  // presentMode
 
-								// Fifo is used unless MaxFrameRate was requested
-								if(frameUpdateMode != FrameUpdateMode::MaxFrameRate)
-									return vk::PresentModeKHR::eFifo;
-
-								// for MaxFrameRate, try Mailbox and Immediate if they are available
-								vector<vk::PresentModeKHR> modes = physicalDevice.getSurfacePresentModesKHR(surface.get());
-								if(find(modes.begin(), modes.end(), vk::PresentModeKHR::eMailbox) != modes.end())
+								if(VulkanWindow::mailboxPresentModePreferred)
 									return vk::PresentModeKHR::eMailbox;
-								if(find(modes.begin(), modes.end(), vk::PresentModeKHR::eImmediate) != modes.end())
-									return vk::PresentModeKHR::eImmediate;
+								else
+								{
+									// Fifo is used unless MaxFrameRate was requested
+									if(frameUpdateMode != FrameUpdateMode::MaxFrameRate)
+										return vk::PresentModeKHR::eFifo;
 
-								// Fifo is always supported
-								return vk::PresentModeKHR::eFifo;
+									// for MaxFrameRate, try Mailbox and Immediate if they are available
+									vector<vk::PresentModeKHR> modes = physicalDevice.getSurfacePresentModesKHR(surface.get());
+									if(find(modes.begin(), modes.end(), vk::PresentModeKHR::eMailbox) != modes.end())
+										return vk::PresentModeKHR::eMailbox;
+									if(find(modes.begin(), modes.end(), vk::PresentModeKHR::eImmediate) != modes.end())
+										return vk::PresentModeKHR::eImmediate;
+
+									// Fifo is always supported
+									return vk::PresentModeKHR::eFifo;
+								}
 
 							}(),
 							VK_TRUE,         // clipped
