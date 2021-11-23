@@ -374,7 +374,7 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 	m_physicalDevice = physicalDevice;
 	m_device = device;
 	m_surface = surface;
-	m_exposeCallback = exposeCallback;
+	m_frameCallback = frameCallback;
 
 	// show window
 	ShowWindow(m_hwnd, SW_SHOWDEFAULT);
@@ -421,7 +421,7 @@ void VulkanWindow::onWmPaint()
 	}
 
 	// render scene
-	m_exposeCallback();
+	m_frameCallback();
 }
 
 
