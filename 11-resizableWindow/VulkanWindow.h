@@ -112,7 +112,7 @@ inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return m_surfaceExten
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
 inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; scheduleNextFrame(); }
 #elif defined(VK_USE_PLATFORM_XLIB_KHR)
-inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; m_exposePending = true; }
+inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; m_framePending = true; }
 #elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
 inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; m_forceFrame = true; }
 #endif

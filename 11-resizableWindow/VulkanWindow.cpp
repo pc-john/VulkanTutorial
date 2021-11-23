@@ -366,10 +366,10 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 }
 
 
-void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface, FrameCallback frameCallback)
-{
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
 
+void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface, FrameCallback frameCallback)
+{
 	// channel the arguments into onWmPaint()
 	m_physicalDevice = physicalDevice;
 	m_device = device;
@@ -392,6 +392,7 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 			rethrow_exception(m_wndProcException);
 	}
 }
+
 
 void VulkanWindow::onWmPaint()
 {
@@ -423,13 +424,18 @@ void VulkanWindow::onWmPaint()
 	m_exposeCallback();
 }
 
+
 void VulkanWindow::scheduleNextFrame()
 {
 	InvalidateRect(m_hwnd, NULL, FALSE);
 }
 
+
 #elif defined(VK_USE_PLATFORM_XLIB_KHR)
 
+
+void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface, FrameCallback frameCallback)
+{
 	// run Xlib event loop
 	XEvent e;
 	while(true) {
@@ -437,7 +443,7 @@ void VulkanWindow::scheduleNextFrame()
 		// get number of events in the queue
 		int numEvents = XPending(m_display);
 		if(numEvents == 0)
-			if(m_exposePending)
+			if(m_framePending)
 				goto skipMessageLoop;  // render frame
 			else
 				numEvents = 1;  // want for events
@@ -452,14 +458,14 @@ void VulkanWindow::scheduleNextFrame()
 
 				if(e.type==Expose) {
 					cout<<"e"<<flush;
-					m_exposePending = true;
+					m_framePending = true;
 					continue;
 				}
 
 				if(e.type==ConfigureNotify) {
 					if(e.xconfigure.width!=m_surfaceExtent.width || e.xconfigure.height!=m_surfaceExtent.height) {
 						cout<<"Configure "<<e.xconfigure.width<<"x"<<e.xconfigure.height<<endl;
-						m_exposePending = true;
+						m_framePending = true;
 						m_swapchainResizePending = true;
 					}
 					continue;
@@ -467,7 +473,7 @@ void VulkanWindow::scheduleNextFrame()
 
 				if(e.type==MapNotify || (e.type==VisibilityNotify && e.xvisibility.state!=VisibilityFullyObscured)) {
 					m_visible = true;
-					m_exposePending = true;
+					m_framePending = true;
 					if(e.type==MapNotify) cout<<"m"<<flush;
 					else cout<<"v"<<flush;
 					continue;
@@ -490,13 +496,13 @@ void VulkanWindow::scheduleNextFrame()
 	skipMessageLoop:
 
 		// render window
-		if(m_visible && m_exposePending) {
+		if(m_visible && m_framePending) {
 
 			if(m_swapchainResizePending) {
 
 				// make sure that we finished all the rendering
 				// (this is necessary for swapchain re-creation)
-				m_device.waitIdle();
+				device.waitIdle();
 
 				// get surface capabilities
 				// On Xlib, currentExtent, minImageExtent and maxImageExtent are all equal.
@@ -521,19 +527,20 @@ void VulkanWindow::scheduleNextFrame()
 
 			// render scene
 			cout<<"expose"<<m_surfaceExtent.width<<"x"<<m_surfaceExtent.height<<endl;
-			m_exposePending = false;
-			exposeCallback();
+			m_framePending = false;
+			frameCallback();
 
 		}
 	}
 }
 
+
 void VulkanWindow::scheduleNextFrame()
 {
-	if(m_exposePending)
+	if(m_framePending)
 		return;
 
-	m_exposePending = true;
+	m_framePending = true;
 	if(m_visible) {
 		XSendEvent(
 			m_display,
@@ -556,8 +563,12 @@ void VulkanWindow::scheduleNextFrame()
 	}
 }
 
+
 #elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
 
+
+void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface, FrameCallback frameCallback)
+{
 	// channel the arguments into frame callback
 	m_physicalDevice = physicalDevice;
 	m_device = device;
@@ -582,6 +593,7 @@ void VulkanWindow::scheduleNextFrame()
 		}
 	}
 }
+
 
 void VulkanWindow::doFrame()
 {
@@ -613,6 +625,7 @@ void VulkanWindow::doFrame()
 	m_forceFrame = false;
 	m_frameCallback();
 }
+
 
 void VulkanWindow::scheduleNextFrame()
 {
