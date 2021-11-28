@@ -1,12 +1,3 @@
-#define NOMINMAX
-//#include <windows.h>
-typedef struct HINSTANCE__* HINSTANCE;
-typedef struct HWND__* HWND;
-typedef struct HMONITOR__* HMONITOR;
-typedef void* HANDLE;
-typedef /*_Null_terminated_*/ const wchar_t *LPCWSTR;
-typedef unsigned long DWORD;
-typedef struct _SECURITY_ATTRIBUTES SECURITY_ATTRIBUTES;
 #include <vulkan/vulkan.hpp>
 #include <array>
 #include <chrono>
