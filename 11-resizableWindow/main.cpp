@@ -105,14 +105,8 @@ int main(int argc, char** argv)
 						VK_API_VERSION_1_0,      // api version
 					},
 					0, nullptr,  // no layers
-					2,           // enabled extension count
-#if defined(VK_USE_PLATFORM_WAYLAND_KHR)
-					array<const char*,2>{"VK_KHR_surface","VK_KHR_wayland_surface"}.data(),  // enabled extension names
-#elif defined(VK_USE_PLATFORM_WIN32_KHR)
-					array<const char*,2>{"VK_KHR_surface","VK_KHR_win32_surface"}.data(),  // enabled extension names
-#elif defined(VK_USE_PLATFORM_XLIB_KHR)
-					array<const char*,2>{"VK_KHR_surface","VK_KHR_xlib_surface"}.data(),  // enabled extension names
-#endif
+					VulkanWindow::requiredExtensionCount(),  // enabled extension count
+					VulkanWindow::requiredExtensionNames(),  // enabled extension names
 				});
 
 		// create surface

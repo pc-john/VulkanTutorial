@@ -15,12 +15,15 @@
 using namespace std;
 
 // global variables
-#if defined(VK_USE_PLATFORM_WAYLAND_KHR)
-#elif defined(VK_USE_PLATFORM_WIN32_KHR)
+#if defined(USE_PLATFORM_WIN32)
 static const _TCHAR* windowClassName = _T("VulkanWindow");
 static HINSTANCE hInstance;
 static uint32_t numVulkanWindows = 0;
-#elif defined(VK_USE_PLATFORM_XLIB_KHR)
+std::vector<const char*> VulkanWindow::s_requiredInstanceExtensions = { "VK_KHR_surface", "VK_KHR_win32_surface" };
+#elif defined(USE_PLATFORM_XLIB)
+std::vector<const char*> VulkanWindow::s_requiredInstanceExtensions = { "VK_KHR_surface", "VK_KHR_xlib_surface" };
+#elif defined(USE_PLATFORM_WAYLAND)
+std::vector<const char*> VulkanWindow::s_requiredInstanceExtensions = { "VK_KHR_surface", "VK_KHR_wayland_surface" };
 #endif
 
 // string utf8 to wstring conversion

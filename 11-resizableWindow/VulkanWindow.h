@@ -1,11 +1,19 @@
 #pragma once
 
-#if defined(VK_USE_PLATFORM_WAYLAND_KHR)
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
+# include <exception>
+#elif defined(USE_PLATFORM_XLIB)
+typedef struct _XDisplay Display;
+#if 1 //sizeof(unsigned long) == 8, FIXME: test on some 32-bit system
+typedef unsigned long Window;  // Window is XID type (X11/X.h) that is defined as unsigned long or CARD32 (in X11/X.h based on _XSERVER64 define) while CARD32 is defined as unsigned int or unsigned long in X11/Xmd.h based on LONG64 define
+typedef unsigned long Atom;  // in X11/X.h and X11/Xdefs.h
+#else
+typedef unsigned int Window;
+typedef unsigned int Atom;
+#endif
+#elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
 # include "xdg-shell-client-protocol.h"
 # include "xdg-decoration-client-protocol.h"
-#elif defined(VK_USE_PLATFORM_WIN32_KHR)
-# include <exception>
-#elif defined(VK_USE_PLATFORM_XLIB_KHR)
 #endif
 # include <vulkan/vulkan.hpp>
 
@@ -23,7 +31,7 @@ public:
 
 protected:
 
-#if defined(VK_USE_PLATFORM_WIN32_KHR)
+#if defined(USE_PLATFORM_WIN32)
 
 	HWND m_hwnd = nullptr;
 	std::exception_ptr m_wndProcException;
@@ -33,7 +41,7 @@ protected:
 	FrameCallback* m_frameCallback;
 	void onWmPaint();
 
-#elif defined(VK_USE_PLATFORM_XLIB_KHR)
+#elif defined(USE_PLATFORM_XLIB)
 
 	Display* m_display = nullptr;
 	Window m_window = 0;
@@ -41,7 +49,7 @@ protected:
 	bool m_visible = false;
 	bool m_framePending = true;
 
-#elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
+#elif defined(USE_PLATFORM_WAYLAND)
 
 	// globals
 	wl_display* m_display = nullptr;
@@ -81,6 +89,8 @@ protected:
 	bool m_swapchainResizePending = true;
 	RecreateSwapchainCallback* m_recreateSwapchainCallback = nullptr;
 
+	static std::vector<const char*> s_requiredInstanceExtensions;
+
 public:
 
 	VulkanWindow() = default;
@@ -96,12 +106,19 @@ public:
 	void scheduleNextFrame();
 	void scheduleSwapchainResize();
 
+	// required Vulkan Instance extensions
+	static std::vector<const char*>& requiredExtensions();
+	static void appendRequiredExtensions(std::vector<const char*>& v);
+	static uint32_t requiredExtensionCount();
+	static const char* const* requiredExtensionNames();
+
 	// Wayland prefers the use of mailbox present mode
-#if defined(VK_USE_PLATFORM_WAYLAND_KHR)
+#if defined(USE_PLATFORM_WAYLAND)
 	static constexpr const inline bool mailboxPresentModePreferred = true;
 #else
 	static constexpr const inline bool mailboxPresentModePreferred = false;
 #endif
+
 };
 
 
@@ -111,8 +128,15 @@ inline void VulkanWindow::setRecreateSwapchainCallback(RecreateSwapchainCallback
 inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return m_surfaceExtent; }
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
 inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; scheduleNextFrame(); }
-#elif defined(VK_USE_PLATFORM_XLIB_KHR)
+#elif defined(USE_PLATFORM_XLIB)
 inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; m_framePending = true; }
 #elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
 inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; m_forceFrame = true; }
+#endif
+#if defined(VK_USE_PLATFORM_WIN32_KHR) || defined(USE_PLATFORM_XLIB) || defined(VK_USE_PLATFORM_WAYLAND_KHR)
+inline std::vector<const char*>& VulkanWindow::requiredExtensions()  { return s_requiredInstanceExtensions; }
+inline void VulkanWindow::appendRequiredExtensions(std::vector<const char*>& v)  { v.emplace_back(s_requiredInstanceExtensions[0]); v.emplace_back(s_requiredInstanceExtensions[1]); }
+inline uint32_t VulkanWindow::requiredExtensionCount()  { return 2; }
+inline const char* const* VulkanWindow::requiredExtensionNames()  { return s_requiredInstanceExtensions.data(); }
+#else
 #endif

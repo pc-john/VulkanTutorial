@@ -23,7 +23,7 @@ set(deps Vulkan::Vulkan)
 # GUI dependencies
 set(CMAKE_MODULE_PATH "${${APP_NAME}_SOURCE_DIR}/;${CMAKE_MODULE_PATH}")
 include(GuiMacros.cmake)
-GuiConfigure(APP_SOURCES APP_INCLUDES deps defines)
+GuiConfigure(APP_SOURCES APP_INCLUDES deps defines vulkanWindowDefines)
 
 # executable
 add_shaders("${APP_SHADERS}" APP_SHADER_DEPS)
@@ -32,5 +32,6 @@ add_executable(${APP_NAME} ${APP_SOURCES} ${APP_INCLUDES} ${APP_SHADER_DEPS})
 # target
 target_include_directories(${APP_NAME} PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 target_compile_definitions(${APP_NAME} PRIVATE ${defines})
+set_property(SOURCE VulkanWindow.cpp APPEND PROPERTY COMPILE_DEFINITIONS ${vulkanWindowDefines})
 target_link_libraries(${APP_NAME} ${deps})
 set_property(TARGET ${APP_NAME} PROPERTY CXX_STANDARD 17)
