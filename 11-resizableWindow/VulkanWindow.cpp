@@ -1,11 +1,11 @@
 #include "VulkanWindow.h"
-#if defined(VK_USE_PLATFORM_WAYLAND_KHR)
-#elif defined(VK_USE_PLATFORM_XLIB_KHR)
-# include <X11/Xutil.h>
-#elif defined(VK_USE_PLATFORM_WIN32_KHR)
+#if defined(USE_PLATFORM_WIN32)
 # define NOMINMAX  // avoid the definition of min and max macros by windows.h
 # include <windows.h>
 # include <tchar.h>
+#elif defined(USE_PLATFORM_XLIB)
+#elif defined(USE_PLATFORM_WAYLAND)
+# include <X11/Xutil.h>
 #endif
 #include <vulkan/vulkan.hpp>
 #include <cstring>
@@ -27,7 +27,7 @@ std::vector<const char*> VulkanWindow::s_requiredInstanceExtensions = { "VK_KHR_
 #endif
 
 // string utf8 to wstring conversion
-#if defined(VK_USE_PLATFORM_WIN32_KHR) && defined(_UNICODE)
+#if defined(USE_PLATFORM_WIN32) && defined(_UNICODE)
 static wstring utf8toWString(const char* s)
 {
 	// get string lengths
@@ -51,32 +51,32 @@ static wstring utf8toWString(const char* s)
 
 VulkanWindow::~VulkanWindow()
 {
-#if defined(VK_USE_PLATFORM_WIN32_KHR)
+#if defined(USE_PLATFORM_WIN32)
 
 	// release resources
 	// (do not throw in destructor, so ignore the errors in release builds
 	// and assert in debug builds)
-#ifdef NDEBUG
+# ifdef NDEBUG
 	if(hwnd)
 		DestroyWindow(hwnd);
 	if(--numVulkanWindows == 0)
 		UnregisterClass(windowClassName, hInstance);
-#else
+# else
 	if(m_hwnd)
 		if(!DestroyWindow(m_hwnd))
 			assert(0 && "DestroyWindow(): The function failed.");
 	if(--numVulkanWindows == 0)
 		if(!UnregisterClass(windowClassName, hInstance))
 			assert(0 && "UnregisterClass(): The function failed.");
-#endif
+# endif
 
-#elif defined(VK_USE_PLATFORM_XLIB_KHR)
+#elif defined(USE_PLATFORM_XLIB)
 
 	// release resources
 	if(m_window)  XDestroyWindow(m_display, m_window);
 	if(m_display)  XCloseDisplay(m_display);
 
-#elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
+#elif defined(USE_PLATFORM_WAYLAND)
 
 	// release resources
 	if(m_scheduledFrameCallback)
@@ -100,7 +100,7 @@ VulkanWindow::~VulkanWindow()
 
 vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title)
 {
-#if defined(VK_USE_PLATFORM_WIN32_KHR)
+#if defined(USE_PLATFORM_WIN32)
 
 	// window's message handling procedure
 	auto wndProc = [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) -> LRESULT {
@@ -194,7 +194,7 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 			vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(), hInstance, m_hwnd)
 		);
 
-#elif defined(VK_USE_PLATFORM_XLIB_KHR)
+#elif defined(USE_PLATFORM_XLIB)
 
 	// set surface extent
 	m_surfaceExtent = surfaceExtent;
@@ -231,7 +231,7 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 			vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(), m_display, m_window)
 		);
 
-#elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
+#elif defined(USE_PLATFORM_WAYLAND)
 
 	// no multiple init attempts
 	if(m_display)
@@ -369,7 +369,7 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 }
 
 
-#if defined(VK_USE_PLATFORM_WIN32_KHR)
+#if defined(USE_PLATFORM_WIN32)
 
 void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface, FrameCallback frameCallback)
 {
@@ -434,7 +434,7 @@ void VulkanWindow::scheduleNextFrame()
 }
 
 
-#elif defined(VK_USE_PLATFORM_XLIB_KHR)
+#elif defined(USE_PLATFORM_XLIB)
 
 
 void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface, FrameCallback frameCallback)
@@ -567,7 +567,7 @@ void VulkanWindow::scheduleNextFrame()
 }
 
 
-#elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
+#elif defined(USE_PLATFORM_WAYLAND)
 
 
 void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface, FrameCallback frameCallback)

@@ -12,7 +12,7 @@
     typedef unsigned int Window;
     typedef unsigned int Atom;
   #endif
-#elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
+#elif defined(USE_PLATFORM_WAYLAND)
   #include "xdg-shell-client-protocol.h"
   #include "xdg-decoration-client-protocol.h"
 #endif
@@ -127,10 +127,10 @@ inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return m_surfaceExten
 inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; scheduleNextFrame(); }
 #elif defined(USE_PLATFORM_XLIB)
 inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; m_framePending = true; }
-#elif defined(VK_USE_PLATFORM_WAYLAND_KHR)
+#elif defined(USE_PLATFORM_WAYLAND)
 inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; m_forceFrame = true; }
 #endif
-#if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_XLIB) || defined(VK_USE_PLATFORM_WAYLAND_KHR)
+#if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_WAYLAND)
 inline std::vector<const char*>& VulkanWindow::requiredExtensions()  { return s_requiredInstanceExtensions; }
 inline void VulkanWindow::appendRequiredExtensions(std::vector<const char*>& v)  { v.emplace_back(s_requiredInstanceExtensions[0]); v.emplace_back(s_requiredInstanceExtensions[1]); }
 inline uint32_t VulkanWindow::requiredExtensionCount()  { return 2; }
