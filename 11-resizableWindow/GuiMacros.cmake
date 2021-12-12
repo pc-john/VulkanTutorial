@@ -1,4 +1,4 @@
-macro(GuiConfigure APP_SOURCES APP_INCLUDES deps defines vulkanWindowDefines)
+macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines includes)
 
 	# detect recommended GUI type
 	if(WIN32)
@@ -18,13 +18,13 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES deps defines vulkanWindowDefines)
 	# set GUI_TYPE if not already set or if set to "default" string
 	string(TOLOWER "${GUI_TYPE}" guiTypeLowerCased)
 	if(NOT GUI_TYPE OR "${guiTypeLowerCased}" STREQUAL "default")
-		set(GUI_TYPE ${guiTypeDetected} CACHE STRING "Gui type. Accepted values: default, Win32, Xlib or Wayland." FORCE)
+		set(GUI_TYPE ${guiTypeDetected} CACHE STRING "Gui type. Accepted values: default, Win32, Xlib, Wayland or SDL." FORCE)
 	endif()
 
 	# give error on invalid GUI_TYPE
-	set(guiList "Win32" "Xlib" "Wayland")
+	set(guiList "Win32" "Xlib" "Wayland" "Qt" "SDL")
 	if(NOT "${GUI_TYPE}" IN_LIST guiList)
-		message(FATAL_ERROR "GUI_TYPE value is invalid. It must be set to default, Win32, Xlib or Wayland.")
+		message(FATAL_ERROR "GUI_TYPE value is invalid. It must be set to default, Win32, Xlib, Wayland or SDL.")
 	endif()
 
 
@@ -38,7 +38,7 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES deps defines vulkanWindowDefines)
 
 		# configure for Xlib
 		find_package(X11 REQUIRED)
-		set(${deps} ${${deps}} X11)
+		set(${libs} ${${libs}} X11)
 		set(${defines} ${${defines}} USE_PLATFORM_XLIB)
 		set(${vulkanWindowDefines} ${${vulkanWindowDefines}} VK_USE_PLATFORM_XLIB_KHR)
 
@@ -59,13 +59,21 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES deps defines vulkanWindowDefines)
 
 			list(APPEND ${APP_SOURCES}  xdg-shell-protocol.c        xdg-decoration-protocol.c)
 			list(APPEND ${APP_INCLUDES} xdg-shell-client-protocol.h xdg-decoration-client-protocol.h)
-			set(${deps} ${${deps}} Wayland::client -lrt)
+			set(${libs} ${${libs}} Wayland::client -lrt)
 			set(${defines} ${${defines}} USE_PLATFORM_WAYLAND)
 			set(${vulkanWindowDefines} ${${vulkanWindowDefines}} VK_USE_PLATFORM_WAYLAND_KHR)
 
 		else()
 			message(FATAL_ERROR "Not all Wayland variables were detected properly.")
 		endif()
+
+	elseif("${GUI_TYPE}" STREQUAL "SDL")
+
+		# configure for SDL
+		find_package(SDL REQUIRED)
+		set(${libs} ${${libs}} ${SDL_LIBRARY})
+		set(${defines} ${${defines}} USE_PLATFORM_SDL)
+		set(${includes} ${${includes}} ${SDL_INCLUDE_DIR})
 
 	endif()
 

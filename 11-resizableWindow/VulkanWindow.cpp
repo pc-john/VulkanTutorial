@@ -4,8 +4,11 @@
 # include <windows.h>
 # include <tchar.h>
 #elif defined(USE_PLATFORM_XLIB)
-#elif defined(USE_PLATFORM_WAYLAND)
 # include <X11/Xutil.h>
+#elif defined(USE_PLATFORM_WAYLAND)
+#elif defined(USE_PLATFORM_SDL)
+# include "SDL.h"
+# include "SDL_vulkan.h"
 #endif
 #include <vulkan/vulkan.hpp>
 #include <cstring>
@@ -19,11 +22,6 @@ using namespace std;
 static const _TCHAR* windowClassName = _T("VulkanWindow");
 static HINSTANCE hInstance;
 static uint32_t numVulkanWindows = 0;
-std::vector<const char*> VulkanWindow::s_requiredInstanceExtensions = { "VK_KHR_surface", "VK_KHR_win32_surface" };
-#elif defined(USE_PLATFORM_XLIB)
-std::vector<const char*> VulkanWindow::s_requiredInstanceExtensions = { "VK_KHR_surface", "VK_KHR_xlib_surface" };
-#elif defined(USE_PLATFORM_WAYLAND)
-std::vector<const char*> VulkanWindow::s_requiredInstanceExtensions = { "VK_KHR_surface", "VK_KHR_wayland_surface" };
 #endif
 
 // string utf8 to wstring conversion
@@ -93,6 +91,13 @@ VulkanWindow::~VulkanWindow()
 		xdg_wm_base_destroy(m_xdgWmBase);
 	if(m_display)
 		wl_display_disconnect(m_display);
+
+#elif defined(USE_PLATFORM_SDL)
+
+	if(m_window)
+		SDL_DestroyWindow(m_window);
+	if(m_sdlInitialized)
+		SDL_QuitSubSystem(SDL_INIT_VIDEO);
 
 #endif
 }
@@ -365,6 +370,33 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 			vk::WaylandSurfaceCreateInfoKHR(vk::WaylandSurfaceCreateFlagsKHR(), m_display, m_wlSurface)
 		);
 
+#elif defined(USE_PLATFORM_SDL)
+
+	// allow screensaver
+	SDL_SetHint(SDL_HINT_VIDEO_ALLOW_SCREENSAVER, "1");
+
+	// init SDL video subsystem
+	if(SDL_InitSubSystem(SDL_INIT_VIDEO) != 0)
+		runtime_error("VulkanWindow: SDL_InitSubSystem(SDL_INIT_VIDEO) function failed.");
+	m_sdlInitialized = true;
+
+	// create Vulkan window
+	m_window = SDL_CreateWindow(
+		title,  // title
+		SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,  // x,y
+		surfaceExtent.width, surfaceExtent.height,  // w,h
+		SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE  // flags
+	);
+	if(m_window == nullptr)
+		throw runtime_error("VulkanWindow: SDL_CreateWindow() function failed.");
+
+	// create surface
+	VkSurfaceKHR s;
+	if(!SDL_Vulkan_CreateSurface(m_window, instance, &s))
+		throw runtime_error("VulkanWindow: SDL_Vulkan_CreateSurface() function failed.");
+
+	return s;
+
 #endif
 }
 
@@ -446,7 +478,7 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 		// get number of events in the queue
 		int numEvents = XPending(m_display);
 		if(numEvents == 0)
-			if(m_framePending)
+			if(m_framePending && m_visible)
 				goto skipMessageLoop;  // render frame
 			else
 				numEvents = 1;  // want for events
@@ -496,10 +528,11 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 			// if more events came in the mean time, handle them as well
 			numEvents = XPending(m_display);
 		} while(numEvents > 0);
+
 	skipMessageLoop:
 
 		// render window
-		if(m_visible && m_framePending) {
+		if(m_framePending && m_visible) {
 
 			if(m_swapchainResizePending) {
 
@@ -544,7 +577,7 @@ void VulkanWindow::scheduleNextFrame()
 		return;
 
 	m_framePending = true;
-	if(m_visible) {
+	/*if(m_visible) {
 		XSendEvent(
 			m_display,
 			m_window,
@@ -563,7 +596,7 @@ void VulkanWindow::scheduleNextFrame()
 				}
 		);
 		cout<<"s"<<flush;
-	}
+	}*/
 }
 
 
@@ -638,6 +671,161 @@ void VulkanWindow::scheduleNextFrame()
 	m_scheduledFrameCallback = wl_surface_frame(m_wlSurface);
 	wl_callback_add_listener(m_scheduledFrameCallback, &m_frameListener, this);
 	wl_surface_commit(m_wlSurface);
+}
+
+
+#elif defined(USE_PLATFORM_SDL)
+
+
+const vector<const char*>& VulkanWindow::requiredExtensions()
+{
+	static vector<const char*> l =
+		[]() {
+
+			// init SDL video subsystem
+			struct SDL {
+				SDL() {
+					if(SDL_InitSubSystem(SDL_INIT_VIDEO) != 0)
+						runtime_error("VulkanWindow: SDL_InitSubSystem(SDL_INIT_VIDEO) function failed.");
+				}
+				~SDL() {
+					SDL_QuitSubSystem(SDL_INIT_VIDEO);
+				}
+			} sdl;
+
+			// create temporary Vulkan window
+			unique_ptr<SDL_Window,void(*)(SDL_Window*)> tmpWindow(
+				SDL_CreateWindow("Temporary", 0,0, 1,1, SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN),
+				[](SDL_Window* w){ SDL_DestroyWindow(w); }
+			);
+			if(tmpWindow.get() == nullptr)
+				throw runtime_error("VulkanWindow: SDL_CreateWindow() function failed.");
+
+			// get number of required instance extensions
+			unsigned int count;
+			if(!SDL_Vulkan_GetInstanceExtensions(tmpWindow.get(), &count, nullptr))
+				throw runtime_error("VulkanWindow: SDL_Vulkan_GetInstanceExtensions() function failed.");
+
+			// get required instance extensions
+			vector<const char*> l;
+			l.reserve(count);
+			l.resize(count);
+			while(!SDL_Vulkan_GetInstanceExtensions(tmpWindow.get(), &count, l.data())) {}
+
+			return l;
+
+		}();
+
+	return l;
+}
+
+void VulkanWindow::appendRequiredExtensions(vector<const char*>& v)  { auto& l=requiredExtensions(); v.reserve(v.size()+l.size()); for(auto s : l) v.push_back(s); }
+uint32_t VulkanWindow::requiredExtensionCount()  { return requiredExtensions().size(); }
+const char* const* VulkanWindow::requiredExtensionNames()  { return requiredExtensions().data(); }
+
+
+void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface, FrameCallback frameCallback)
+{
+	SDL_Event event;
+	while(true) {
+
+		int haveEvents = SDL_PollEvent(&event);
+		if(!haveEvents)
+			if(m_framePending && m_visible)
+				goto skipMessageLoop;  // render frame
+			else
+				SDL_WaitEvent(&event);  // want for events
+
+		do {
+			switch(event.type) {
+			case SDL_WINDOWEVENT:
+				switch(event.window.event) {
+
+				case SDL_WINDOWEVENT_EXPOSED:
+					cout<<"Exposed."<<endl;
+					m_framePending = true;
+					break;
+
+				case SDL_WINDOWEVENT_SIZE_CHANGED:
+					cout<<"Resize."<<endl;
+					m_framePending = true;
+					m_swapchainResizePending = true;
+					break;
+
+				case SDL_WINDOWEVENT_SHOWN:
+					cout<<"Show."<<endl;
+					m_visible = true;
+					break;
+
+				case SDL_WINDOWEVENT_HIDDEN:
+					cout<<"Hide."<<endl;
+					m_visible = false;
+					break;
+
+				}
+				break;
+
+			case SDL_QUIT:
+				return;
+			}
+		} while(SDL_PollEvent(&event));
+
+	skipMessageLoop:
+
+		// render window
+		if(m_framePending && m_visible) {
+
+			if(m_swapchainResizePending) {
+
+				// make sure that we finished all the rendering
+				// (this is necessary for swapchain re-creation)
+				device.waitIdle();
+
+				// get surface capabilities
+				// On Xlib, currentExtent, minImageExtent and maxImageExtent are all equal.
+				// It means we can create a new swapchain only with imageExtent being equal
+				// to the window size.
+				// The currentExtent of 0,0 means the window is minimized with the result
+				// we cannot create swapchain for such window. If the currentExtent is not 0,0,
+				// both width and height must be greater than 0.
+				vk::SurfaceCapabilitiesKHR surfaceCapabilities(physicalDevice.getSurfaceCapabilitiesKHR(surface));
+
+				// do not allow swapchain creation and rendering when currentExtent is 0,0
+				// (this never happened on my KDE 5.80.0 (Kubuntu 21.04) and KDE 5.44.0 (Kubuntu 18.04.5);
+				// window minimalizing just unmaps the window)
+				if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0))
+					continue;
+
+				// recreate swapchain
+				m_swapchainResizePending = false;
+				m_surfaceExtent = surfaceCapabilities.currentExtent;
+				m_recreateSwapchainCallback(surfaceCapabilities, m_surfaceExtent);
+			}
+
+			// render scene
+			cout<<"expose"<<m_surfaceExtent.width<<"x"<<m_surfaceExtent.height<<endl;
+			m_framePending = false;
+			frameCallback();
+
+		}
+	}
+
+}
+
+
+void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; m_framePending = true; }
+void VulkanWindow::scheduleNextFrame()
+{
+	if(m_framePending)
+		return;
+
+	m_framePending = true;
+	/*if(m_visible) {
+		SDL_Event event;
+		event.type = SDL_WINDOWEVENT;
+		event.window.event = SDL_WINDOWEVENT_EXPOSED;
+		SDL_PushEvent(&event);
+	}*/
 }
 
 #endif

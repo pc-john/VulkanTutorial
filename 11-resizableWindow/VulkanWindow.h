@@ -15,6 +15,8 @@
 #elif defined(USE_PLATFORM_WAYLAND)
   #include "xdg-shell-client-protocol.h"
   #include "xdg-decoration-client-protocol.h"
+#elif defined(USE_PLATFORM_SDL)
+  struct SDL_Window;
 #endif
 #include <vulkan/vulkan.hpp>
 
@@ -36,7 +38,10 @@ protected:
 	vk::Device m_device;
 	vk::SurfaceKHR m_surface;
 	FrameCallback* m_frameCallback;
+
 	void onWmPaint();
+	static inline const std::vector<const char*> s_requiredInstanceExtensions =
+		{ "VK_KHR_surface", "VK_KHR_win32_surface" };
 
 #elif defined(USE_PLATFORM_XLIB)
 
@@ -45,6 +50,9 @@ protected:
 	Atom m_wmDeleteMessage;
 	bool m_visible = false;
 	bool m_framePending = true;
+
+	static inline const std::vector<const char*> s_requiredInstanceExtensions =
+		{ "VK_KHR_surface", "VK_KHR_xlib_surface" };
 
 #elif defined(USE_PLATFORM_WAYLAND)
 
@@ -80,13 +88,21 @@ protected:
 	FrameCallback* m_frameCallback;
 	void doFrame();
 
+	static inline const std::vector<const char*> s_requiredInstanceExtensions =
+		{ "VK_KHR_surface", "VK_KHR_wayland_surface" };
+
+#elif defined(USE_PLATFORM_SDL)
+
+	bool m_sdlInitialized = false;
+	SDL_Window* m_window = nullptr;
+	bool m_visible = false;
+	bool m_framePending = true;
+
 #endif
 
 	vk::Extent2D m_surfaceExtent = vk::Extent2D(0,0);
 	bool m_swapchainResizePending = true;
 	RecreateSwapchainCallback* m_recreateSwapchainCallback = nullptr;
-
-	static std::vector<const char*> s_requiredInstanceExtensions;
 
 public:
 
@@ -104,16 +120,16 @@ public:
 	void scheduleSwapchainResize();
 
 	// required Vulkan Instance extensions
-	static std::vector<const char*>& requiredExtensions();
+	static const std::vector<const char*>& requiredExtensions();
 	static void appendRequiredExtensions(std::vector<const char*>& v);
 	static uint32_t requiredExtensionCount();
 	static const char* const* requiredExtensionNames();
 
 	// Wayland prefers the use of mailbox present mode
 #if defined(USE_PLATFORM_WAYLAND)
-	static constexpr const inline bool mailboxPresentModePreferred = true;
+	static inline constexpr const bool mailboxPresentModePreferred = true;
 #else
-	static constexpr const inline bool mailboxPresentModePreferred = false;
+	static inline constexpr const bool mailboxPresentModePreferred = false;
 #endif
 
 };
@@ -131,7 +147,7 @@ inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending 
 inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; m_forceFrame = true; }
 #endif
 #if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_WAYLAND)
-inline std::vector<const char*>& VulkanWindow::requiredExtensions()  { return s_requiredInstanceExtensions; }
+inline const std::vector<const char*>& VulkanWindow::requiredExtensions()  { return s_requiredInstanceExtensions; }
 inline void VulkanWindow::appendRequiredExtensions(std::vector<const char*>& v)  { v.emplace_back(s_requiredInstanceExtensions[0]); v.emplace_back(s_requiredInstanceExtensions[1]); }
 inline uint32_t VulkanWindow::requiredExtensionCount()  { return 2; }
 inline const char* const* VulkanWindow::requiredExtensionNames()  { return s_requiredInstanceExtensions.data(); }
