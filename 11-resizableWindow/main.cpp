@@ -3,6 +3,9 @@
 #include <chrono>
 #include <iomanip>
 #include <iostream>
+#if defined(USE_PLATFORM_QT)
+# include <QGuiApplication>
+#endif
 #include "VulkanWindow.h"
 
 using namespace std;
@@ -10,6 +13,10 @@ using namespace std;
 
 // constants
 constexpr const char* appName = "11-resizableWindow";
+
+#if defined(USE_PLATFORM_QT)
+static unique_ptr<QGuiApplication> app;
+#endif
 
 // Vulkan instance
 // (must be destructed as the last one, at least on Linux, it must be destroyed after display connection)
@@ -63,6 +70,11 @@ int main(int argc, char** argv)
 	// (vulkan.hpp fuctions throw if they fail)
 	try {
 
+		// global objects required on some platforms
+#if defined(USE_PLATFORM_QT)
+		app = make_unique<QGuiApplication>(argc, argv);
+#endif
+
 		// process command-line arguments
 		for(int i=1; i<argc; i++)
 			if(strcmp(argv[i], "--on-demand") == 0)
@@ -84,6 +96,7 @@ int main(int argc, char** argv)
 			}
 
 		// Vulkan instance
+#if 0
 		instance =
 			vk::createInstanceUnique(
 				vk::InstanceCreateInfo{
@@ -678,6 +691,8 @@ int main(int argc, char** argv)
 					window.scheduleNextFrame();
 
 			});
+#endif
+		app.reset();
 
 	// catch exceptions
 	} catch(vk::Error &e) {

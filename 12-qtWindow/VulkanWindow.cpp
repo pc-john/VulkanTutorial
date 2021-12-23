@@ -24,7 +24,16 @@ using namespace std;
 #if defined(USE_PLATFORM_WIN32)
 static const _TCHAR* windowClassName = _T("VulkanWindow");
 static HINSTANCE hInstance;
-static uint32_t numVulkanWindows = 0;
+static uint32_t hwndCounter = 0;
+#endif
+
+#if defined(USE_PLATFORM_QT)
+class QtVulkanWindow : public QWindow {
+public:
+	VulkanWindow* m_vulkanWindow;
+	QtVulkanWindow(QWindow* parent, VulkanWindow* vulkanWindow) : QWindow(parent), m_vulkanWindow(vulkanWindow)  {}
+	void exposeEvent(QExposeEvent* event) override;
+};
 #endif
 
 // string utf8 to wstring conversion
@@ -50,7 +59,7 @@ static wstring utf8toWString(const char* s)
 
 
 
-VulkanWindow::~VulkanWindow()
+void VulkanWindow::destroy()
 {
 #if defined(USE_PLATFORM_WIN32)
 
@@ -58,53 +67,84 @@ VulkanWindow::~VulkanWindow()
 	// (do not throw in destructor, so ignore the errors in release builds
 	// and assert in debug builds)
 # ifdef NDEBUG
-	if(hwnd)
-		DestroyWindow(hwnd);
-	if(--numVulkanWindows == 0)
-		UnregisterClass(windowClassName, hInstance);
+	if(m_hwnd) {
+		DestroyWindow(m_hwnd);
+		m_hwnd = nullptr;
+		if(--hwndCounter == 0)
+			UnregisterClass(windowClassName, hInstance);
+	}
 # else
-	if(m_hwnd)
+	if(m_hwnd) {
 		if(!DestroyWindow(m_hwnd))
 			assert(0 && "DestroyWindow(): The function failed.");
-	if(--numVulkanWindows == 0)
-		if(!UnregisterClass(windowClassName, hInstance))
-			assert(0 && "UnregisterClass(): The function failed.");
+		m_hwnd = nullptr;
+		if(--hwndCounter == 0)
+			if(!UnregisterClass(windowClassName, hInstance))
+				assert(0 && "UnregisterClass(): The function failed.");
+	}
 # endif
 
 #elif defined(USE_PLATFORM_XLIB)
 
 	// release resources
-	if(m_window)  XDestroyWindow(m_display, m_window);
-	if(m_display)  XCloseDisplay(m_display);
+	if(m_window) {
+		XDestroyWindow(m_display, m_window);
+		m_window = 0;
+	}
+	if(m_display) {
+		XCloseDisplay(m_display);
+		m_display = nullptr;
+	}
 
 #elif defined(USE_PLATFORM_WAYLAND)
 
 	// release resources
-	if(m_scheduledFrameCallback)
+	if(m_scheduledFrameCallback) {
 		wl_callback_destroy(m_scheduledFrameCallback);
-	if(m_decoration)
+		m_scheduledFrameCallback = nullptr;
+	}
+	if(m_decoration) {
 		zxdg_toplevel_decoration_v1_destroy(m_decoration);
-	if(m_xdgTopLevel)
+		m_decoration = nullptr;
+	}
+	if(m_xdgTopLevel) {
 		xdg_toplevel_destroy(m_xdgTopLevel);
-	if(m_xdgSurface)
+		m_xdgTopLevel = nullptr;
+	}
+	if(m_xdgSurface) {
 		xdg_surface_destroy(m_xdgSurface);
-	if(m_wlSurface)
+		m_xdgSurface = nullptr;
+	}
+	if(m_wlSurface) {
 		wl_surface_destroy(m_wlSurface);
-	if(m_xdgWmBase)
+		m_wlSurface = nullptr;
+	}
+	if(m_xdgWmBase) {
 		xdg_wm_base_destroy(m_xdgWmBase);
-	if(m_display)
+		m_xdgWmBase = nullptr;
+	}
+	if(m_display) {
 		wl_display_disconnect(m_display);
+		m_display = nullptr;
+	}
 
 #elif defined(USE_PLATFORM_QT)
 
-	delete m_window;
+	if(m_window) {
+		delete m_window;
+		m_window = nullptr;
+	}
 
 #elif defined(USE_PLATFORM_SDL)
 
-	if(m_window)
+	if(m_window) {
 		SDL_DestroyWindow(m_window);
-	if(m_sdlInitialized)
+		m_window = nullptr;
+	}
+	if(m_sdlInitialized) {
 		SDL_QuitSubSystem(SDL_INIT_VIDEO);
+		m_sdlInitilized = false;
+	}
 
 #endif
 }
@@ -112,6 +152,10 @@ VulkanWindow::~VulkanWindow()
 
 vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title)
 {
+	// destroy any previous window data
+	// if init was called multiple times, for example
+	destroy();
+
 #if defined(USE_PLATFORM_WIN32)
 
 	// window's message handling procedure
@@ -160,7 +204,7 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 	};
 
 	// register window class with the first window
-	if(++numVulkanWindows == 1)
+	if(hwndCounter == 0)
 	{
 		hInstance = GetModuleHandle(NULL);
 
@@ -194,8 +238,13 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 		CW_USEDEFAULT, CW_USEDEFAULT,  // x,y
 		surfaceExtent.width, surfaceExtent.height,  // width, height
 		NULL, NULL, hInstance, NULL);  // hWndParent, hMenu, hInstance, lpParam
-	if(m_hwnd == NULL)
+	if(m_hwnd == NULL) {
+		if(hwndCounter == 0)
+			if(!UnregisterClass(windowClassName, hInstance))
+				assert(0 && "UnregisterClass(): The function failed.");
 		throw runtime_error("CreateWindowEx(): The function failed.");
+	}
+	hwndCounter++;
 
 	// store this pointer with the window data
 	SetWindowLongPtr(m_hwnd, 0, (LONG_PTR)this);
@@ -379,7 +428,9 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 
 #elif defined(USE_PLATFORM_QT)
 
-	m_window = new QWindow;
+	m_window = new QtVulkanWindow(nullptr, this);
+	//m_window->setSurfaceType(QSurface::VulkanSurface);
+	m_window->show();
 
 # if _WIN32
 
@@ -748,14 +799,60 @@ uint32_t VulkanWindow::requiredExtensionCount()  { return requiredExtensions().s
 const char* const* VulkanWindow::requiredExtensionNames()  { return requiredExtensions().data(); }
 
 
-void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface, FrameCallback frameCallback)
+void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface,
+                            const function<FrameCallback>& frameCallback)
 {
-	cout<<"main"<<endl;
+	// channel the arguments into onFrame()
+	m_physicalDevice = physicalDevice;
+	m_device = device;
+	m_surface = surface;
+	m_frameCallback = &frameCallback;
+
+	QGuiApplication::exec();
 }
 
-void VulkanWindow::scheduleSwapchainResize()  {}
+void VulkanWindow::doFrame()
+{
+	if(m_swapchainResizePending) {
+
+		// make sure that we finished all the rendering
+		// (this is necessary for swapchain re-creation)
+		m_device.waitIdle();
+
+		// get surface capabilities
+		vk::SurfaceCapabilitiesKHR surfaceCapabilities(m_physicalDevice.getSurfaceCapabilitiesKHR(m_surface));
+
+		// do not allow swapchain creation and rendering when currentExtent is 0,0
+		if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0))
+			return;
+
+		// recreate swapchain
+		m_swapchainResizePending = false;
+		QSize s = m_window->size();
+		m_surfaceExtent = vk::Extent2D(s.width(), s.height());
+		m_recreateSwapchainCallback(surfaceCapabilities, m_surfaceExtent);
+	}
+
+	// render scene
+	cout<<"expose"<<m_surfaceExtent.width<<"x"<<m_surfaceExtent.height<<endl;
+	(*m_frameCallback)();
+}
+
+void QtVulkanWindow::exposeEvent(QExposeEvent* event)
+{
+	if(isExposed())
+		m_vulkanWindow->doFrame();
+}
+
+void VulkanWindow::scheduleSwapchainResize()
+{
+	m_swapchainResizePending = true;
+	m_window->requestUpdate();
+}
+
 void VulkanWindow::scheduleNextFrame()
 {
+	m_window->requestUpdate();
 }
 
 #elif defined(USE_PLATFORM_SDL)
@@ -866,17 +963,9 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 				device.waitIdle();
 
 				// get surface capabilities
-				// On Xlib, currentExtent, minImageExtent and maxImageExtent are all equal.
-				// It means we can create a new swapchain only with imageExtent being equal
-				// to the window size.
-				// The currentExtent of 0,0 means the window is minimized with the result
-				// we cannot create swapchain for such window. If the currentExtent is not 0,0,
-				// both width and height must be greater than 0.
 				vk::SurfaceCapabilitiesKHR surfaceCapabilities(physicalDevice.getSurfaceCapabilitiesKHR(surface));
 
 				// do not allow swapchain creation and rendering when currentExtent is 0,0
-				// (this never happened on my KDE 5.80.0 (Kubuntu 21.04) and KDE 5.44.0 (Kubuntu 18.04.5);
-				// window minimalizing just unmaps the window)
 				if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0))
 					continue;
 
