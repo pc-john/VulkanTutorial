@@ -8,7 +8,9 @@
 #elif defined(USE_PLATFORM_WAYLAND)
 #elif defined(USE_PLATFORM_QT)
 # include <QGuiApplication>
-# include <qpa/qplatformnativeinterface.h>  // this requires Qt5 private header development files (package on Ubuntu: qtbase5-private-dev), alternative approach would be to use QX11Info class for xcb but I do not see any alternative for Wayland
+# include <QPaintEvent>
+# include <QVulkanInstance>
+# include <QWindow>
 #elif defined(USE_PLATFORM_SDL)
 # include "SDL.h"
 # include "SDL_vulkan.h"
@@ -21,19 +23,29 @@
 using namespace std;
 
 // global variables
+static uint32_t numShownWindows = 0;
 #if defined(USE_PLATFORM_WIN32)
-static const _TCHAR* windowClassName = _T("VulkanWindow");
-static HINSTANCE hInstance;
 static uint32_t hwndCounter = 0;
+static exception_ptr wndProcException;
+static HINSTANCE hInstance;
+static const _TCHAR* windowClassName = _T("VulkanWindow");
 #endif
 
 #if defined(USE_PLATFORM_QT)
+
+// Qt global variables
+static QVulkanInstance* qtVulkanInstance = nullptr;
+static size_t numWindows = 0;
+
+// QtVulkanWindow is customized QWindow class for Vulkan rendering
 class QtVulkanWindow : public QWindow {
 public:
-	VulkanWindow* m_vulkanWindow;
-	QtVulkanWindow(QWindow* parent, VulkanWindow* vulkanWindow) : QWindow(parent), m_vulkanWindow(vulkanWindow)  {}
-	void exposeEvent(QExposeEvent* event) override;
+	VulkanWindow* vulkanWindow;
+	int timer = 0;
+	QtVulkanWindow(QWindow* parent, VulkanWindow* vulkanWindow_) : QWindow(parent), vulkanWindow(vulkanWindow_)  {}
+	bool event(QEvent* event) override;
 };
+
 #endif
 
 // string utf8 to wstring conversion
@@ -131,8 +143,16 @@ void VulkanWindow::destroy()
 #elif defined(USE_PLATFORM_QT)
 
 	if(m_window) {
+
+		// delete QtVulkanWindow
 		delete m_window;
 		m_window = nullptr;
+
+		// finalize QVulkanInstance on the last window destruction
+		if(--numWindows == 0) {
+			delete qtVulkanInstance;
+			qtVulkanInstance = nullptr;
+		}
 	}
 
 #elif defined(USE_PLATFORM_SDL)
@@ -153,7 +173,7 @@ void VulkanWindow::destroy()
 vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title)
 {
 	// destroy any previous window data
-	// if init was called multiple times, for example
+	// (this makes calling init() multiple times safe operation)
 	destroy();
 
 #if defined(USE_PLATFORM_WIN32)
@@ -163,15 +183,16 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 		switch(msg)
 		{
 			case WM_ERASEBKGND:
-				return 1;
+				return 1;  // returning non-zero means that background should be considered erased
 			case WM_PAINT: {
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				try {
 					if(!ValidateRect(hwnd, NULL))
 						throw runtime_error("ValidateRect(): The function failed.");
-					w->onWmPaint();
+					if(w->m_frameCallback)
+						w->onWmPaint();
 				} catch(...) {
-					w->m_wndProcException = std::current_exception();
+					wndProcException = std::current_exception();
 				}
 				return 0;
 			}
@@ -184,20 +205,19 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 					if(!InvalidateRect(hwnd, NULL, FALSE))
 						throw runtime_error("InvalidateRect(): The function failed.");
 				} catch(...) {
-					w->m_wndProcException = std::current_exception();
+					wndProcException = std::current_exception();
 				}
 				return DefWindowProc(hwnd, msg, wParam, lParam);
 			}
 			case WM_CLOSE: {
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
-				if(!DestroyWindow(hwnd))
-					w->m_wndProcException = make_exception_ptr(runtime_error("DestroyWindow(): The function failed."));
 				w->m_hwnd = nullptr;
+				if(!DestroyWindow(hwnd))
+					wndProcException = make_exception_ptr(runtime_error("DestroyWindow(): The function failed."));
+				if(--numShownWindows == 0)
+					PostQuitMessage(0);
 				return 0;
 			}
-			case WM_DESTROY:
-				PostQuitMessage(0);
-				return 0;
 			default:
 				return DefWindowProc(hwnd, msg, wParam, lParam);
 		}
@@ -248,6 +268,10 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 
 	// store this pointer with the window data
 	SetWindowLongPtr(m_hwnd, 0, (LONG_PTR)this);
+
+	// show window
+	ShowWindow(m_hwnd, SW_SHOWDEFAULT);
+	numShownWindows++;
 
 	// create surface
 	return
@@ -429,45 +453,26 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 #elif defined(USE_PLATFORM_QT)
 
 	m_window = new QtVulkanWindow(nullptr, this);
-	//m_window->setSurfaceType(QSurface::VulkanSurface);
+
+	// initialization on the first window
+	if(++numWindows == 1)
+	{
+		// create QVulkanInstance
+		qtVulkanInstance = new QVulkanInstance;
+		qtVulkanInstance->setVkInstance(instance);
+		qtVulkanInstance->create();
+	}
+
+	// setup window
+	m_window->setSurfaceType(QSurface::VulkanSurface);
+	m_window->setVulkanInstance(qtVulkanInstance);
+	m_window->resize(surfaceExtent.width, surfaceExtent.height);
 	m_window->show();
 
-# if _WIN32
-
-	return
-		instance.createWin32SurfaceKHR(
-			vk::Win32SurfaceCreateInfoKHR(
-				vk::Win32SurfaceCreateFlagsKHR(),  // flags
-				GetModuleHandle(NULL),  // hinstance
-				m_window.WId())  // hwnd
-		);
-
-# else
-
-	QString platform = QGuiApplication::platformName();
-	QPlatformNativeInterface* ni = QGuiApplication::platformNativeInterface();
-	if(platform == "wayland")
-		return
-			instance.createWaylandSurfaceKHR(
-				vk::WaylandSurfaceCreateInfoKHR(
-					vk::WaylandSurfaceCreateFlagsKHR(),  // flags
-					reinterpret_cast<wl_display*>(ni->nativeResourceForWindow("display", NULL)),  // display
-					reinterpret_cast<wl_surface*>(ni->nativeResourceForWindow("surface", m_window))  // surface
-				)
-			);
-	else if(platform == "xcb")
-		return
-			instance.createXcbSurfaceKHR(
-				vk::XcbSurfaceCreateInfoKHR(
-					vk::XcbSurfaceCreateFlagsKHR(),  // flags
-					reinterpret_cast<xcb_connection_t*>(ni->nativeResourceForIntegration("connection")),  // connection
-					m_window->winId()  // window
-				)
-			);
-	else
-		throw runtime_error("VulkanWindow::requiredExtensions(): Unknown Qt platform.");
-
-# endif
+	VkSurfaceKHR s = QVulkanInstance::surfaceForWindow(m_window);
+	if(!s)
+		throw runtime_error("VulkanWindow::init(): Failed to create surface.");
+	return s;
 
 #elif defined(USE_PLATFORM_SDL)
 
@@ -502,28 +507,19 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 
 #if defined(USE_PLATFORM_WIN32)
 
-void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface, FrameCallback frameCallback)
+void VulkanWindow::mainLoop()
 {
-	// channel the arguments into onWmPaint()
-	m_physicalDevice = physicalDevice;
-	m_device = device;
-	m_surface = surface;
-	m_frameCallback = frameCallback;
-
-	// show window
-	ShowWindow(m_hwnd, SW_SHOWDEFAULT);
-
 	// run Win32 event loop
 	MSG msg;
 	BOOL r;
-	m_wndProcException = nullptr;
+	wndProcException = nullptr;
 	while((r = GetMessage(&msg, NULL, 0, 0)) != 0) {
 		if(r == -1)
 			throw runtime_error("GetMessage(): The function failed.");
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
-		if(m_wndProcException)  // handle exceptions raised in window procedure
-			rethrow_exception(m_wndProcException);
+		if(wndProcException)  // handle exceptions raised in window procedure
+			rethrow_exception(wndProcException);
 	}
 }
 
@@ -561,7 +557,8 @@ void VulkanWindow::onWmPaint()
 
 void VulkanWindow::scheduleNextFrame()
 {
-	InvalidateRect(m_hwnd, NULL, FALSE);
+	if(!InvalidateRect(m_hwnd, NULL, FALSE))
+		throw runtime_error("InvalidateRect(): The function failed.");
 }
 
 
@@ -795,19 +792,12 @@ const vector<const char*>& VulkanWindow::requiredExtensions()
 }
 
 void VulkanWindow::appendRequiredExtensions(vector<const char*>& v)  { auto& l=requiredExtensions(); v.reserve(v.size()+l.size()); for(auto s : l) v.push_back(s); }
-uint32_t VulkanWindow::requiredExtensionCount()  { return requiredExtensions().size(); }
+uint32_t VulkanWindow::requiredExtensionCount()  { return uint32_t(requiredExtensions().size()); }
 const char* const* VulkanWindow::requiredExtensionNames()  { return requiredExtensions().data(); }
 
 
-void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface,
-                            const function<FrameCallback>& frameCallback)
+void VulkanWindow::mainLoop()
 {
-	// channel the arguments into onFrame()
-	m_physicalDevice = physicalDevice;
-	m_device = device;
-	m_surface = surface;
-	m_frameCallback = &frameCallback;
-
 	QGuiApplication::exec();
 }
 
@@ -828,31 +818,74 @@ void VulkanWindow::doFrame()
 
 		// recreate swapchain
 		m_swapchainResizePending = false;
-		QSize s = m_window->size();
-		m_surfaceExtent = vk::Extent2D(s.width(), s.height());
+		m_surfaceExtent = surfaceCapabilities.currentExtent;
 		m_recreateSwapchainCallback(surfaceCapabilities, m_surfaceExtent);
 	}
 
 	// render scene
 	cout<<"expose"<<m_surfaceExtent.width<<"x"<<m_surfaceExtent.height<<endl;
-	(*m_frameCallback)();
+	m_frameCallback();
+	qtVulkanInstance->presentQueued(m_window);
 }
 
-void QtVulkanWindow::exposeEvent(QExposeEvent* event)
+bool QtVulkanWindow::event(QEvent* event)
 {
-	if(isExposed())
-		m_vulkanWindow->doFrame();
+	// handle verious events
+	switch(event->type()) {
+
+	case QEvent::Type::Timer:
+		killTimer(timer);
+		timer = 0;
+		if(isExposed() && vulkanWindow->m_frameCallback)
+			vulkanWindow->doFrame();
+		return true;
+
+	case QEvent::Type::UpdateRequest:
+		if(isExposed() && vulkanWindow->m_frameCallback)
+			vulkanWindow->doFrame();
+		return true;
+
+	case QEvent::Type::Paint:
+		if(vulkanWindow->m_frameCallback)
+			vulkanWindow->doFrame();
+		return true;
+
+	case QEvent::Type::Show:
+		numShownWindows++;
+		return QWindow::event(event);
+
+	case QEvent::Type::Hide: {
+		bool r = QWindow::event(event);
+		if(--numShownWindows == 0)
+			QGuiApplication::quit();
+		return r;
+	}
+
+	case QEvent::Type::Close: {
+		if(isVisible())
+			hide();
+		return true;
+	}
+
+	default:
+		return QWindow::event(event);
+	}
 }
 
 void VulkanWindow::scheduleSwapchainResize()
 {
 	m_swapchainResizePending = true;
-	m_window->requestUpdate();
+	if(m_window->isVisible())
+		scheduleNextFrame();
 }
 
 void VulkanWindow::scheduleNextFrame()
 {
-	m_window->requestUpdate();
+	if(reinterpret_cast<QtVulkanWindow*>(m_window)->timer == 0) {
+		reinterpret_cast<QtVulkanWindow*>(m_window)->timer = m_window->startTimer(0);
+		if(reinterpret_cast<QtVulkanWindow*>(m_window)->timer == 0)
+			throw runtime_error("VulkanWindow::scheduleNextFrame(): Cannot allocate timer.");
+	}
 }
 
 #elif defined(USE_PLATFORM_SDL)

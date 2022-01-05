@@ -1,7 +1,6 @@
 #pragma once
 
 #if defined(USE_PLATFORM_WIN32)
-  #include <exception>
   typedef struct HWND__* HWND;
 #elif defined(USE_PLATFORM_XLIB)
   typedef struct _XDisplay Display;
@@ -16,7 +15,7 @@
   #include "xdg-shell-client-protocol.h"
   #include "xdg-decoration-client-protocol.h"
 #elif defined(USE_PLATFORM_QT)
-#include <QWindow>
+class QWindow;
 #elif defined(USE_PLATFORM_SDL)
   struct SDL_Window;
 #endif
@@ -36,11 +35,6 @@ protected:
 #if defined(USE_PLATFORM_WIN32)
 
 	HWND m_hwnd = nullptr;
-	std::exception_ptr m_wndProcException;
-	vk::PhysicalDevice m_physicalDevice;
-	vk::Device m_device;
-	vk::SurfaceKHR m_surface;
-	std::function<FrameCallback>* m_frameCallback;
 
 	void onWmPaint();
 	static inline const std::vector<const char*> s_requiredInstanceExtensions =
@@ -84,11 +78,7 @@ protected:
 	xdg_toplevel_listener m_xdgToplevelListener;
 	wl_callback_listener m_frameListener;
 
-	// mainLoop parameters
-	vk::PhysicalDevice m_physicalDevice;
-	vk::Device m_device;
-	vk::SurfaceKHR m_surface;
-	std::function<FrameCallback>* m_frameCallback;
+	// mainLoop
 	void doFrame();
 
 	static inline const std::vector<const char*> s_requiredInstanceExtensions =
@@ -97,10 +87,6 @@ protected:
 #elif defined(USE_PLATFORM_QT)
 
 	QWindow* m_window = nullptr;
-	vk::PhysicalDevice m_physicalDevice;
-	vk::Device m_device;
-	vk::SurfaceKHR m_surface;
-	const std::function<FrameCallback>* m_frameCallback;
 	void doFrame();
 	friend class QtVulkanWindow;
 
@@ -112,6 +98,11 @@ protected:
 	bool m_framePending = true;
 
 #endif
+
+	std::function<FrameCallback> m_frameCallback;
+	vk::PhysicalDevice m_physicalDevice;
+	vk::Device m_device;
+	vk::SurfaceKHR m_surface;
 
 	vk::Extent2D m_surfaceExtent = vk::Extent2D(0,0);
 	bool m_swapchainResizePending = true;
@@ -127,8 +118,11 @@ public:
 	vk::UniqueSurfaceKHR initUnique(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title = "Vulkan window");
 	void setRecreateSwapchainCallback(std::function<RecreateSwapchainCallback>&& cb);
 	void setRecreateSwapchainCallback(const std::function<RecreateSwapchainCallback>& cb);
-	void mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface,
-	              const std::function<FrameCallback>& cb);
+	void setFrameCallback(std::function<FrameCallback>&& cb,
+	                      vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface);
+	void setFrameCallback(const std::function<FrameCallback>& cb,
+	                      vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface);
+	static void mainLoop();
 
 	vk::Extent2D surfaceExtent() const;
 
@@ -156,6 +150,8 @@ inline VulkanWindow::~VulkanWindow()  { destroy(); }
 inline vk::UniqueSurfaceKHR VulkanWindow::initUnique(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title)  { return vk::UniqueSurfaceKHR(init(instance, surfaceExtent, title), {instance}); }
 inline void VulkanWindow::setRecreateSwapchainCallback(std::function<RecreateSwapchainCallback>&& cb)  { m_recreateSwapchainCallback = move(cb); }
 inline void VulkanWindow::setRecreateSwapchainCallback(const std::function<RecreateSwapchainCallback>& cb)  { m_recreateSwapchainCallback = cb; }
+inline void VulkanWindow::setFrameCallback(std::function<FrameCallback>&& cb, vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface)  { m_frameCallback = std::move(cb); m_physicalDevice = physicalDevice; m_device = device; m_surface = surface; }
+inline void VulkanWindow::setFrameCallback(const std::function<FrameCallback>& cb, vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface)  { m_frameCallback = cb; m_physicalDevice = physicalDevice; m_device = device; m_surface = surface; }
 inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return m_surfaceExtent; }
 #if defined(USE_PLATFORM_WIN32)
 inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; scheduleNextFrame(); }

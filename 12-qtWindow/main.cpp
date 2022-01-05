@@ -122,8 +122,10 @@ App::~App()
 		device.destroy(renderPass);
 		device.destroy();
 	}
+#if !defined(USE_PLATFORM_QT) // In Qt, QWindow owns the surface and it will destroy the surface.
 	if(instance)
 		instance.destroy(surface);
+#endif
 	window.destroy();
 	instance.destroy();
 }
@@ -733,6 +735,8 @@ int main(int argc, char** argv)
 
 		App app(argc, argv);
 		app.init();
+		VulkanWindow w;
+		vk::SurfaceKHR s = w.init(app.instance, {1024, 768}, appName);
 		app.window.setRecreateSwapchainCallback(
 			bind(
 				&App::recreateSwapchain,
@@ -741,12 +745,13 @@ int main(int argc, char** argv)
 				placeholders::_2
 			)
 		);
-		app.window.mainLoop(
+		app.window.setFrameCallback(
+			bind(&App::frame, &app),
 			app.physicalDevice,
 			app.device,
-			app.surface,
-			bind(&App::frame, &app)
+			app.surface
 		);
+		VulkanWindow::mainLoop();
 
 	// catch exceptions
 	} catch(vk::Error &e) {
