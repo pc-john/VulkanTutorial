@@ -8,7 +8,6 @@
 #elif defined(USE_PLATFORM_WAYLAND)
 #elif defined(USE_PLATFORM_QT)
 # include <QGuiApplication>
-# include <QPaintEvent>
 # include <QVulkanInstance>
 # include <QWindow>
 #elif defined(USE_PLATFORM_SDL)

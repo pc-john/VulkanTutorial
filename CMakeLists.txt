@@ -13,7 +13,7 @@ set(PACKAGES
     08-helloTriangle
     #09-helloWindow
     #10-swapchain
-    11-resizableWindow
+    #11-resizableWindow
     12-qtWindow
    )
 
