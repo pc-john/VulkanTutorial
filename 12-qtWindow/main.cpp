@@ -400,18 +400,20 @@ void App::init()
 void App::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent)
 {
 	// clear resources
-	for(auto f : framebuffers)  device.destroy(f);
 	for(auto v : swapchainImageViews)  device.destroy(v);
-	framebuffers.clear();
 	swapchainImageViews.clear();
+	for(auto f : framebuffers)  device.destroy(f);
+	framebuffers.clear();
+	device.destroy(pipeline);
+	pipeline = nullptr;
 
 	// create new swapchain
 	constexpr uint32_t requestedImageCount = 2;
 	cout<<"Recreating swapchain "<<newSurfaceExtent.width<<"x"<<newSurfaceExtent.height<<", surfaceCapabilities: "
 			<<surfaceCapabilities.currentExtent.width<<"x"<<surfaceCapabilities.currentExtent.height
 			<<" and min: "<<surfaceCapabilities.minImageCount<<" max: "<<surfaceCapabilities.maxImageCount<<endl;
-	swapchain =
-		device.createSwapchainKHR(
+	vk::UniqueSwapchainKHR newSwapchain =
+		device.createSwapchainKHRUnique(
 			vk::SwapchainCreateInfoKHR(
 				vk::SwapchainCreateFlagsKHR(),  // flags
 				surface,                        // surface
@@ -453,6 +455,8 @@ void App::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceCapabilitie
 				swapchain  // oldSwapchain
 			)
 		);
+	device.destroy(swapchain);
+	swapchain = newSwapchain.release();
 
 	// swapchain images and image views
 	vector<vk::Image> swapchainImages = device.getSwapchainImagesKHR(swapchain);

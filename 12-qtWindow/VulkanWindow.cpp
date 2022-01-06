@@ -840,15 +840,20 @@ bool QtVulkanWindow::event(QEvent* event)
 			vulkanWindow->doFrame();
 		return true;
 
+#if (QT_VERSION < QT_VERSION_CHECK(6, 0, 0))  // in Qt5 we use Expose event for updating the window
+	case QEvent::Type::Expose:
+#endif
 	case QEvent::Type::UpdateRequest:
 		if(isExposed() && vulkanWindow->m_frameCallback)
 			vulkanWindow->doFrame();
 		return true;
 
+#if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))  // Qt6 supports Paint event for updating the window
 	case QEvent::Type::Paint:
 		if(vulkanWindow->m_frameCallback)
 			vulkanWindow->doFrame();
 		return true;
+#endif
 
 	case QEvent::Type::Show:
 		numShownWindows++;
