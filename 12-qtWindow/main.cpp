@@ -739,8 +739,6 @@ int main(int argc, char** argv)
 
 		App app(argc, argv);
 		app.init();
-		VulkanWindow w;
-		vk::SurfaceKHR s = w.init(app.instance, {1024, 768}, appName);
 		app.window.setRecreateSwapchainCallback(
 			bind(
 				&App::recreateSwapchain,
@@ -755,7 +753,7 @@ int main(int argc, char** argv)
 			app.device,
 			app.surface
 		);
-		VulkanWindow::mainLoop();
+		app.window.mainLoop();
 
 	// catch exceptions
 	} catch(vk::Error &e) {

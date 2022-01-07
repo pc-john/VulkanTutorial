@@ -2,6 +2,7 @@
 
 #if defined(USE_PLATFORM_WIN32)
   typedef struct HWND__* HWND;
+  typedef struct HINSTANCE__* HINSTANCE;
 #elif defined(USE_PLATFORM_XLIB)
   typedef struct _XDisplay Display;
   #if 1 //sizeof(unsigned long) == 8, FIXME: test on some 32-bit system
@@ -15,7 +16,8 @@
   #include "xdg-shell-client-protocol.h"
   #include "xdg-decoration-client-protocol.h"
 #elif defined(USE_PLATFORM_QT)
-class QWindow;
+  class QWindow;
+  class QVulkanInstance;
 #elif defined(USE_PLATFORM_SDL)
   struct SDL_Window;
 #endif
@@ -35,6 +37,8 @@ protected:
 #if defined(USE_PLATFORM_WIN32)
 
 	HWND m_hwnd = nullptr;
+	HINSTANCE hInstance;
+	std::exception_ptr wndProcException;
 
 	void onWmPaint();
 	static inline const std::vector<const char*> s_requiredInstanceExtensions =
@@ -87,6 +91,7 @@ protected:
 #elif defined(USE_PLATFORM_QT)
 
 	QWindow* m_window = nullptr;
+	QVulkanInstance* m_vulkanInstance = nullptr;
 	void doFrame();
 	friend class QtVulkanWindow;
 
@@ -122,7 +127,7 @@ public:
 	                      vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface);
 	void setFrameCallback(const std::function<FrameCallback>& cb,
 	                      vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface);
-	static void mainLoop();
+	void mainLoop();
 
 	vk::Extent2D surfaceExtent() const;
 

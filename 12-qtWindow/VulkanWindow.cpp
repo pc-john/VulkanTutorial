@@ -22,21 +22,12 @@
 using namespace std;
 
 // global variables
-static uint32_t numShownWindows = 0;
 #if defined(USE_PLATFORM_WIN32)
-static uint32_t hwndCounter = 0;
-static exception_ptr wndProcException;
-static HINSTANCE hInstance;
 static const _TCHAR* windowClassName = _T("VulkanWindow");
 #endif
 
-#if defined(USE_PLATFORM_QT)
-
-// Qt global variables
-static QVulkanInstance* qtVulkanInstance = nullptr;
-static size_t numWindows = 0;
-
 // QtVulkanWindow is customized QWindow class for Vulkan rendering
+#if defined(USE_PLATFORM_QT)
 class QtVulkanWindow : public QWindow {
 public:
 	VulkanWindow* vulkanWindow;
@@ -44,7 +35,6 @@ public:
 	QtVulkanWindow(QWindow* parent, VulkanWindow* vulkanWindow_) : QWindow(parent), vulkanWindow(vulkanWindow_)  {}
 	bool event(QEvent* event) override;
 };
-
 #endif
 
 // string utf8 to wstring conversion
@@ -81,17 +71,15 @@ void VulkanWindow::destroy()
 	if(m_hwnd) {
 		DestroyWindow(m_hwnd);
 		m_hwnd = nullptr;
-		if(--hwndCounter == 0)
-			UnregisterClass(windowClassName, hInstance);
+		UnregisterClass(windowClassName, hInstance);
 	}
 # else
 	if(m_hwnd) {
 		if(!DestroyWindow(m_hwnd))
 			assert(0 && "DestroyWindow(): The function failed.");
 		m_hwnd = nullptr;
-		if(--hwndCounter == 0)
-			if(!UnregisterClass(windowClassName, hInstance))
-				assert(0 && "UnregisterClass(): The function failed.");
+		if(!UnregisterClass(windowClassName, hInstance))
+			assert(0 && "UnregisterClass(): The function failed.");
 	}
 # endif
 
@@ -141,17 +129,16 @@ void VulkanWindow::destroy()
 
 #elif defined(USE_PLATFORM_QT)
 
+	// delete QtVulkanWindow
 	if(m_window) {
-
-		// delete QtVulkanWindow
 		delete m_window;
 		m_window = nullptr;
+	}
 
-		// finalize QVulkanInstance on the last window destruction
-		if(--numWindows == 0) {
-			delete qtVulkanInstance;
-			qtVulkanInstance = nullptr;
-		}
+	// delete QVulkanInstance
+	if(m_vulkanInstance) {
+		delete m_vulkanInstance;
+		m_vulkanInstance = nullptr;
 	}
 
 #elif defined(USE_PLATFORM_SDL)
@@ -191,7 +178,7 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 					if(w->m_frameCallback)
 						w->onWmPaint();
 				} catch(...) {
-					wndProcException = std::current_exception();
+					w->wndProcException = std::current_exception();
 				}
 				return 0;
 			}
@@ -204,7 +191,7 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 					if(!InvalidateRect(hwnd, NULL, FALSE))
 						throw runtime_error("InvalidateRect(): The function failed.");
 				} catch(...) {
-					wndProcException = std::current_exception();
+					w->wndProcException = std::current_exception();
 				}
 				return DefWindowProc(hwnd, msg, wParam, lParam);
 			}
@@ -212,9 +199,8 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				w->m_hwnd = nullptr;
 				if(!DestroyWindow(hwnd))
-					wndProcException = make_exception_ptr(runtime_error("DestroyWindow(): The function failed."));
-				if(--numShownWindows == 0)
-					PostQuitMessage(0);
+					w->wndProcException = make_exception_ptr(runtime_error("DestroyWindow(): The function failed."));
+				PostQuitMessage(0);
 				return 0;
 			}
 			default:
@@ -223,26 +209,22 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 	};
 
 	// register window class with the first window
-	if(hwndCounter == 0)
-	{
-		hInstance = GetModuleHandle(NULL);
-
-		WNDCLASSEX wc;
-		wc.cbSize        = sizeof(WNDCLASSEX);
-		wc.style         = 0;
-		wc.lpfnWndProc   = wndProc;
-		wc.cbClsExtra    = 0;
-		wc.cbWndExtra    = sizeof(LONG_PTR);
-		wc.hInstance     = hInstance;
-		wc.hIcon         = LoadIcon(NULL, IDI_APPLICATION);
-		wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
-		wc.hbrBackground = (HBRUSH)(COLOR_WINDOW+1);
-		wc.lpszMenuName  = NULL;
-		wc.lpszClassName = windowClassName;
-		wc.hIconSm       = LoadIcon(NULL, IDI_APPLICATION);
-		if(!RegisterClassEx(&wc))
-			throw runtime_error("RegisterClassEx(): The function failed.");
-	}
+	hInstance = GetModuleHandle(NULL);
+	WNDCLASSEX wc;
+	wc.cbSize        = sizeof(WNDCLASSEX);
+	wc.style         = 0;
+	wc.lpfnWndProc   = wndProc;
+	wc.cbClsExtra    = 0;
+	wc.cbWndExtra    = sizeof(LONG_PTR);
+	wc.hInstance     = hInstance;
+	wc.hIcon         = LoadIcon(NULL, IDI_APPLICATION);
+	wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
+	wc.hbrBackground = (HBRUSH)(COLOR_WINDOW+1);
+	wc.lpszMenuName  = NULL;
+	wc.lpszClassName = windowClassName;
+	wc.hIconSm       = LoadIcon(NULL, IDI_APPLICATION);
+	if(!RegisterClassEx(&wc))
+		throw runtime_error("RegisterClassEx(): The function failed.");
 
 	// create window
 	m_hwnd = CreateWindowEx(
@@ -258,19 +240,16 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 		surfaceExtent.width, surfaceExtent.height,  // width, height
 		NULL, NULL, hInstance, NULL);  // hWndParent, hMenu, hInstance, lpParam
 	if(m_hwnd == NULL) {
-		if(hwndCounter == 0)
-			if(!UnregisterClass(windowClassName, hInstance))
-				assert(0 && "UnregisterClass(): The function failed.");
+		if(!UnregisterClass(windowClassName, hInstance))
+			assert(0 && "UnregisterClass(): The function failed.");
 		throw runtime_error("CreateWindowEx(): The function failed.");
 	}
-	hwndCounter++;
 
 	// store this pointer with the window data
 	SetWindowLongPtr(m_hwnd, 0, (LONG_PTR)this);
 
 	// show window
 	ShowWindow(m_hwnd, SW_SHOWDEFAULT);
-	numShownWindows++;
 
 	// create surface
 	return
@@ -451,23 +430,19 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 
 #elif defined(USE_PLATFORM_QT)
 
+	// init QVulkanInstance
+	m_vulkanInstance = new QVulkanInstance;
+	m_vulkanInstance->setVkInstance(instance);
+	m_vulkanInstance->create();
+
+	// setup QtVulkanWindow
 	m_window = new QtVulkanWindow(nullptr, this);
-
-	// initialization on the first window
-	if(++numWindows == 1)
-	{
-		// create QVulkanInstance
-		qtVulkanInstance = new QVulkanInstance;
-		qtVulkanInstance->setVkInstance(instance);
-		qtVulkanInstance->create();
-	}
-
-	// setup window
 	m_window->setSurfaceType(QSurface::VulkanSurface);
-	m_window->setVulkanInstance(qtVulkanInstance);
+	m_window->setVulkanInstance(m_vulkanInstance);
 	m_window->resize(surfaceExtent.width, surfaceExtent.height);
 	m_window->show();
 
+	// return Vulkan surface
 	VkSurfaceKHR s = QVulkanInstance::surfaceForWindow(m_window);
 	if(!s)
 		throw runtime_error("VulkanWindow::init(): Failed to create surface.");
@@ -698,14 +673,8 @@ void VulkanWindow::scheduleNextFrame()
 #elif defined(USE_PLATFORM_WAYLAND)
 
 
-void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface, FrameCallback frameCallback)
+void VulkanWindow::mainLoop()
 {
-	// channel the arguments into frame callback
-	m_physicalDevice = physicalDevice;
-	m_device = device;
-	m_surface = surface;
-	m_frameCallback = frameCallback;
-
 	if(wl_display_roundtrip(m_display) == -1)
 		throw runtime_error("wl_display_roundtrip() failed.");
 
@@ -823,8 +792,11 @@ void VulkanWindow::doFrame()
 
 	// render scene
 	cout<<"expose"<<m_surfaceExtent.width<<"x"<<m_surfaceExtent.height<<endl;
+#if (QT_VERSION >= QT_VERSION_CHECK(5, 15, 0))
+	m_vulkanInstance->presentAboutToBeQueued(m_window);
+#endif
 	m_frameCallback();
-	qtVulkanInstance->presentQueued(m_window);
+	m_vulkanInstance->presentQueued(m_window);
 }
 
 bool QtVulkanWindow::event(QEvent* event)
@@ -839,7 +811,7 @@ bool QtVulkanWindow::event(QEvent* event)
 			vulkanWindow->doFrame();
 		return true;
 
-#if (QT_VERSION < QT_VERSION_CHECK(6, 0, 0))  // in Qt5 we use Expose event for updating the window
+#if (QT_VERSION < QT_VERSION_CHECK(6, 0, 0))  // in Qt5, we use Expose event for updating the window
 	case QEvent::Type::Expose:
 #endif
 	case QEvent::Type::UpdateRequest:
@@ -854,14 +826,9 @@ bool QtVulkanWindow::event(QEvent* event)
 		return true;
 #endif
 
-	case QEvent::Type::Show:
-		numShownWindows++;
-		return QWindow::event(event);
-
 	case QEvent::Type::Hide: {
 		bool r = QWindow::event(event);
-		if(--numShownWindows == 0)
-			QGuiApplication::quit();
+		QGuiApplication::quit();
 		return r;
 	}
 
