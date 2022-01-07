@@ -62,6 +62,15 @@ static wstring utf8toWString(const char* s)
 
 void VulkanWindow::destroy()
 {
+	// destroy surface
+	// with the exception of Qt platform because QWindow will destroy it itself
+#if !defined(USE_PLATFORM_QT)
+	if(m_instance && m_surface) {
+		m_instance.destroy(m_surface);
+		m_surface = nullptr;
+	}
+#endif
+
 #if defined(USE_PLATFORM_WIN32)
 
 	// release resources
@@ -162,6 +171,9 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 	// (this makes calling init() multiple times safe operation)
 	destroy();
 
+	// set Vulkan instance
+	m_instance = instance;
+
 #if defined(USE_PLATFORM_WIN32)
 
 	// window's message handling procedure
@@ -252,10 +264,11 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 	ShowWindow(m_hwnd, SW_SHOWDEFAULT);
 
 	// create surface
-	return
+	m_surface =
 		instance.createWin32SurfaceKHR(
 			vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(), hInstance, m_hwnd)
 		);
+	return m_surface;
 
 #elif defined(USE_PLATFORM_XLIB)
 
@@ -289,10 +302,11 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 	XMapWindow(m_display, m_window);
 
 	// create surface
-	return
+	m_surface =
 		instance.createXlibSurfaceKHR(
 			vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(), m_display, m_window)
 		);
+	return m_surface;
 
 #elif defined(USE_PLATFORM_WAYLAND)
 
@@ -423,10 +437,11 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 	};
 
 	// create surface
-	return
+	m_surface =
 		instance.createWaylandSurfaceKHR(
 			vk::WaylandSurfaceCreateInfoKHR(vk::WaylandSurfaceCreateFlagsKHR(), m_display, m_wlSurface)
 		);
+	return m_surface;
 
 #elif defined(USE_PLATFORM_QT)
 
@@ -443,10 +458,10 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 	m_window->show();
 
 	// return Vulkan surface
-	VkSurfaceKHR s = QVulkanInstance::surfaceForWindow(m_window);
-	if(!s)
+	m_surface = QVulkanInstance::surfaceForWindow(m_window);
+	if(!m_surface)
 		throw runtime_error("VulkanWindow::init(): Failed to create surface.");
-	return s;
+	return m_surface;
 
 #elif defined(USE_PLATFORM_SDL)
 
@@ -469,11 +484,9 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 		throw runtime_error("VulkanWindow: SDL_CreateWindow() function failed.");
 
 	// create surface
-	VkSurfaceKHR s;
-	if(!SDL_Vulkan_CreateSurface(m_window, instance, &s))
+	if(!SDL_Vulkan_CreateSurface(m_window, instance, &m_surface))
 		throw runtime_error("VulkanWindow: SDL_Vulkan_CreateSurface() function failed.");
-
-	return s;
+	return m_surface;
 
 #endif
 }
@@ -539,7 +552,7 @@ void VulkanWindow::scheduleNextFrame()
 #elif defined(USE_PLATFORM_XLIB)
 
 
-void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface, FrameCallback frameCallback)
+void VulkanWindow::mainLoop()
 {
 	// run Xlib event loop
 	XEvent e;
@@ -608,7 +621,7 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 
 				// make sure that we finished all the rendering
 				// (this is necessary for swapchain re-creation)
-				device.waitIdle();
+				m_device.waitIdle();
 
 				// get surface capabilities
 				// On Xlib, currentExtent, minImageExtent and maxImageExtent are all equal.
@@ -617,7 +630,7 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 				// The currentExtent of 0,0 means the window is minimized with the result
 				// we cannot create swapchain for such window. If the currentExtent is not 0,0,
 				// both width and height must be greater than 0.
-				vk::SurfaceCapabilitiesKHR surfaceCapabilities(physicalDevice.getSurfaceCapabilitiesKHR(surface));
+				vk::SurfaceCapabilitiesKHR surfaceCapabilities(m_physicalDevice.getSurfaceCapabilitiesKHR(m_surface));
 
 				// do not allow swapchain creation and rendering when currentExtent is 0,0
 				// (this never happened on my KDE 5.80.0 (Kubuntu 21.04) and KDE 5.44.0 (Kubuntu 18.04.5);
@@ -634,7 +647,7 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 			// render scene
 			cout<<"expose"<<m_surfaceExtent.width<<"x"<<m_surfaceExtent.height<<endl;
 			m_framePending = false;
-			frameCallback();
+			m_frameCallback();
 
 		}
 	}

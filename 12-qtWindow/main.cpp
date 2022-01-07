@@ -37,20 +37,22 @@ public:
 
 
 #if defined(USE_PLATFORM_QT)
-	// QGuiApplication needs to be constructed before Vulkan Instance as we need to know QGuiApplication::platformName and Vulkan required Instance extensions
+	// QGuiApplication needs to be constructed before Vulkan Instance.
+	// The reason is that we need to call QGuiApplication::platformName and to get list of required Vulkan Instance extensions.
 	QGuiApplication qtApp;
 #endif
 
-	// Vulkan instance must be destructed as the last one. At least on Linux, it must be destroyed after the display connection
+	// Vulkan instance must be destructed as the last one of Vulkan handles.
+	// At least on Linux, it must be destroyed after the display connection.
 	vk::Instance instance;
 
-	// window needs to be placed before swapchain, at least on Wayland platform
+	// window needs to be destroyed after the swapchain
+	// This is the requirement especially of Wayland.
 	VulkanWindow window;
 
-	// Vulkan handles and objects
+	// Vulkan variables, handles and objects
 	// (they need to be placed in particular (not arbitrary) order
 	// because they are destructed from the last one to the first one)
-	vk::SurfaceKHR surface;
 	vk::PhysicalDevice physicalDevice;
 	uint32_t graphicsQueueFamily;
 	uint32_t presentationQueueFamily;
@@ -122,10 +124,6 @@ App::~App()
 		device.destroy(renderPass);
 		device.destroy();
 	}
-#if !defined(USE_PLATFORM_QT) // In Qt, QWindow owns the surface and it will destroy the surface.
-	if(instance)
-		instance.destroy(surface);
-#endif
 	window.destroy();
 	instance.destroy();
 }
@@ -151,7 +149,8 @@ void App::init()
 			});
 
 	// create surface
-	surface = window.init(instance, {1024, 768}, appName);
+	vk::SurfaceKHR surface =
+		window.init(instance, {1024, 768}, appName);
 
 	// find compatible devices
 	// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
@@ -416,7 +415,7 @@ void App::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceCapabilitie
 		device.createSwapchainKHRUnique(
 			vk::SwapchainCreateInfoKHR(
 				vk::SwapchainCreateFlagsKHR(),  // flags
-				surface,                        // surface
+				window.surface(),               // surface
 				surfaceCapabilities.maxImageCount==0  // minImageCount
 					? max(requestedImageCount, surfaceCapabilities.minImageCount)
 					: clamp(requestedImageCount, surfaceCapabilities.minImageCount, surfaceCapabilities.maxImageCount),
@@ -441,7 +440,8 @@ void App::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceCapabilitie
 								return vk::PresentModeKHR::eFifo;
 
 							// for MaxFrameRate, try Mailbox and Immediate if they are available
-							vector<vk::PresentModeKHR> modes = app.physicalDevice.getSurfacePresentModesKHR(app.surface);
+							vector<vk::PresentModeKHR> modes =
+								app.physicalDevice.getSurfacePresentModesKHR(app.window.surface());
 							if(find(modes.begin(), modes.end(), vk::PresentModeKHR::eMailbox) != modes.end())
 								return vk::PresentModeKHR::eMailbox;
 							if(find(modes.begin(), modes.end(), vk::PresentModeKHR::eImmediate) != modes.end())
@@ -750,8 +750,7 @@ int main(int argc, char** argv)
 		app.window.setFrameCallback(
 			bind(&App::frame, &app),
 			app.physicalDevice,
-			app.device,
-			app.surface
+			app.device
 		);
 		app.window.mainLoop();
 
