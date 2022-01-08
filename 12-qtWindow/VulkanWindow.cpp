@@ -779,7 +779,10 @@ const char* const* VulkanWindow::requiredExtensionNames()  { return requiredExte
 
 void VulkanWindow::mainLoop()
 {
+	thrownException = nullptr;
 	QGuiApplication::exec();
+	if(thrownException)  // rethrow the exception that we caught in QtVulkanWindow::event()
+		rethrow_exception(thrownException);
 }
 
 void VulkanWindow::doFrame()
@@ -814,45 +817,54 @@ void VulkanWindow::doFrame()
 
 bool QtVulkanWindow::event(QEvent* event)
 {
-	// handle verious events
-	switch(event->type()) {
+	try {
 
-	case QEvent::Type::Timer:
-		killTimer(timer);
-		timer = 0;
-		if(isExposed() && vulkanWindow->m_frameCallback)
-			vulkanWindow->doFrame();
-		return true;
+		// handle verious events
+		switch(event->type()) {
 
-#if (QT_VERSION < QT_VERSION_CHECK(6, 0, 0))  // in Qt5, we use Expose event for updating the window
-	case QEvent::Type::Expose:
-#endif
-	case QEvent::Type::UpdateRequest:
-		if(isExposed() && vulkanWindow->m_frameCallback)
-			vulkanWindow->doFrame();
-		return true;
+		case QEvent::Type::Timer:
+			killTimer(timer);
+			timer = 0;
+			if(isExposed() && vulkanWindow->m_frameCallback)
+				vulkanWindow->doFrame();
+			return true;
 
-#if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))  // Qt6 supports Paint event for updating the window
-	case QEvent::Type::Paint:
-		if(vulkanWindow->m_frameCallback)
-			vulkanWindow->doFrame();
-		return true;
-#endif
+	#if (QT_VERSION < QT_VERSION_CHECK(6, 0, 0))  // in Qt5, we use Expose event for updating the window
+		case QEvent::Type::Expose:
+	#endif
+		case QEvent::Type::UpdateRequest:
+			if(isExposed() && vulkanWindow->m_frameCallback)
+				vulkanWindow->doFrame();
+			return true;
 
-	case QEvent::Type::Hide: {
-		bool r = QWindow::event(event);
+	#if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))  // Qt6 supports Paint event for updating the window
+		case QEvent::Type::Paint:
+			if(vulkanWindow->m_frameCallback)
+				vulkanWindow->doFrame();
+			return true;
+	#endif
+
+		case QEvent::Type::Hide: {
+			bool r = QWindow::event(event);
+			QGuiApplication::quit();
+			return r;
+		}
+
+		case QEvent::Type::Close: {
+			if(isVisible())
+				hide();
+			return true;
+		}
+
+		default:
+			return QWindow::event(event);
+		}
+
+	}
+	catch(...) {
+		vulkanWindow->thrownException = std::current_exception();
 		QGuiApplication::quit();
-		return r;
-	}
-
-	case QEvent::Type::Close: {
-		if(isVisible())
-			hide();
 		return true;
-	}
-
-	default:
-		return QWindow::event(event);
 	}
 }
 

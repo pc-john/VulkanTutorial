@@ -92,6 +92,7 @@ protected:
 
 	QWindow* m_window = nullptr;
 	QVulkanInstance* m_vulkanInstance = nullptr;
+	std::exception_ptr thrownException;
 	void doFrame();
 	friend class QtVulkanWindow;
 
