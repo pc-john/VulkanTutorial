@@ -8,6 +8,7 @@
 #elif defined(USE_PLATFORM_WAYLAND)
 #elif defined(USE_PLATFORM_QT)
 # include <QGuiApplication>
+# include <QResizeEvent>
 # include <QVulkanInstance>
 # include <QWindow>
 #elif defined(USE_PLATFORM_SDL)
@@ -802,7 +803,12 @@ void VulkanWindow::doFrame()
 
 		// recreate swapchain
 		m_swapchainResizePending = false;
-		m_surfaceExtent = surfaceCapabilities.currentExtent;
+#if 0  // Let's assign new m_surfaceExtent in resize event.
+		QSize s = m_window->size();
+		float r = float(m_window->devicePixelRatio());
+		m_surfaceExtent.width  = uint32_t(float(s.width() ) * r + 0.5f);
+		m_surfaceExtent.height = uint32_t(float(s.height()) * r + 0.5f);
+#endif
 		m_recreateSwapchainCallback(surfaceCapabilities, m_surfaceExtent);
 	}
 
@@ -823,38 +829,40 @@ bool QtVulkanWindow::event(QEvent* event)
 		switch(event->type()) {
 
 		case QEvent::Type::Timer:
+			cout<<"t";
 			killTimer(timer);
 			timer = 0;
 			if(isExposed() && vulkanWindow->m_frameCallback)
 				vulkanWindow->doFrame();
 			return true;
 
-	#if (QT_VERSION < QT_VERSION_CHECK(6, 0, 0))  // in Qt5, we use Expose event for updating the window
-		case QEvent::Type::Expose:
-	#endif
 		case QEvent::Type::UpdateRequest:
 			if(isExposed() && vulkanWindow->m_frameCallback)
 				vulkanWindow->doFrame();
 			return true;
 
-	#if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))  // Qt6 supports Paint event for updating the window
-		case QEvent::Type::Paint:
-			if(vulkanWindow->m_frameCallback)
-				vulkanWindow->doFrame();
-			return true;
-	#endif
-
-		case QEvent::Type::Hide: {
+		case QEvent::Type::Expose: {
+			cout<<"e";
 			bool r = QWindow::event(event);
-			QGuiApplication::quit();
+			if(isExposed())
+				vulkanWindow->scheduleNextFrame();
 			return r;
 		}
 
-		case QEvent::Type::Close: {
+		case QEvent::Type::Resize: {
+			QSize s = static_cast<QResizeEvent*>(event)->size();
+			float r = float(devicePixelRatio());
+			vulkanWindow->m_surfaceExtent.width  = uint32_t(float(s.width() ) * r + 0.5f);
+			vulkanWindow->m_surfaceExtent.height = uint32_t(float(s.height()) * r + 0.5f);
+			vulkanWindow->scheduleSwapchainResize();
+			return QWindow::event(event);
+		}
+
+		case QEvent::Type::Close:
 			if(isVisible())
 				hide();
+			QGuiApplication::quit();
 			return true;
-		}
 
 		default:
 			return QWindow::event(event);
@@ -877,11 +885,15 @@ void VulkanWindow::scheduleSwapchainResize()
 
 void VulkanWindow::scheduleNextFrame()
 {
+#if 1  // Let's use timer instead of posting events. Posting events seems to make application less responsive to close window, etc.
 	if(reinterpret_cast<QtVulkanWindow*>(m_window)->timer == 0) {
 		reinterpret_cast<QtVulkanWindow*>(m_window)->timer = m_window->startTimer(0);
 		if(reinterpret_cast<QtVulkanWindow*>(m_window)->timer == 0)
 			throw runtime_error("VulkanWindow::scheduleNextFrame(): Cannot allocate timer.");
 	}
+#else
+	QCoreApplication::postEvent(m_window, new QEvent(QEvent::Type::UpdateRequest));
+#endif
 }
 
 #elif defined(USE_PLATFORM_SDL)
