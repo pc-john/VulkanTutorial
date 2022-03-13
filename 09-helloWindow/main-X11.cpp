@@ -7,8 +7,21 @@
 
 using namespace std;
 
-static Display* display=nullptr;
-static Window window=0;
+// vk::Instance
+// (we destroy it as the last one)
+static vk::UniqueInstance instance;
+
+// Display and Window handle
+static struct UniqueDisplay {
+	Display* handle = nullptr;
+	~UniqueDisplay()  { if(handle) XCloseDisplay(handle); }
+	operator Display*() const  { return handle; }
+} display;
+struct UniqueWindow {
+	Window handle = 0;
+	~UniqueWindow()  { if(handle) XDestroyWindow(display, handle); }
+	operator Window() const  { return handle; }
+} window;
 
 
 int main(int,char**)
@@ -18,7 +31,7 @@ int main(int,char**)
 	try {
 
 		// Vulkan instance
-		vk::UniqueInstance instance(
+		instance =
 			vk::createInstanceUnique(
 				vk::InstanceCreateInfo{
 					vk::InstanceCreateFlags(),  // flags
@@ -29,55 +42,70 @@ int main(int,char**)
 						VK_MAKE_VERSION(0,0,0),  // engine version
 						VK_API_VERSION_1_0,      // api version
 					},
-					0,nullptr,  // no layers
-					2,          // enabled extension count
-					array<const char*,2>{"VK_KHR_surface","VK_KHR_xlib_surface"}.data(),  // enabled extension names
-				}));
+					0, nullptr,  // no layers
+					2,           // enabled extension count
+					array<const char*, 2>{  // enabled extension names
+						"VK_KHR_surface",
+						"VK_KHR_xlib_surface"
+					}.data(),
+				});
 
 		// open X connection
-		display=XOpenDisplay(nullptr);
-		if(display==nullptr)
+		display.handle = XOpenDisplay(nullptr);
+		if(display == nullptr)
 			throw runtime_error("Can not open display. No X-server running or wrong DISPLAY variable.");
 
 		// create window
-		int blackColor=BlackPixel(display,DefaultScreen(display));
-		Screen* screen=XDefaultScreenOfDisplay(display);
-		window=XCreateSimpleWindow(display,DefaultRootWindow(display),0,0,XWidthOfScreen(screen)/2,
-		                           XHeightOfScreen(screen)/2,0,blackColor,blackColor);
-		XSetStandardProperties(display,window,"Hello window!","Hello window!",None,NULL,0,NULL);
-		Atom wmDeleteMessage=XInternAtom(display,"WM_DELETE_WINDOW",False);
-		XSetWMProtocols(display,window,&wmDeleteMessage,1);
-		XMapWindow(display,window);
+		Screen* screen = XDefaultScreenOfDisplay(display);
+		XSetWindowAttributes attr;
+		attr.event_mask = ExposureMask | StructureNotifyMask | VisibilityChangeMask;
+		window.handle =
+			XCreateWindow(
+				display,  // display
+				DefaultRootWindow(display.handle),  // parent
+				0, 0,  // x, y
+				XWidthOfScreen(screen)/2, XHeightOfScreen(screen)/2,  // width, height
+				0,  // border_width
+				CopyFromParent,  // depth
+				InputOutput,  // class
+				CopyFromParent,  // visual
+				CWEventMask,  // valuemask
+				&attr  // attributes
+			);
+		XSetStandardProperties(display, window, "Hello window!", "Hello window!", None, NULL, 0, NULL);
+		Atom wmDeleteMessage = XInternAtom(display, "WM_DELETE_WINDOW", False);
+		XSetWMProtocols(display, window, &wmDeleteMessage, 1);
+		XMapWindow(display, window);
 
 		// create surface
-		vk::UniqueSurfaceKHR surface=
+		vk::UniqueSurfaceKHR surface =
 			instance->createXlibSurfaceKHRUnique(
-				vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(),display,window)
+				vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(), display, window)
 			);
 
 		// get VisualID
 		XWindowAttributes a;
-		XGetWindowAttributes(display,window,&a);
-		VisualID v=XVisualIDFromVisual(a.visual);
+		XGetWindowAttributes(display, window, &a);
+		VisualID v = XVisualIDFromVisual(a.visual);
 
 		// find compatible devices
 		// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
 		// On Linux X11 platform, only one graphics adapter is compatible device (the one that
 		// renders the window).
-		vector<vk::PhysicalDevice> deviceList=instance->enumeratePhysicalDevices();
+		vector<vk::PhysicalDevice> deviceList = instance->enumeratePhysicalDevices();
 		vector<string> compatibleDevices;
-		for(vk::PhysicalDevice pd:deviceList) {
+		for(vk::PhysicalDevice pd : deviceList) {
 			uint32_t c;
-			pd.getQueueFamilyProperties(&c,nullptr,vk::DispatchLoaderStatic());
+			pd.getQueueFamilyProperties(&c, nullptr, vk::DispatchLoaderStatic());
 			for(uint32_t i=0; i<c; i++)
-				if(pd.getXlibPresentationSupportKHR(i,display,v)) {
+				if(pd.getXlibPresentationSupportKHR(i, display, v)) {
 					compatibleDevices.push_back(pd.getProperties().deviceName);
 					break;
 				}
 		}
-		cout<<"Compatible devices:"<<endl;
-		for(string& name:compatibleDevices)
-			cout<<"   "<<name<<endl;
+		cout << "Compatible devices:" << endl;
+		for(string& name : compatibleDevices)
+			cout << "   " << name << endl;
 
 		// run event loop
 		while(true) {
@@ -95,12 +123,6 @@ int main(int,char**)
 	} catch(...) {
 		cout<<"Failed because of unspecified exception."<<endl;
 	}
-
-	// clean up
-	if(window)
-		XDestroyWindow(display,window);
-	if(display)
-		XCloseDisplay(display);
 
 	return 0;
 }

@@ -5,7 +5,12 @@
 
 using namespace std;
 
-static HWND window=nullptr;
+static vk::UniqueInstance instance;
+static struct UniqueWindow {
+	HWND handle = nullptr;
+	~UniqueWindow()  { if(handle) DestroyWindow(handle); }
+	operator HWND() const  { return handle; }
+} window;
 
 
 int main(int,char**)
@@ -15,7 +20,7 @@ int main(int,char**)
 	try {
 
 		// Vulkan instance
-		vk::UniqueInstance instance(
+		instance =
 			vk::createInstanceUnique(
 				vk::InstanceCreateInfo{
 					vk::InstanceCreateFlags(),  // flags
@@ -26,24 +31,27 @@ int main(int,char**)
 						VK_MAKE_VERSION(0,0,0),  // engine version
 						VK_API_VERSION_1_0,      // api version
 					},
-					0,nullptr,  // no layers
-					2,          // enabled extension count
-					array<const char*,2>{"VK_KHR_surface","VK_KHR_win32_surface"}.data(),  // enabled extension names
-				}));
+					0, nullptr,  // no layers
+					2,           // enabled extension count
+					array<const char*, 2>{  // enabled extension names
+						"VK_KHR_surface",
+						"VK_KHR_win32_surface"
+					}.data(),
+				});
 
 		// window's message handling procedure
-		auto wndProc=[](HWND hwnd,UINT msg,WPARAM wParam,LPARAM lParam)->LRESULT {
+		auto wndProc = [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) -> LRESULT {
 			switch(msg)
 			{
 				case WM_CLOSE:
 					DestroyWindow(hwnd);
-					window=nullptr;
+					window = nullptr;
 					return 0;
 				case WM_DESTROY:
 					PostQuitMessage(0);
 					return 0;
 				default:
-					return DefWindowProc(hwnd,msg,wParam,lParam);
+					return DefWindowProc(hwnd, msg, wParam, lParam);
 			}
 		};
 
@@ -55,57 +63,57 @@ int main(int,char**)
 		wc.cbClsExtra    = 0;
 		wc.cbWndExtra    = 0;
 		wc.hInstance     = GetModuleHandle(NULL);
-		wc.hIcon         = LoadIcon(NULL,IDI_APPLICATION);
-		wc.hCursor       = LoadCursor(NULL,IDC_ARROW);
+		wc.hIcon         = LoadIcon(NULL, IDI_APPLICATION);
+		wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
 		wc.hbrBackground = NULL;
 		wc.lpszMenuName  = NULL;
 		wc.lpszClassName = "HelloWindow";
-		wc.hIconSm       = LoadIcon(NULL,IDI_APPLICATION);
+		wc.hIconSm       = LoadIcon(NULL, IDI_APPLICATION);
 		if(!RegisterClassEx(&wc))
 			throw runtime_error("Can not register window class.");
 
 		// create window
-		window=CreateWindowEx(
+		window.handle = CreateWindowEx(
 			WS_EX_CLIENTEDGE,
 			"HelloWindow",
 			"Hello window!",
 			WS_OVERLAPPEDWINDOW,
-			CW_USEDEFAULT,CW_USEDEFAULT,400,300,
-			NULL,NULL,wc.hInstance,NULL);
-		if(window==NULL)
+			CW_USEDEFAULT, CW_USEDEFAULT, 400, 300,
+			NULL, NULL, wc.hInstance, NULL);
+		if(window == NULL)
 			throw runtime_error("Can not create window.");
 
 		// create surface
-		vk::UniqueSurfaceKHR surface=
+		vk::UniqueSurfaceKHR surface =
 			instance->createWin32SurfaceKHRUnique(
-				vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(),wc.hInstance,window)
+				vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(), wc.hInstance, window)
 			);
 
 		// find compatible devices
 		// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
 		// On Linux X11 platform, only one graphics adapter is compatible device (the one that
 		// renders the window).
-		vector<vk::PhysicalDevice> deviceList=instance->enumeratePhysicalDevices();
+		vector<vk::PhysicalDevice> deviceList = instance->enumeratePhysicalDevices();
 		vector<string> compatibleDevices;
-		for(vk::PhysicalDevice pd:deviceList) {
+		for(vk::PhysicalDevice pd : deviceList) {
 			uint32_t c;
-			pd.getQueueFamilyProperties(&c,nullptr,vk::DispatchLoaderStatic());
+			pd.getQueueFamilyProperties(&c, nullptr, vk::DispatchLoaderStatic());
 			for(uint32_t i=0; i<c; i++)
 				if(pd.getWin32PresentationSupportKHR(i)) {
 					compatibleDevices.push_back(pd.getProperties().deviceName);
 					break;
 				}
 		}
-		cout<<"Compatible devices:"<<endl;
-		for(string& name:compatibleDevices)
-			cout<<"   "<<name<<endl;
+		cout << "Compatible devices:" << endl;
+		for(string& name : compatibleDevices)
+			cout << "   " << name << endl;
 
 		// show window
-		ShowWindow(window,SW_SHOWDEFAULT);
+		ShowWindow(window, SW_SHOWDEFAULT);
 
 		// run event loop
 		MSG msg;
-		while(GetMessage(&msg,NULL,0,0)>0) {
+		while(GetMessage(&msg, NULL, 0, 0) > 0) {
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}

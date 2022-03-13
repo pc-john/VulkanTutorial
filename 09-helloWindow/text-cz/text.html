@@ -1,0 +1,416 @@
+<h1>Vulkan: Vytvoření okna (9. díl)</h1>
+
+<p></p>
+
+<p>V letošní prázdninové sérii o Vulkan si ukážeme, jak otevřít okno
+a jak do něj rendrovat. Naším cílem budou primárně tyto platformy:
+Win32, X11 a Wayland. V dalších dílech si ale ukážeme Vulkan i na
+<a href="https://www.qt.io/">Qt</a> a <a href="https://www.libsdl.org/">SDL</a>.
+Dnes začneme otevřením okna a vytvořením surface.</p>
+
+<p>Zdrojáky si můžeme <a href="">stáhnout</a> a zkusit zkompilovat.
+Pro dnešek máme tři platformy: Windows, X11 a Wayland.<p>
+
+
+<h3>Win32</h3>
+
+<p>První verze <a href="https://en.wikipedia.org/wiki/Microsoft_Windows">Windows</a>
+přišla na svět v roce 1985, ale až do Windows 3.11
+se nejednalo o operační systém, ale spíše o grafickou nádstavbu
+<a href="https://en.wikipedia.org/wiki/MS-DOS">MS-DOSu</a>.
+Tyto starší Windows měly pouze 16-bitové rozhranní nazývané Win16.
+Windows NT a následně Windows 95 přinesly Win32, tedy 32-bitové rozhranní.
+Win64 je pak varianta pro 64-bitové systémy. Nicméně pokud náš kód nepoužívá
+nějaké speciality a pointerová kouzla, měl by být přeložitelný jak pro Win32,
+tak pro Win64. Budeme-li tedy hovořit o Win32 platformě,
+budeme implicitně myslet i na Win64, která je ze stejného kódu kompilovatelná.<p>
+
+<p>Jak tedy vytvořit okno pro Vulkan?
+V prvé řadě potřebujeme mít okno kde uložit. A protože používáme výjimky,
+nepoužijeme přímo HWND, což je ve Win32 typ pro handle okna,
+ale zapouzdříme si jej do struktury UniqueWindow,
+v které implementujeme destruktor:</p>
+
+<pre>
+static struct UniqueWindow {
+   HWND handle = nullptr;
+   ~UniqueWindow()  { if(handle) DestroyWindow(handle); }
+   operator HWND() const  { return handle; }
+} window;
+</pre>
+
+<p>Vynecháme mazání copy konstruktorů a implementaci move konstruktorů,
+a všeho dalšího, na co jsme u unique objektů zvyklí, neboť nevytváříme veřejné API.
+To si necháme až na další díl tutoriálu.
+Možná by se mě čtenáři v budoucnu zeptali, proč jsem nepoužil std::unique_resource.
+Důvod je prostý: tato třída prozatím není ve standardu, ale těšme se na ni.</p>
+
+<p>Nyní můžeme zaměřit naše úsilí na vytvoření okna. Začneme Vulkanní instancí:</p>
+
+<pre>
+// Vulkan instance
+instance =
+   vk::createInstanceUnique(
+      vk::InstanceCreateInfo{
+         vk::InstanceCreateFlags(),  // flags
+         &amp;(const vk::ApplicationInfo&amp;)vk::ApplicationInfo{
+            "09-helloWindow-Win",    // application name
+            VK_MAKE_VERSION(0,0,0),  // application version
+            nullptr,                 // engine name
+            VK_MAKE_VERSION(0,0,0),  // engine version
+            VK_API_VERSION_1_0,      // api version
+         },
+         0, nullptr,  // no layers
+         <b>2,</b>           // enabled extension count
+         <b>array&lt;const char*, 2&gt;{</b>  // enabled extension names
+            <b>"VK_KHR_surface",
+            "VK_KHR_win32_surface"
+         }.data(),</b>
+      });
+</pre>
+
+<p>Kód je stejný, jako jsme zvyklí, až na jednu změnu: enabled extensions (česky: zapnutá rozšíření).
+Abychom mohli rendrovat do okna, potřebujeme rozšírení VK_KHR_surface a VK_KHR_win32_surface.
+První z nich řeší obecně práci se surface (tedy s "povrchem" okna), druhá pak
+všechno, co je specifické pro Win32 při práci se surface.</p>
+
+<p>Dále potřebujeme funkci pro zpracování zpráv zaslaných oknu:</p>
+
+<pre>
+// window's message handling procedure
+auto wndProc = [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) -> LRESULT {
+   switch(msg)
+   {
+      case WM_CLOSE:
+         DestroyWindow(hwnd);
+         window = nullptr;
+         return 0;
+      case WM_DESTROY:
+         PostQuitMessage(0);
+         return 0;
+      default:
+         return DefWindowProc(hwnd, msg, wParam, lParam);
+   }
+};
+</pre>
+
+<p>My se v tuto chvíli spokojíme pouze s ošetřením dvou zpráv: WM_CLOSE a WM_DESTROY.
+A protože toto není tutoriál o Win32, najdou zájemci detaily opět například ve WinAPI dokumentaci
+na stránkách Microsoftu.</p>
+
+<p>V dalším kroku zaregistrujeme třídu okna, které mimo jiné předáme i naši funkci
+pro zpracování zpráv zaslaných oknu:</p>
+
+<pre>
+// register window class
+WNDCLASSEX wc;
+wc.cbSize        = sizeof(WNDCLASSEX);
+wc.style         = 0;
+wc.lpfnWndProc   = wndProc;
+wc.cbClsExtra    = 0;
+wc.cbWndExtra    = 0;
+wc.hInstance     = GetModuleHandle(NULL);
+wc.hIcon         = LoadIcon(NULL, IDI_APPLICATION);
+wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
+wc.hbrBackground = NULL;
+wc.lpszMenuName  = NULL;
+wc.lpszClassName = "HelloWindow";
+wc.hIconSm       = LoadIcon(NULL, IDI_APPLICATION);
+if(!RegisterClassEx(&amp;wc))
+   throw runtime_error("Can not register window class.");
+</pre>
+
+<p>A po registraci třídy okna už můžeme vytvořit samotné okno:</p>
+
+<pre>
+// create window
+window.handle = CreateWindowEx(
+   WS_EX_CLIENTEDGE,
+   "HelloWindow",
+   "Hello window!",
+   WS_OVERLAPPEDWINDOW,
+   CW_USEDEFAULT, CW_USEDEFAULT, 400, 300,
+   NULL, NULL, wc.hInstance, NULL);
+if(window == NULL)
+   throw runtime_error("Can not create window.");
+</pre>
+
+<p>Pro detaily opět odkazuji na dokumentaci WinAPI. A máme-li okno, můžeme vytvořit surface:</p>
+
+<pre>
+// create surface
+vk::UniqueSurfaceKHR surface =
+   instance->createWin32SurfaceKHRUnique(
+      vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(), wc.hInstance, window)
+   );
+</pre>
+
+<p>Jak vidíme v kódu, pro vytvoření surface potřebujeme HINSTANCE okna a handle samotného okna.</p>
+
+<p>Nyní máme okno a Vulkanní surface, na kterém máme úmysl zobrazovat,
+či přesněji řečeno, prezentovat výsledek našeho renderingu.
+Nicméně je zde drobný problém:
+Ne každé fyzické zařízení musí nutně umět prezentovat na náš surface.
+Například počítač se dvěma grafickými kartami nemusí podporovat
+rendering na jedné kartě a prezentaci výsledků na monitor, který je připojen skrz druhou grafickou kartu.
+A jsou dokonce fyzická zařízení, které nazýváme výpočetní akcelerátory,
+a které neumějí prezentovat vůbec a ani nemají konektor pro připojení obrazovky.
+Potřebujeme tedy zjistit, která fyzická zařízení jsou s naším novým oknem kompatibilní.</p>
+
+<p>Na platformě Win32 máme situaci zjednodušenou díky její archtektuře driverů.
+Zkráceně řečeno: prezentovat můžeme na kterémkoliv fyzickém zařízení, které to podporuje,
+a je přitom lhostejné, na kterém zařízení jsme rendrovali.
+Windows se postará o přenos vyrendrovaných dat mezi fyzickými zařízeními.
+Samozřejmě rendrovat a prezentovat na stejné kartě může mít své výhody.
+Například se mohou ušetřit přenosy dat mezi fyzickými zařízeními.</p>
+
+<pre>
+// find compatible devices
+// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
+// On Linux X11 platform, only one graphics adapter is compatible device (the one that
+// renders the window).
+vector&lt;vk::PhysicalDevice&gt; deviceList = instance->enumeratePhysicalDevices();
+vector&lt;string&gt; compatibleDevices;
+for(vk::PhysicalDevice pd : deviceList) {
+   uint32_t c;
+   pd.getQueueFamilyProperties(&amp;c, nullptr, vk::DispatchLoaderStatic());
+   for(uint32_t i=0; i&lt;c; i++)
+      if(pd.getWin32PresentationSupportKHR(i)) {
+         compatibleDevices.push_back(pd.getProperties().deviceName);
+         break;
+      }
+}
+cout &lt;&lt; "Compatible devices:" &lt;&lt; endl;
+for(string&amp; name : compatibleDevices)
+   cout &lt;&lt; "   " &lt;&lt; name &lt;&lt; endl;
+</pre>
+
+<p>V kódu postupně procházíme všechna fyzická zařízení, dotazujeme se na počet front,
+a pak hledáme, zda je pro nějakou z nich podporována prezentace, tedy zobrazování na obrazovku.
+A pokud je prezentace pro některou frontu podporována, pak si fyzické zařízení uložíme
+do seznamu, jehož obsah v zápětí vypíšeme do konzole.</p>
+
+<p>A jsme téměř hotovi. Abychom dostali okno na obrazovku,
+zbývá již pouze zavolat funkci ShowWindow() a rozjet smyčku zpráv:</p>
+
+<pre>
+// show window
+ShowWindow(window, SW_SHOWDEFAULT);
+
+// run event loop
+MSG msg;
+while(GetMessage(&amp;msg, NULL, 0, 0) > 0) {
+   TranslateMessage(&amp;msg);
+   DispatchMessage(&amp;msg);
+}
+</pre>
+
+<p>Po spuštění bychom měli vidět prázdné černé okno.</p>
+
+<img></img>
+
+<p>A co se stane, když se pokusíme okno zavřít?
+Nejprve ve funkci zpráv okna dostaneme zprávu WM_CLOSE.
+V ní smažeme okno, což způsobí zaslání zprávy WM_DESTROY.
+To obsloužíme zavoláním funkce PostQuitMessage(),
+která způsobí ukončení smyčky zpráv, neboť GetMessage() vrátí nulu.
+Aplikace pak opustí funkci main().
+Destuktor UniqueWindow neudělá nic, neboť okno je již uvolněno.
+Posledním objektem je vk::UniqueInstance, jehož destruktor uvolní instanci Vulkan.
+Tím jsme hotovi s Win32 platformou pro tento díl tutoriálu.</p>
+
+<p>Více pro tuto platformu příště. Nyní nás čeká vytvoření okna na Linuxu s využitím knihovny Xlib
+a po ní moderní přístup Waylandu.</p>
+
+
+<h3>Xlib</h3>
+
+<p>Xlib knihovna přišla na svět někdy kolem roku 1985. Je tedy podobně stará, jako Windows.
+Dnes, pokud ještě musíme používat X Window System, používáme obyčejně XCB rozhranní.
+V každém případě, obojí je v čase psaní tohoto článku na ústupu a naděje se upírají k Wayland.</p>
+
+<p>Navzdory této skutečnosti si ukážeme, jak vytvořit okno v Xlib ze třech důvodů:
+Jednak Xlib zde s námi bylo opravdu hodně let a hned tak magicky nezmizí.
+Programátoři rozsáhlých projektů mají mnohdy bolestnou zkušenost,
+jak mnoho práce dá nahradit jednu knihovnu v projektu za jinou.
+Jsou knihovny jsou "prorostlé" skrz projekt a mnohdy je to práce na roky.
+Xlib tedy může přežít roky a roky v mnoha projektech.
+Druhý důvod je v lepším pochopení Waylandu, můžeme-li jej porovnat s jeho předchůdcem.
+A třetí: vytvoření okna s Xlib je podstatně jednodušší než s Wayland.
+Projdeme si jej tedy před Waylandem.</p>
+
+<p>Jak tedy vytvořit okno pro Vulkanní rendering v Xlib?
+Opět potřebujeme v první řadě mít kam uložit handle okna
+a v případě Xlib i handle spojení na display server:</p>
+
+<pre>
+// Display and Window handle
+static struct UniqueDisplay {
+   Display* handle = nullptr;
+   ~UniqueDisplay()  { if(handle) XCloseDisplay(handle); }
+   operator Display*() const  { return handle; }
+} display;
+struct UniqueWindow {
+   Window handle = 0;
+   ~UniqueWindow()  { if(handle) XDestroyWindow(display, handle); }
+   operator Window() const  { return handle; }
+} window;
+</pre>
+
+<p>Náš kód opět začíná vytvořením vk::Instance:</p>
+
+<pre>
+// Vulkan instance
+instance =
+   vk::createInstanceUnique(
+      vk::InstanceCreateInfo{
+         vk::InstanceCreateFlags(),  // flags
+         &amp;(const vk::ApplicationInfo&amp;)vk::ApplicationInfo{
+            "09-helloWindow-X11",    // application name
+            VK_MAKE_VERSION(0,0,0),  // application version
+            nullptr,                 // engine name
+            VK_MAKE_VERSION(0,0,0),  // engine version
+            VK_API_VERSION_1_0,      // api version
+         },
+         0, nullptr,  // no layers
+         <b>2,</b>           // enabled extension count
+         <b>array&lt;const char*, 2&gt;{</b>  // enabled extension names
+            <b>"VK_KHR_surface",
+            "VK_KHR_xlib_surface"
+         }.data(),</b>
+      });
+</pre>
+
+<p>Kód je opět stejný jako jsme zvyklí kromě toho,
+že zde žádáme o povolení extensions VK_KHR_surface a VK_KHR_xlib_surface.
+Oproti Windows je tedy VK_KHR_win32_surface nahrazena VK_KHR_xlib_surface.
+To nám umožní pracovat s objekty surface z Xlib API.</p>
+
+<p>Dalším krokem je otevření X spojení, přes které budeme komunikovat s X serverem:</p>
+
+<pre>
+// open X connection
+display.handle = XOpenDisplay(nullptr);
+if(display == nullptr)
+   throw runtime_error("Can not open display. No X-server running or wrong DISPLAY variable.");
+</pre>
+
+<p>A hned můžeme vytvořit okno:</p>
+
+<pre>
+// create window
+Screen* screen = XDefaultScreenOfDisplay(display);
+XSetWindowAttributes attr;
+attr.event_mask = ExposureMask | StructureNotifyMask | VisibilityChangeMask;
+window.handle =
+   XCreateWindow(
+      display,  // display
+      DefaultRootWindow(display.handle),  // parent
+      0, 0,  // x, y
+      XWidthOfScreen(screen)/2, XHeightOfScreen(screen)/2,  // width, height
+      0,  // border_width
+      CopyFromParent,  // depth
+      InputOutput,  // class
+      CopyFromParent,  // visual
+      CWEventMask,  // valuemask
+      &amp;attr  // attributes
+   );
+</pre>
+
+<p>Pro detaily k jednotlivým parametrům opět odkazuji na internet.
+Samotné okno potřebuje ještě nastavit věci jako například titulek okna a
+WM_DELETE_WINDOW atom a okno namapovat, tedy zobrazit na obrazovce:</p>
+
+<pre>
+XSetStandardProperties(display, window, "Hello window!", "Hello window!", None, NULL, 0, NULL);
+Atom wmDeleteMessage = XInternAtom(display, "WM_DELETE_WINDOW", False);
+XSetWMProtocols(display, window, &amp;wmDeleteMessage, 1);
+XMapWindow(display, window);
+</pre>
+
+<p>Následuje vytvoření surface a zjištění VisualID. VisualID budeme potřebovat vzápětí.</p>
+
+<pre>
+// create surface
+vk::UniqueSurfaceKHR surface =
+   instance->createXlibSurfaceKHRUnique(
+      vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(), display, window)
+   );
+
+// get VisualID
+XWindowAttributes a;
+XGetWindowAttributes(display, window, &amp;a);
+VisualID v = XVisualIDFromVisual(a.visual);
+</pre>
+
+<p>Surface máme vytvořen a známe i VisualID našeho okna. Nyní, tak jako na Windows,
+potřebujeme zjistit, ze kterých fyzických zařízení na náš surface můžeme prezentovat.</p>
+
+<pre>
+// find compatible devices
+// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
+// On Linux X11 platform, only one graphics adapter is compatible device (the one that
+// renders the window).
+vector&lt;vk::PhysicalDevice&gt; deviceList = instance->enumeratePhysicalDevices();
+vector&lt;string> compatibleDevices;
+for(vk::PhysicalDevice pd : deviceList) {
+   uint32_t c;
+   pd.getQueueFamilyProperties(&amp;c, nullptr, vk::DispatchLoaderStatic());
+   for(uint32_t i=0; i&lt;c; i++)
+      if(pd.getXlibPresentationSupportKHR(i, display, v)) {
+         compatibleDevices.push_back(pd.getProperties().deviceName);
+         break;
+      }
+}
+cout &lt;&lt; "Compatible devices:" &lt;&lt; endl;
+for(string&amp; name : compatibleDevices)
+   cout &lt;&lt; "   " &lt;&lt; name &lt;&lt; endl;
+</pre>
+
+<p>V kódu procházíme všechna fyzická zařízení
+a pro každé zařízení procházíme všechny jeho fronty.
+Pro každou z nich zavoláme methodu getXlibPresentationSupportKHR(),
+kde se ptáme na podporu prezentace.
+Můžeme si všimnout, že podpora na platformě Xlib záleží na kombinaci čtyřech parametrů:
+na fyzickém zařízení, na čísle fronty, připojení k X-serveru a na VisualID.
+Pokud je prezentace podporovaná, uložíme si tuto informaci.
+Nakonec pak vypíšeme všechna kompatibilní zařízení.</p>
+
+<p>A zbývá poslední bod, aby naše aplikace fungovala: Rozjet smyčku zpráv.</p>
+
+<pre>
+// run event loop
+XEvent e;
+while(true) {
+   XNextEvent(display, &amp;e);
+   if(e.type==ClientMessage &amp;&amp; ulong(e.xclient.data.l[0])==wmDeleteMessage)
+      break;
+}
+</pre>
+
+<p>Smyčka zpráv pouze odebírá zprávy z fronty zpráv.
+Ve smyčce obsluhujeme jedinou zprávu a to žádost o smazání okna.
+Pokud tato zpráva přijde, opustíme smyčku zpráv i funkci main().
+Následně je smazáno okno v destruktoru UniqueWindow,
+pak je uzavřeno spojení s X-serverem, což se stane v destruktoru UniqueDisplay
+a vše zakončí uvolnění instance Vulkan. Tím jsme hotovi s oknem v knihovně Xlib.</p>
+
+
+<h3>Wayland</h3>
+
+
+<h3>Shrnutí</h3>
+
+<p>Pokud vidíme první trojúhelník, pogratulujme si, že jsme ve znalostech dospěli tak daleko,
+že už ve Vulkan umíme nejen pracovat se zařízeními, ale dnes už i se shadery, s jejich kompilací,
+se sestavováním pipelines a s posíláním grafických příkazů pro rendrování,
+díky kterým jsme vykreslili náš první trojúhelník.</p>
+
+<p>Tímto dílem jsme zakončili naši letní prázdninovou sérii.
+V další sérii se můžeme těšit na otevření prvního okna,
+úvod do Vulkan WSI (Window System Integration),
+rendrování do okna, z-buffer a mnoho dalších věcí, které nám Vulkan přináší.</p>
+
+
+- on Win32 use ATOM
+- je vk::DispatchLoaderStatic() nezbytné na Win32?
