@@ -23,8 +23,11 @@ struct UniqueWindow {
 	operator Window() const  { return handle; }
 } window;
 
+// Vulkan window surface
+static vk::UniqueSurfaceKHR surface;
 
-int main(int,char**)
+
+int main(int, char**)
 {
 	// catch exceptions
 	// (vulkan.hpp functions throws if they fail)
@@ -36,7 +39,7 @@ int main(int,char**)
 				vk::InstanceCreateInfo{
 					vk::InstanceCreateFlags(),  // flags
 					&(const vk::ApplicationInfo&)vk::ApplicationInfo{
-						"09-helloWindow-X11",    // application name
+						"09-helloWindow-Xlib",   // application name
 						VK_MAKE_VERSION(0,0,0),  // application version
 						nullptr,                 // engine name
 						VK_MAKE_VERSION(0,0,0),  // engine version
@@ -46,7 +49,7 @@ int main(int,char**)
 					2,           // enabled extension count
 					array<const char*, 2>{  // enabled extension names
 						"VK_KHR_surface",
-						"VK_KHR_xlib_surface"
+						"VK_KHR_xlib_surface",
 					}.data(),
 				});
 
@@ -78,9 +81,13 @@ int main(int,char**)
 		XMapWindow(display, window);
 
 		// create surface
-		vk::UniqueSurfaceKHR surface =
+		surface =
 			instance->createXlibSurfaceKHRUnique(
-				vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(), display, window)
+				vk::XlibSurfaceCreateInfoKHR(
+					vk::XlibSurfaceCreateFlagsKHR(),  // flags
+					display,  // dpy
+					window  // window
+				)
 			);
 
 		// get VisualID
@@ -108,20 +115,20 @@ int main(int,char**)
 			cout << "   " << name << endl;
 
 		// run event loop
+		XEvent e;
 		while(true) {
-			XEvent e;
-			XNextEvent(display,&e);
-			if(e.type==ClientMessage&&ulong(e.xclient.data.l[0])==wmDeleteMessage)
+			XNextEvent(display, &e);
+			if(e.type==ClientMessage && ulong(e.xclient.data.l[0])==wmDeleteMessage)
 				break;
 		}
 
 	// catch exceptions
 	} catch(vk::Error &e) {
-		cout<<"Failed because of Vulkan exception: "<<e.what()<<endl;
+		cout << "Failed because of Vulkan exception: " << e.what() << endl;
 	} catch(exception &e) {
-		cout<<"Failed because of exception: "<<e.what()<<endl;
+		cout << "Failed because of exception: " << e.what() << endl;
 	} catch(...) {
-		cout<<"Failed because of unspecified exception."<<endl;
+		cout << "Failed because of unspecified exception." << endl;
 	}
 
 	return 0;
