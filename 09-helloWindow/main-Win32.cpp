@@ -26,7 +26,7 @@ int main(int, char**)
 				vk::InstanceCreateInfo{
 					vk::InstanceCreateFlags(),  // flags
 					&(const vk::ApplicationInfo&)vk::ApplicationInfo{
-						"09-helloWindow-Win",    // application name
+						"09-helloWindow-Win32",  // application name
 						VK_MAKE_VERSION(0,0,0),  // application version
 						nullptr,                 // engine name
 						VK_MAKE_VERSION(0,0,0),  // engine version
@@ -125,11 +125,11 @@ int main(int, char**)
 
 	// catch exceptions
 	} catch(vk::Error &e) {
-		cout<<"Failed because of Vulkan exception: "<<e.what()<<endl;
+		cout << "Failed because of Vulkan exception: " << e.what() << endl;
 	} catch(exception &e) {
-		cout<<"Failed because of exception: "<<e.what()<<endl;
+		cout << "Failed because of exception: " << e.what() << endl;
 	} catch(...) {
-		cout<<"Failed because of unspecified exception."<<endl;
+		cout << "Failed because of unspecified exception." << endl;
 	}
 
 	return 0;

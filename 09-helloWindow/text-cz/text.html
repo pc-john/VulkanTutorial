@@ -64,7 +64,7 @@ instance =
          <b>2,</b>           // enabled extension count
          <b>array&lt;const char*, 2&gt;{</b>  // enabled extension names
             <b>"VK_KHR_surface",
-            "VK_KHR_win32_surface"
+            "VK_KHR_win32_surface",
          }.data(),</b>
       });
 </pre>
@@ -276,7 +276,7 @@ instance =
          <b>2,</b>           // enabled extension count
          <b>array&lt;const char*, 2&gt;{</b>  // enabled extension names
             <b>"VK_KHR_surface",
-            "VK_KHR_xlib_surface"
+            "VK_KHR_xlib_surface",
          }.data(),</b>
       });
 </pre>
@@ -398,6 +398,12 @@ a vše zakončí uvolnění instance Vulkan. Tím jsme hotovi s oknem v knihovn�
 
 <h3>Wayland</h3>
 
+<p>Wayland je protokol pro komunikaci zobrazovacího serveru (Wayland compositor) s jeho klienty.
+Zároveň je to také název pro C-čkovskou implementaci tohoto protokolu.
+K Wayland projektu patří i Weston, což je referenční implementace Wayland kompozitoru.</p>
+
+<p>Wayland se zrodil v roce 2008 jako volnočasový projekt Kristiana Høgsberga
+
 
 <h3>Shrnutí</h3>
 
@@ -414,3 +420,4 @@ rendrování do okna, z-buffer a mnoho dalších věcí, které nám Vulkan při
 
 - on Win32 use ATOM
 - je vk::DispatchLoaderStatic() nezbytné na Win32?
+- přejmenovat soubory podle názvu platformy

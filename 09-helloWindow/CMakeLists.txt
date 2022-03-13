@@ -1,11 +1,11 @@
 if(WIN32)
 
-	set(APP_NAME 09-helloWindow-Win)
+	set(APP_NAME 09-helloWindow-Win32)
 
 	project(${APP_NAME})
 
 	set(APP_SOURCES
-	    main-Win.cpp
+	    main-Win32.cpp
 	   )
 
 	set(APP_INCLUDES
@@ -57,7 +57,7 @@ if(UNIX)
 	endif()
 
 	# 09-helloWindow-X11
-	set(APP_NAME 09-helloWindow-X11)
+	set(APP_NAME 09-helloWindow-Xlib)
 	project(${APP_NAME})
 
 	# dependencies
@@ -66,7 +66,7 @@ if(UNIX)
 	if(X11_FOUND)
 
 		# target
-		add_executable(${APP_NAME} main-X11.cpp)
+		add_executable(${APP_NAME} main-Xlib.cpp)
 		set_property(TARGET ${APP_NAME} PROPERTY CXX_STANDARD 17)
 
 		# dependencies
