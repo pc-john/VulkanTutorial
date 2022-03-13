@@ -11,9 +11,10 @@ static struct UniqueWindow {
 	~UniqueWindow()  { if(handle) DestroyWindow(handle); }
 	operator HWND() const  { return handle; }
 } window;
+static vk::UniqueSurfaceKHR surface;
 
 
-int main(int,char**)
+int main(int, char**)
 {
 	// catch exceptions
 	// (vulkan.hpp functions throws if they fail)
@@ -35,7 +36,7 @@ int main(int,char**)
 					2,           // enabled extension count
 					array<const char*, 2>{  // enabled extension names
 						"VK_KHR_surface",
-						"VK_KHR_win32_surface"
+						"VK_KHR_win32_surface",
 					}.data(),
 				});
 
@@ -45,7 +46,7 @@ int main(int,char**)
 			{
 				case WM_CLOSE:
 					DestroyWindow(hwnd);
-					window = nullptr;
+					window.handle = nullptr;
 					return 0;
 				case WM_DESTROY:
 					PostQuitMessage(0);
@@ -84,9 +85,13 @@ int main(int,char**)
 			throw runtime_error("Can not create window.");
 
 		// create surface
-		vk::UniqueSurfaceKHR surface =
+		surface =
 			instance->createWin32SurfaceKHRUnique(
-				vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(), wc.hInstance, window)
+				vk::Win32SurfaceCreateInfoKHR(
+					vk::Win32SurfaceCreateFlagsKHR(),  // flags
+					wc.hInstance,  // hinstance
+					window  // hwnd
+				)
 			);
 
 		// find compatible devices
@@ -96,9 +101,9 @@ int main(int,char**)
 		vector<vk::PhysicalDevice> deviceList = instance->enumeratePhysicalDevices();
 		vector<string> compatibleDevices;
 		for(vk::PhysicalDevice pd : deviceList) {
-			uint32_t c;
-			pd.getQueueFamilyProperties(&c, nullptr, vk::DispatchLoaderStatic());
-			for(uint32_t i=0; i<c; i++)
+			uint32_t numQueues;
+			pd.getQueueFamilyProperties(&numQueues, nullptr);
+			for(uint32_t i=0; i<numQueues; i++)
 				if(pd.getWin32PresentationSupportKHR(i)) {
 					compatibleDevices.push_back(pd.getProperties().deviceName);
 					break;
@@ -126,10 +131,6 @@ int main(int,char**)
 	} catch(...) {
 		cout<<"Failed because of unspecified exception."<<endl;
 	}
-
-	// clean up
-	if(window)
-		DestroyWindow(window);
 
 	return 0;
 }
