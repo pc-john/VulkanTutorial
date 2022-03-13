@@ -692,7 +692,9 @@ int main(int argc, char** argv)
 
 			});
 #endif
+#if defined(USE_PLATFORM_QT)
 		app.reset();
+#endif
 
 	// catch exceptions
 	} catch(vk::Error &e) {

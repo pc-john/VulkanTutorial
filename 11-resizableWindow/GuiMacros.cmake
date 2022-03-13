@@ -18,13 +18,13 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines inc
 	# set GUI_TYPE if not already set or if set to "default" string
 	string(TOLOWER "${GUI_TYPE}" guiTypeLowerCased)
 	if(NOT GUI_TYPE OR "${guiTypeLowerCased}" STREQUAL "default")
-		set(GUI_TYPE ${guiTypeDetected} CACHE STRING "Gui type. Accepted values: default, Win32, Xlib, Wayland, Qt or SDL." FORCE)
+		set(GUI_TYPE ${guiTypeDetected} CACHE STRING "Gui type. Accepted values: default, Win32, Xlib, Wayland, Qt6, Qt5 or SDL." FORCE)
 	endif()
 
 	# give error on invalid GUI_TYPE
-	set(guiList "Win32" "Xlib" "Wayland" "Qt" "SDL")
+	set(guiList "Win32" "Xlib" "Wayland" "Qt6" "Qt5" "SDL")
 	if(NOT "${GUI_TYPE}" IN_LIST guiList)
-		message(FATAL_ERROR "GUI_TYPE value is invalid. It must be set to default, Win32, Xlib, Wayland, Qt or SDL.")
+		message(FATAL_ERROR "GUI_TYPE value is invalid. It must be set to default, Win32, Xlib, Wayland, Qt6, Qt5 or SDL.")
 	endif()
 
 
@@ -67,13 +67,19 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines inc
 			message(FATAL_ERROR "Not all Wayland variables were detected properly.")
 		endif()
 
-	elseif("${GUI_TYPE}" STREQUAL "Qt")
+	elseif("${GUI_TYPE}" STREQUAL "Qt6")
 
-		# configure for Qt
-		find_package(Qt5Gui REQUIRED)
-		set(${libs} ${${libs}} Qt5::Gui Qt5::GuiPrivate)
+		# configure for Qt6
+		find_package(Qt6Gui REQUIRED)
+		set(${libs} ${${libs}} Qt6::Gui)
 		set(${defines} ${${defines}} USE_PLATFORM_QT)
-		set(${vulkanWindowDefines} ${${vulkanWindowDefines}} VK_USE_PLATFORM_WAYLAND_KHR VK_USE_PLATFORM_XCB_KHR)
+
+	elseif("${GUI_TYPE}" STREQUAL "Qt5")
+
+		# configure for Qt5
+		find_package(Qt5Gui REQUIRED)
+		set(${libs} ${${libs}} Qt5::Gui)
+		set(${defines} ${${defines}} USE_PLATFORM_QT)
 
 	elseif("${GUI_TYPE}" STREQUAL "SDL")
 
@@ -83,6 +89,8 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines inc
 		set(${defines} ${${defines}} USE_PLATFORM_SDL)
 		set(${includes} ${${includes}} ${SDL_INCLUDE_DIR})
 
+	else()
+		message(FATAL_ERROR "Invalid GUI_TYPE value: ${GUI_TYPE}")
 	endif()
 
 endmacro()

@@ -200,6 +200,9 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 	// store this pointer with the window data
 	SetWindowLongPtr(m_hwnd, 0, (LONG_PTR)this);
 
+	// show window
+	ShowWindow(m_hwnd, SW_SHOWDEFAULT);
+
 	// create surface
 	return
 		instance.createWin32SurfaceKHR(
@@ -458,9 +461,6 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 	m_device = device;
 	m_surface = surface;
 	m_frameCallback = frameCallback;
-
-	// show window
-	ShowWindow(m_hwnd, SW_SHOWDEFAULT);
 
 	// run Win32 event loop
 	MSG msg;
