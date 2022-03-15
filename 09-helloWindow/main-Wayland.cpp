@@ -5,6 +5,10 @@
 
 using namespace std;
 
+// vk::Instance
+// (we destroy it as the last one)
+static vk::UniqueInstance instance;
+
 static wl_display* display = nullptr;
 static wl_registry* registry = nullptr;
 static wl_compositor* compositor = nullptr;
@@ -38,7 +42,7 @@ int main(int,char**)
 	try {
 
 		// Vulkan instance
-		vk::UniqueInstance instance(
+		instance =
 			vk::createInstanceUnique(
 				vk::InstanceCreateInfo{
 					vk::InstanceCreateFlags(),  // flags
@@ -49,10 +53,13 @@ int main(int,char**)
 						VK_MAKE_VERSION(0,0,0),  // engine version
 						VK_API_VERSION_1_0,      // api version
 					},
-					0,nullptr,  // no layers
-					2,          // enabled extension count
-					array<const char*,2>{"VK_KHR_surface","VK_KHR_wayland_surface"}.data(),  // enabled extension names
-				}));
+					0, nullptr,  // no layers
+					2,           // enabled extension count
+					array<const char*, 2>{  // enabled extension names
+						"VK_KHR_surface",
+						"VK_KHR_wayland_surface",
+					}.data(),
+				});
 
 		// open Wayland connection
 		display = wl_display_connect(nullptr);
@@ -148,7 +155,7 @@ int main(int,char**)
 
 		// find compatible devices
 		// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
-		// On Linux X11 platform, only one graphics adapter is compatible device (the one that
+		// On Linux when using Xlib, only one graphics adapter is compatible device (the one that
 		// renders the window).
 		/*vector<vk::PhysicalDevice> deviceList=instance->enumeratePhysicalDevices();
 		vector<string> compatibleDevices;

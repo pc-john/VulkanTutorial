@@ -90,22 +90,14 @@ int main(int, char**)
 				)
 			);
 
-		// get VisualID
-		XWindowAttributes a;
-		XGetWindowAttributes(display, window, &a);
-		VisualID v = XVisualIDFromVisual(a.visual);
-
 		// find compatible devices
-		// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
-		// On Linux X11 platform, only one graphics adapter is compatible device (the one that
-		// renders the window).
 		vector<vk::PhysicalDevice> deviceList = instance->enumeratePhysicalDevices();
 		vector<string> compatibleDevices;
 		for(vk::PhysicalDevice pd : deviceList) {
 			uint32_t c;
-			pd.getQueueFamilyProperties(&c, nullptr, vk::DispatchLoaderStatic());
+			pd.getQueueFamilyProperties(&c, nullptr);
 			for(uint32_t i=0; i<c; i++)
-				if(pd.getXlibPresentationSupportKHR(i, display, v)) {
+				if(pd.getSurfaceSupportKHR(i, surface.get())) {
 					compatibleDevices.push_back(pd.getProperties().deviceName);
 					break;
 				}

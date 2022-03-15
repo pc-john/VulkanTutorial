@@ -95,16 +95,13 @@ int main(int, char**)
 			);
 
 		// find compatible devices
-		// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
-		// On Linux X11 platform, only one graphics adapter is compatible device (the one that
-		// renders the window).
 		vector<vk::PhysicalDevice> deviceList = instance->enumeratePhysicalDevices();
 		vector<string> compatibleDevices;
 		for(vk::PhysicalDevice pd : deviceList) {
 			uint32_t numQueues;
 			pd.getQueueFamilyProperties(&numQueues, nullptr);
 			for(uint32_t i=0; i<numQueues; i++)
-				if(pd.getWin32PresentationSupportKHR(i)) {
+				if(pd.getSurfaceSupportKHR(i, surface.get())) {
 					compatibleDevices.push_back(pd.getProperties().deviceName);
 					break;
 				}
