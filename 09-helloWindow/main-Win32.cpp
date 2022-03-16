@@ -6,6 +6,12 @@
 using namespace std;
 
 static vk::UniqueInstance instance;
+static HINSTANCE hInstance = NULL;
+static struct UniqueWindowClass {
+	ATOM handle = 0;
+	~UniqueWindowClass()  { if(handle) UnregisterClass(MAKEINTATOM(handle), hInstance); }
+	operator ATOM() const  { return handle; }
+} windowClass;
 static struct UniqueWindow {
 	HWND handle = nullptr;
 	~UniqueWindow()  { if(handle) DestroyWindow(handle); }
@@ -57,30 +63,32 @@ int main(int, char**)
 		};
 
 		// register window class
+		hInstance = GetModuleHandle(NULL);
 		WNDCLASSEX wc;
 		wc.cbSize        = sizeof(WNDCLASSEX);
 		wc.style         = 0;
 		wc.lpfnWndProc   = wndProc;
 		wc.cbClsExtra    = 0;
 		wc.cbWndExtra    = 0;
-		wc.hInstance     = GetModuleHandle(NULL);
+		wc.hInstance     = hInstance;
 		wc.hIcon         = LoadIcon(NULL, IDI_APPLICATION);
 		wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
 		wc.hbrBackground = NULL;
 		wc.lpszMenuName  = NULL;
 		wc.lpszClassName = "HelloWindow";
 		wc.hIconSm       = LoadIcon(NULL, IDI_APPLICATION);
-		if(!RegisterClassEx(&wc))
+		windowClass.handle = RegisterClassEx(&wc);
+		if(!windowClass.handle)
 			throw runtime_error("Can not register window class.");
 
 		// create window
 		window.handle = CreateWindowEx(
-			WS_EX_CLIENTEDGE,
-			"HelloWindow",
-			"Hello window!",
-			WS_OVERLAPPEDWINDOW,
-			CW_USEDEFAULT, CW_USEDEFAULT, 400, 300,
-			NULL, NULL, wc.hInstance, NULL);
+			WS_EX_CLIENTEDGE,  // dwExStyle
+			MAKEINTATOM(windowClass.handle),  // lpClassName
+			"Hello window!",  // lpWindowName
+			WS_OVERLAPPEDWINDOW,  // dwStyle
+			CW_USEDEFAULT, CW_USEDEFAULT, 400, 300,  // X, Y, nWidth, nHeight
+			NULL, NULL, hInstance, NULL);  // hWndParent, hMenu, hInstance, lpParam
 		if(window == NULL)
 			throw runtime_error("Can not create window.");
 
@@ -89,7 +97,7 @@ int main(int, char**)
 			instance->createWin32SurfaceKHRUnique(
 				vk::Win32SurfaceCreateInfoKHR(
 					vk::Win32SurfaceCreateFlagsKHR(),  // flags
-					wc.hInstance,  // hinstance
+					hInstance,  // hinstance
 					window  // hwnd
 				)
 			);
