@@ -140,9 +140,13 @@ if(window == NULL)
 <pre>
 // create surface
 vk::UniqueSurfaceKHR surface =
-   instance->createWin32SurfaceKHRUnique(
-      vk::Win32SurfaceCreateInfoKHR(vk::Win32SurfaceCreateFlagsKHR(), wc.hInstance, window)
-   );
+	instance->createWin32SurfaceKHRUnique(
+		vk::Win32SurfaceCreateInfoKHR(
+			vk::Win32SurfaceCreateFlagsKHR(),  // flags
+			wc.hInstance,  // hinstance
+			window  // hwnd
+		)
+	);
 </pre>
 
 <p>Jak vidíme v kódu, pro vytvoření surface potřebujeme HINSTANCE okna a handle samotného okna.</p>
@@ -152,30 +156,20 @@ vk::UniqueSurfaceKHR surface =
 Nicméně je zde drobný problém:
 Ne každé fyzické zařízení musí nutně umět prezentovat na náš surface.
 Například počítač se dvěma grafickými kartami nemusí podporovat
-rendering na jedné kartě a prezentaci výsledků na monitor, který je připojen skrz druhou grafickou kartu.
+rendering na jedné kartě a prezentaci výsledků na obrazovku, která je připojena skrz druhou grafickou kartu.
 A jsou dokonce fyzická zařízení, které nazýváme výpočetní akcelerátory,
 a které neumějí prezentovat vůbec a ani nemají konektor pro připojení obrazovky.
-Potřebujeme tedy zjistit, která fyzická zařízení jsou s naším novým oknem kompatibilní.</p>
-
-<p>Na platformě Win32 máme situaci zjednodušenou díky její archtektuře driverů.
-Zkráceně řečeno: prezentovat můžeme na kterémkoliv fyzickém zařízení, které to podporuje,
-a je přitom lhostejné, na kterém zařízení jsme rendrovali.
-Windows se postará o přenos vyrendrovaných dat mezi fyzickými zařízeními.
-Samozřejmě rendrovat a prezentovat na stejné kartě může mít své výhody.
-Například se mohou ušetřit přenosy dat mezi fyzickými zařízeními.</p>
+Potřebujeme tedy zjistit, která fyzická zařízení jsou kompatibilní s naším surface.</p>
 
 <pre>
 // find compatible devices
-// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
-// On Linux X11 platform, only one graphics adapter is compatible device (the one that
-// renders the window).
 vector&lt;vk::PhysicalDevice&gt; deviceList = instance->enumeratePhysicalDevices();
 vector&lt;string&gt; compatibleDevices;
 for(vk::PhysicalDevice pd : deviceList) {
    uint32_t c;
-   pd.getQueueFamilyProperties(&amp;c, nullptr, vk::DispatchLoaderStatic());
+   pd.getQueueFamilyProperties(&amp;c, nullptr);
    for(uint32_t i=0; i&lt;c; i++)
-      if(pd.getWin32PresentationSupportKHR(i)) {
+      if(pd.getSurfaceSupportKHR(i, surface.get())) {
          compatibleDevices.push_back(pd.getProperties().deviceName);
          break;
       }
@@ -186,7 +180,8 @@ for(string&amp; name : compatibleDevices)
 </pre>
 
 <p>V kódu postupně procházíme všechna fyzická zařízení, dotazujeme se na počet front,
-a pak hledáme, zda je pro nějakou z nich podporována prezentace, tedy zobrazování na obrazovku.
+a pak hledáme, zda je pro nějakou z nich podporována prezentace na náš surface,
+což zjišťujeme zavoláním metody getSurfaceSupportKHR().
 A pokud je prezentace pro některou frontu podporována, pak si fyzické zařízení uložíme
 do seznamu, jehož obsah v zápětí vypíšeme do konzole.</p>
 
@@ -328,36 +323,32 @@ XSetWMProtocols(display, window, &amp;wmDeleteMessage, 1);
 XMapWindow(display, window);
 </pre>
 
-<p>Následuje vytvoření surface a zjištění VisualID. VisualID budeme potřebovat vzápětí.</p>
+<p>Následuje vytvoření surface:</p>
 
 <pre>
 // create surface
 vk::UniqueSurfaceKHR surface =
-   instance->createXlibSurfaceKHRUnique(
-      vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(), display, window)
-   );
-
-// get VisualID
-XWindowAttributes a;
-XGetWindowAttributes(display, window, &amp;a);
-VisualID v = XVisualIDFromVisual(a.visual);
+	instance->createXlibSurfaceKHRUnique(
+		vk::XlibSurfaceCreateInfoKHR(
+			vk::XlibSurfaceCreateFlagsKHR(),  // flags
+			display,  // dpy
+			window  // window
+		)
+	);
 </pre>
 
-<p>Surface máme vytvořen a známe i VisualID našeho okna. Nyní, tak jako na Windows,
-potřebujeme zjistit, ze kterých fyzických zařízení na náš surface můžeme prezentovat.</p>
+<p>Surface máme vytvořen. Nyní, tak jako na Windows, potřebujeme zjistit,
+ze kterých fyzických zařízení na náš surface můžeme prezentovat:</p>
 
 <pre>
 // find compatible devices
-// (On Windows, all graphics adapters capable of monitor output are usually compatible devices.
-// On Linux X11 platform, only one graphics adapter is compatible device (the one that
-// renders the window).
 vector&lt;vk::PhysicalDevice&gt; deviceList = instance->enumeratePhysicalDevices();
 vector&lt;string> compatibleDevices;
 for(vk::PhysicalDevice pd : deviceList) {
    uint32_t c;
-   pd.getQueueFamilyProperties(&amp;c, nullptr, vk::DispatchLoaderStatic());
+   pd.getQueueFamilyProperties(&amp;c, nullptr);
    for(uint32_t i=0; i&lt;c; i++)
-      if(pd.getXlibPresentationSupportKHR(i, display, v)) {
+      if(pd.getSurfaceSupportKHR(i, surface.get())) {
          compatibleDevices.push_back(pd.getProperties().deviceName);
          break;
       }
@@ -367,14 +358,7 @@ for(string&amp; name : compatibleDevices)
    cout &lt;&lt; "   " &lt;&lt; name &lt;&lt; endl;
 </pre>
 
-<p>V kódu procházíme všechna fyzická zařízení
-a pro každé zařízení procházíme všechny jeho fronty.
-Pro každou z nich zavoláme methodu getXlibPresentationSupportKHR(),
-kde se ptáme na podporu prezentace.
-Můžeme si všimnout, že podpora na platformě Xlib záleží na kombinaci čtyřech parametrů:
-na fyzickém zařízení, na čísle fronty, připojení k X-serveru a na VisualID.
-Pokud je prezentace podporovaná, uložíme si tuto informaci.
-Nakonec pak vypíšeme všechna kompatibilní zařízení.</p>
+<p>Kód je stejný jak na platformě Win32. Pro detaily tedy odkazuji tam.</p>
 
 <p>A zbývá poslední bod, aby naše aplikace fungovala: Rozjet smyčku zpráv.</p>
 
@@ -393,7 +377,9 @@ Ve smyčce obsluhujeme jedinou zprávu a to žádost o smazání okna.
 Pokud tato zpráva přijde, opustíme smyčku zpráv i funkci main().
 Následně je smazáno okno v destruktoru UniqueWindow,
 pak je uzavřeno spojení s X-serverem, což se stane v destruktoru UniqueDisplay
-a vše zakončí uvolnění instance Vulkan. Tím jsme hotovi s oknem v knihovně Xlib.</p>
+a vše zakončí uvolnění instance Vulkan. Že vše funguje, ověříme spuštěním aplikace:</p>
+
+<img src="window-Xlib.png">
 
 
 <h3>Wayland</h3>
@@ -402,7 +388,8 @@ a vše zakončí uvolnění instance Vulkan. Tím jsme hotovi s oknem v knihovn�
 Zároveň je to také název pro C-čkovskou implementaci tohoto protokolu.
 K Wayland projektu patří i Weston, což je referenční implementace Wayland kompozitoru.</p>
 
-<p>Wayland se zrodil v roce 2008 jako volnočasový projekt Kristiana Høgsberga
+<p>Wayland se zrodil v roce 2008 jako volnočasový projekt Kristiana Høgsberga.
+
 
 
 <h3>Shrnutí</h3>
@@ -419,5 +406,5 @@ rendrování do okna, z-buffer a mnoho dalších věcí, které nám Vulkan při
 
 
 - on Win32 use ATOM
-- je vk::DispatchLoaderStatic() nezbytné na Win32?
+- je vk::DispatchLoaderStatic() nezbytné na Win32 a Xlib?
 - přejmenovat soubory podle názvu platformy
