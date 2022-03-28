@@ -11,6 +11,9 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines inc
 			find_package(X11)
 			if(X11_FOUND)
 				set(guiTypeDetected "Xlib")
+			else()
+				# default to Wayland on Linux
+				set(guiTypeDetected "Wayland")
 			endif()
 		endif()
 	endif()
