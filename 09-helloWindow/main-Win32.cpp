@@ -5,7 +5,11 @@
 
 using namespace std;
 
+// vk::Instance
+// (we destroy it as the last one)
 static vk::UniqueInstance instance;
+
+// handles and atoms
 static HINSTANCE hInstance = NULL;
 static struct UniqueWindowClass {
 	ATOM handle = 0;
@@ -17,6 +21,8 @@ static struct UniqueWindow {
 	~UniqueWindow()  { if(handle) DestroyWindow(handle); }
 	operator HWND() const  { return handle; }
 } window;
+
+// Vulkan window surface
 static vk::UniqueSurfaceKHR surface;
 
 
