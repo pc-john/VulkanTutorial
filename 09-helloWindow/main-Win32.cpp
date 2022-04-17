@@ -85,7 +85,7 @@ int main(int, char**)
 		wc.hIconSm       = LoadIcon(NULL, IDI_APPLICATION);
 		windowClass.handle = RegisterClassEx(&wc);
 		if(!windowClass.handle)
-			throw runtime_error("Can not register window class.");
+			throw runtime_error("Cannot register window class.");
 
 		// create window
 		window.handle = CreateWindowEx(
@@ -96,7 +96,7 @@ int main(int, char**)
 			CW_USEDEFAULT, CW_USEDEFAULT, 400, 300,  // X, Y, nWidth, nHeight
 			NULL, NULL, hInstance, NULL);  // hWndParent, hMenu, hInstance, lpParam
 		if(window == NULL)
-			throw runtime_error("Can not create window.");
+			throw runtime_error("Cannot create window.");
 
 		// create surface
 		surface =
