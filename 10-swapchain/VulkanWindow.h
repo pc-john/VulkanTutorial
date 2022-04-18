@@ -3,6 +3,7 @@
 #if defined(USE_PLATFORM_WIN32)
   typedef struct HWND__* HWND;
   typedef struct HINSTANCE__* HINSTANCE;
+  typedef unsigned short ATOM;
 #elif defined(USE_PLATFORM_XLIB)
   typedef struct _XDisplay Display;
   typedef unsigned long Window;  // Window is XID type (X11/X.h) that is defined as unsigned long (or CARD32 but that does not apply to client applications; CARD32 might be used only when compiling X server sources)
@@ -122,5 +123,5 @@ inline vk::SurfaceKHR VulkanWindow::surface() const  { return _surface; }
 inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return _surfaceExtent; }
 inline const std::vector<const char*>& VulkanWindow::requiredExtensions()  { return _requiredInstanceExtensions; }
 inline void VulkanWindow::appendRequiredExtensions(std::vector<const char*>& v)  { v.insert(v.end(), _requiredInstanceExtensions.begin(), _requiredInstanceExtensions.end()); }
-inline uint32_t VulkanWindow::requiredExtensionCount()  { return _requiredInstanceExtensions.size(); }
+inline uint32_t VulkanWindow::requiredExtensionCount()  { return uint32_t(_requiredInstanceExtensions.size()); }
 inline const char* const* VulkanWindow::requiredExtensionNames()  { return _requiredInstanceExtensions.data(); }

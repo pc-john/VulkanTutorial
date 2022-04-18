@@ -139,10 +139,12 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 		switch(msg)
 		{
 			case WM_ERASEBKGND:
+				cout << "WM_ERASEBKGND message" << endl;
 				return 1;  // returning non-zero means that background should be considered erased
 			case WM_PAINT: {
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				try {
+					cout << "WM_PAINT message" << endl;
 					if(!ValidateRect(hwnd, NULL))
 						throw runtime_error("ValidateRect(): The function failed.");
 					if(w->_frameCallback)
@@ -187,7 +189,7 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 	// create window
 	_hwnd = CreateWindowEx(
 		WS_EX_CLIENTEDGE,  // dwExStyle
-		MAKEINTATOM(windowClass.handle),  // lpClassName
+		MAKEINTATOM(_windowClass),  // lpClassName
 	#if _UNICODE
 		utf8toWString(title).c_str(),  // lpWindowName
 	#else
@@ -204,11 +206,11 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 	SetWindowLongPtr(_hwnd, 0, (LONG_PTR)this);
 
 	// show window
-	ShowWindow(m_hwnd, SW_SHOWDEFAULT);
+	ShowWindow(_hwnd, SW_SHOWDEFAULT);
 
 	// create surface
 	_surface =
-		instance->createWin32SurfaceKHR(
+		instance.createWin32SurfaceKHR(
 			vk::Win32SurfaceCreateInfoKHR(
 				vk::Win32SurfaceCreateFlagsKHR(),  // flags
 				_hInstance,  // hinstance
@@ -232,7 +234,7 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 			_display,  // display
 			DefaultRootWindow(_display),  // parent
 			0, 0,  // x,y
-			_surfaceExtent.width, _surfaceExtent.height,  // width, height
+			surfaceExtent.width, surfaceExtent.height,  // width, height
 			0,  // border_width
 			CopyFromParent,  // depth
 			InputOutput,  // class
@@ -395,9 +397,11 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 
 void VulkanWindow::mainLoop()
 {
-	// create swapchain
+	// update surface extent by the real window size
 	vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
 	_surfaceExtent = surfaceCapabilities.currentExtent;
+
+	// create swapchain
 	_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
 
 	// run Win32 event loop
@@ -421,9 +425,7 @@ void VulkanWindow::mainLoop()
 void VulkanWindow::mainLoop()
 {
 	// create swapchain
-	vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
-	_surfaceExtent = surfaceCapabilities.currentExtent;
-	_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
+	_recreateSwapchainCallback(_physicalDevice.getSurfaceCapabilitiesKHR(_surface), _surfaceExtent);
 
 	// run Xlib event loop
 	XEvent e;
