@@ -587,17 +587,21 @@ int main(int,char**)
 		// run main loop
 		window.mainLoop();
 
-		// wait for idle device
-		// after main loop exit
-		device->waitIdle();
-
 	// catch exceptions
 	} catch(vk::Error &e) {
-		cout<<"Failed because of Vulkan exception: "<<e.what()<<endl;
+		cout << "Failed because of Vulkan exception: " << e.what() << endl;
 	} catch(exception &e) {
-		cout<<"Failed because of exception: "<<e.what()<<endl;
+		cout << "Failed because of exception: " << e.what() << endl;
 	} catch(...) {
-		cout<<"Failed because of unspecified exception."<<endl;
+		cout << "Failed because of unspecified exception." << endl;
+	}
+
+	// wait for device idle state
+	// (to prevent errors during destruction of Vulkan resources)
+	try {
+		device->waitIdle();
+	} catch(vk::Error &e) {
+		cout << "Failed because of Vulkan exception: " << e.what() << endl;
 	}
 
 	return 0;
