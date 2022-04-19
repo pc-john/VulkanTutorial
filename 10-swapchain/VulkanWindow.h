@@ -47,32 +47,26 @@ protected:
 #elif defined(USE_PLATFORM_WAYLAND)
 
 	// globals
-	wl_display* m_display = nullptr;
-	wl_registry* m_registry;
-	wl_compositor* m_compositor;
-	xdg_wm_base* m_xdgWmBase = nullptr;
-	zxdg_decoration_manager_v1* m_zxdgDecorationManagerV1;
+	wl_display* _display = nullptr;
+	wl_registry* _registry;
+	wl_compositor* _compositor;
+	xdg_wm_base* _xdgWmBase = nullptr;
+	zxdg_decoration_manager_v1* _zxdgDecorationManagerV1;
 
 	// objects
-	wl_surface* m_wlSurface = nullptr;
-	xdg_surface* m_xdgSurface = nullptr;
-	xdg_toplevel* m_xdgTopLevel = nullptr;
-	zxdg_toplevel_decoration_v1* m_decoration = nullptr;
+	wl_surface* _wlSurface = nullptr;
+	xdg_surface* _xdgSurface = nullptr;
+	xdg_toplevel* _xdgTopLevel = nullptr;
+	zxdg_toplevel_decoration_v1* _decoration = nullptr;
 
 	// state
-	bool m_running = true;
-	bool m_forceFrame = true;
-	wl_callback* m_scheduledFrameCallback = nullptr;
+	bool _running = true;
 
 	// listeners
-	wl_registry_listener m_registryListener;
-	xdg_wm_base_listener m_xdgWmBaseListener;
-	xdg_surface_listener m_xdgSurfaceListener;
-	xdg_toplevel_listener m_xdgToplevelListener;
-	wl_callback_listener m_frameListener;
-
-	// mainLoop
-	//void doFrame();
+	wl_registry_listener _registryListener;
+	xdg_wm_base_listener _xdgWmBaseListener;
+	xdg_surface_listener _xdgSurfaceListener;
+	xdg_toplevel_listener _xdgToplevelListener;
 
 	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_wayland_surface" };

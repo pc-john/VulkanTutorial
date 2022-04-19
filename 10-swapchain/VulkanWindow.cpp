@@ -87,33 +87,29 @@ void VulkanWindow::destroy()
 #elif defined(USE_PLATFORM_WAYLAND)
 
 	// release resources
-	if(m_scheduledFrameCallback) {
-		wl_callback_destroy(m_scheduledFrameCallback);
-		m_scheduledFrameCallback = nullptr;
+	if(_decoration) {
+		zxdg_toplevel_decoration_v1_destroy(_decoration);
+		_decoration = nullptr;
 	}
-	if(m_decoration) {
-		zxdg_toplevel_decoration_v1_destroy(m_decoration);
-		m_decoration = nullptr;
+	if(_xdgTopLevel) {
+		xdg_toplevel_destroy(_xdgTopLevel);
+		_xdgTopLevel = nullptr;
 	}
-	if(m_xdgTopLevel) {
-		xdg_toplevel_destroy(m_xdgTopLevel);
-		m_xdgTopLevel = nullptr;
+	if(_xdgSurface) {
+		xdg_surface_destroy(_xdgSurface);
+		_xdgSurface = nullptr;
 	}
-	if(m_xdgSurface) {
-		xdg_surface_destroy(m_xdgSurface);
-		m_xdgSurface = nullptr;
+	if(_wlSurface) {
+		wl_surface_destroy(_wlSurface);
+		_wlSurface = nullptr;
 	}
-	if(m_wlSurface) {
-		wl_surface_destroy(m_wlSurface);
-		m_wlSurface = nullptr;
+	if(_xdgWmBase) {
+		xdg_wm_base_destroy(_xdgWmBase);
+		_xdgWmBase = nullptr;
 	}
-	if(m_xdgWmBase) {
-		xdg_wm_base_destroy(m_xdgWmBase);
-		m_xdgWmBase = nullptr;
-	}
-	if(m_display) {
-		wl_display_disconnect(m_display);
-		m_display = nullptr;
+	if(_display) {
+		wl_display_disconnect(_display);
+		_display = nullptr;
 	}
 
 #endif
@@ -252,141 +248,122 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 	// create surface
 	_surface =
 		instance.createXlibSurfaceKHR(
-			vk::XlibSurfaceCreateInfoKHR(vk::XlibSurfaceCreateFlagsKHR(), _display, _window)
+			vk::XlibSurfaceCreateInfoKHR(
+				vk::XlibSurfaceCreateFlagsKHR(),  // flags
+				_display,  // dpy
+				_window  // window
+			)
 		);
 	return _surface;
 
 #elif defined(USE_PLATFORM_WAYLAND)
 
 	// no multiple init attempts
-	if(m_display)
+	if(_display)
 		throw runtime_error("Multiple VulkanWindow::init() calls are not allowed.");
 
 	// open Wayland connection
-	m_display = wl_display_connect(nullptr);
-	if(m_display == nullptr)
+	_display = wl_display_connect(nullptr);
+	if(_display == nullptr)
 		throw runtime_error("Cannot connect to Wayland display. No Wayland server is running or invalid WAYLAND_DISPLAY variable.");
 
 	// registry listener
-	m_registry = wl_display_get_registry(m_display);
-	if(m_registry == nullptr)
+	_registry = wl_display_get_registry(_display);
+	if(_registry == nullptr)
 		throw runtime_error("Cannot get Wayland registry object.");
-	m_compositor = nullptr;
-	m_registryListener = {
+	_compositor = nullptr;
+	_registryListener = {
 		.global =
 			[](void* data, wl_registry* registry, uint32_t name, const char* interface, uint32_t version) {
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(data);
 				if(strcmp(interface, wl_compositor_interface.name) == 0)
-					w->m_compositor = static_cast<wl_compositor*>(
+					w->_compositor = static_cast<wl_compositor*>(
 						wl_registry_bind(registry, name, &wl_compositor_interface, 1));
 				else if(strcmp(interface, xdg_wm_base_interface.name) == 0)
-					w->m_xdgWmBase = static_cast<xdg_wm_base*>(
+					w->_xdgWmBase = static_cast<xdg_wm_base*>(
 						wl_registry_bind(registry, name, &xdg_wm_base_interface, 1));
 				else if(strcmp(interface, zxdg_decoration_manager_v1_interface.name) == 0)
-					w->m_zxdgDecorationManagerV1 = static_cast<zxdg_decoration_manager_v1*>(
+					w->_zxdgDecorationManagerV1 = static_cast<zxdg_decoration_manager_v1*>(
 						wl_registry_bind(registry, name, &zxdg_decoration_manager_v1_interface, 1));
 			},
 		.global_remove =
 			[](void*, wl_registry*, uint32_t) {
 			},
 	};
-	if(wl_registry_add_listener(m_registry, &m_registryListener, this))
+	if(wl_registry_add_listener(_registry, &_registryListener, this))
 		throw runtime_error("wl_registry_add_listener() failed.");
 
 	// get and init global objects
-	if(wl_display_roundtrip(m_display) == -1)
+	if(wl_display_roundtrip(_display) == -1)
 		throw runtime_error("wl_display_roundtrip() failed.");
-	if(m_compositor == nullptr)
+	if(_compositor == nullptr)
 		throw runtime_error("Cannot get Wayland compositor object.");
-	if(m_xdgWmBase == nullptr)
+	if(_xdgWmBase == nullptr)
 		throw runtime_error("Cannot get Wayland xdg_wm_base object.");
-	m_xdgWmBaseListener = {
+	_xdgWmBaseListener = {
 		.ping =
 			[](void*, xdg_wm_base* xdg, uint32_t serial) {
 				xdg_wm_base_pong(xdg, serial);
 			}
 	};
-	if(xdg_wm_base_add_listener(m_xdgWmBase, &m_xdgWmBaseListener, nullptr))
+	if(xdg_wm_base_add_listener(_xdgWmBase, &_xdgWmBaseListener, nullptr))
 		throw runtime_error("xdg_wm_base_add_listener() failed.");
 
 	// create window
-	m_wlSurface = wl_compositor_create_surface(m_compositor);
-	if(m_wlSurface == nullptr)
+	_wlSurface = wl_compositor_create_surface(_compositor);
+	if(_wlSurface == nullptr)
 		throw runtime_error("wl_compositor_create_surface() failed.");
-	m_xdgSurface = xdg_wm_base_get_xdg_surface(m_xdgWmBase, m_wlSurface);
-	if(m_xdgSurface == nullptr)
+	_xdgSurface = xdg_wm_base_get_xdg_surface(_xdgWmBase, _wlSurface);
+	if(_xdgSurface == nullptr)
 		throw runtime_error("xdg_wm_base_get_xdg_surface() failed.");
-	m_xdgSurfaceListener = {
+	_xdgSurfaceListener = {
 		.configure =
 			[](void* data, xdg_surface* xdgSurface, uint32_t serial) {
+				cout << "surface configure" << endl;
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(data);
-				cout<<"surface configure "<<serial<<endl;
 				xdg_surface_ack_configure(xdgSurface, serial);
-				wl_surface_commit(w->m_wlSurface);
+				wl_surface_commit(w->_wlSurface);
 			},
 	};
-	if(xdg_surface_add_listener(m_xdgSurface, &m_xdgSurfaceListener, this))
+	if(xdg_surface_add_listener(_xdgSurface, &_xdgSurfaceListener, this))
 		throw runtime_error("xdg_surface_add_listener() failed.");
 
 	// init xdg toplevel
-	m_xdgTopLevel = xdg_surface_get_toplevel(m_xdgSurface);
-	if(m_xdgTopLevel == nullptr)
+	_xdgTopLevel = xdg_surface_get_toplevel(_xdgSurface);
+	if(_xdgTopLevel == nullptr)
 		throw runtime_error("xdg_surface_get_toplevel() failed.");
-	if(m_zxdgDecorationManagerV1) {
-		m_decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(m_zxdgDecorationManagerV1, m_xdgTopLevel);
-		zxdg_toplevel_decoration_v1_set_mode(m_decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+	if(_zxdgDecorationManagerV1) {
+		_decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(_zxdgDecorationManagerV1, _xdgTopLevel);
+		zxdg_toplevel_decoration_v1_set_mode(_decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 	}
-	xdg_toplevel_set_title(m_xdgTopLevel, title);
-	m_xdgToplevelListener = {
+	xdg_toplevel_set_title(_xdgTopLevel, title);
+	_xdgToplevelListener = {
 		.configure =
 			[](void* data, xdg_toplevel* toplevel, int32_t width, int32_t height, wl_array*) -> void {
-				cout<<"toplevel configure "<<width<<"x"<<height<<endl;
-				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(data);
-
-				// if width or height of the window changed,
-				// schedule swapchain resize and force new frame rendering
-				// (width and height of zero means that the compositor does not know the window dimension)
-				if(width != w->m_surfaceExtent.width && width != 0) {
-					w->m_surfaceExtent.width = width;
-					if(height != w->m_surfaceExtent.height && height != 0)
-						w->m_surfaceExtent.height = height;
-					w->scheduleSwapchainResize();
-				}
-				else if(height != w->m_surfaceExtent.height && height != 0) {
-					w->m_surfaceExtent.height = height;
-					w->scheduleSwapchainResize();
-				}
-
+				cout << "toplevel configure (width=" << width << ", height=" << height << ")" << endl;
 			},
 		.close =
 			[](void* data, xdg_toplevel* xdgTopLevel) {
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(data);
-				w->m_running = false;
+				w->_running = false;
 			},
 	};
-	if(xdg_toplevel_add_listener(m_xdgTopLevel, &m_xdgToplevelListener, this))
+	if(xdg_toplevel_add_listener(_xdgTopLevel, &_xdgToplevelListener, this))
 		throw runtime_error("xdg_toplevel_add_listener() failed.");
-	wl_surface_commit(m_wlSurface);
-	if(wl_display_flush(m_display) == -1)
+	wl_surface_commit(_wlSurface);
+	if(wl_display_flush(_display) == -1)
 		throw runtime_error("wl_display_flush() failed.");
 
-	// frame listener
-	m_frameListener = {
-		.done =
-			[](void *data, wl_callback* cb, uint32_t time) {
-
-				cout<<"callback"<<endl;
-				reinterpret_cast<VulkanWindow*>(data)->doFrame();
-
-			}
-	};
-
 	// create surface
-	m_surface =
+	_surface =
 		instance.createWaylandSurfaceKHR(
-			vk::WaylandSurfaceCreateInfoKHR(vk::WaylandSurfaceCreateFlagsKHR(), m_display, m_wlSurface)
+			vk::WaylandSurfaceCreateInfoKHR(
+				vk::WaylandSurfaceCreateFlagsKHR(),  // flags
+				_display,  // display
+				_wlSurface  // surface
+			)
 		);
-	return m_surface;
+	return _surface;
 
 #endif
 }
@@ -454,66 +431,21 @@ void VulkanWindow::mainLoop()
 
 void VulkanWindow::mainLoop()
 {
-	if(wl_display_roundtrip(m_display) == -1)
-		throw runtime_error("wl_display_roundtrip() failed.");
+	// create swapchain
+	_recreateSwapchainCallback(_physicalDevice.getSurfaceCapabilitiesKHR(_surface), _surfaceExtent);
 
-	if(m_forceFrame)
-		doFrame();
+	if(_frameCallback)
+		_frameCallback();
 
-	while(m_running) {
+	cout<<"running"<<endl;
+	while(_running) {
 
 		// dispatch events
-		if(wl_display_dispatch(m_display) == -1)  // it blocks if there are no events
+		if(wl_display_dispatch(_display) == -1)  // it blocks if there are no events
 			throw std::runtime_error("wl_display_dispatch() failed.");
 
-		if(m_forceFrame) {
-			cout<<"force expose is set"<<endl;
-			doFrame();
-		}
 	}
 }
 
-
-void VulkanWindow::doFrame()
-{
-	// destroy Wayland frame callback
-	if(m_scheduledFrameCallback) {
-		wl_callback_destroy(m_scheduledFrameCallback);
-		m_scheduledFrameCallback = nullptr;
-	}
-
-	if(m_swapchainResizePending) {
-
-		// make sure that we finished all the rendering
-		// (this is necessary for swapchain re-creation)
-		m_device.waitIdle();
-
-		// get surface capabilities
-		// On Wayland, currentExtent is 0xffffffff, 0xffffffff with the meaning that the extent
-		// will be determined by the extent of a swapchain,
-		// minImageExtent is 1,1 and maxImageExtent is the maximum supported surface size.
-		vk::SurfaceCapabilitiesKHR surfaceCapabilities(m_physicalDevice.getSurfaceCapabilitiesKHR(m_surface));
-
-		// recreate swapchain
-		m_swapchainResizePending = false;
-		m_recreateSwapchainCallback(surfaceCapabilities, m_surfaceExtent);
-	}
-
-	// render scene
-	cout<<"expose"<<m_surfaceExtent.width<<"x"<<m_surfaceExtent.height<<endl;
-	m_forceFrame = false;
-	m_frameCallback();
-}
-
-
-void VulkanWindow::scheduleNextFrame()
-{
-	if(m_scheduledFrameCallback)
-		return;
-
-	m_scheduledFrameCallback = wl_surface_frame(m_wlSurface);
-	wl_callback_add_listener(m_scheduledFrameCallback, &m_frameListener, this);
-	wl_surface_commit(m_wlSurface);
-}
 
 #endif
