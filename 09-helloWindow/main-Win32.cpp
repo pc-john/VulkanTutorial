@@ -70,31 +70,36 @@ int main(int, char**)
 
 		// register window class
 		hInstance = GetModuleHandle(NULL);
-		WNDCLASSEX wc;
-		wc.cbSize        = sizeof(WNDCLASSEX);
-		wc.style         = 0;
-		wc.lpfnWndProc   = wndProc;
-		wc.cbClsExtra    = 0;
-		wc.cbWndExtra    = 0;
-		wc.hInstance     = hInstance;
-		wc.hIcon         = LoadIcon(NULL, IDI_APPLICATION);
-		wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
-		wc.hbrBackground = NULL;
-		wc.lpszMenuName  = NULL;
-		wc.lpszClassName = "HelloWindow";
-		wc.hIconSm       = LoadIcon(NULL, IDI_APPLICATION);
-		windowClass.handle = RegisterClassEx(&wc);
+		windowClass.handle =
+			RegisterClassEx(
+				&(const WNDCLASSEX&)WNDCLASSEX{
+					sizeof(WNDCLASSEX),  // cbSize
+					0,                   // style
+					wndProc,             // lpfnWndProc
+					0,                   // cbClsExtra
+					0,                   // cbWndExtra
+					hInstance,           // hInstance
+					LoadIcon(NULL, IDI_APPLICATION),  // hIcon
+					LoadCursor(NULL, IDC_ARROW),  // hCursor
+					NULL,                // hbrBackground
+					NULL,                // lpszMenuName
+					"HelloWindow",       // lpszClassName
+					LoadIcon(NULL, IDI_APPLICATION)  // hIconSm
+				}
+			);
 		if(!windowClass.handle)
 			throw runtime_error("Cannot register window class.");
 
 		// create window
-		window.handle = CreateWindowEx(
-			WS_EX_CLIENTEDGE,  // dwExStyle
-			MAKEINTATOM(windowClass.handle),  // lpClassName
-			"Hello window!",  // lpWindowName
-			WS_OVERLAPPEDWINDOW,  // dwStyle
-			CW_USEDEFAULT, CW_USEDEFAULT, 400, 300,  // X, Y, nWidth, nHeight
-			NULL, NULL, hInstance, NULL);  // hWndParent, hMenu, hInstance, lpParam
+		window.handle =
+			CreateWindowEx(
+				WS_EX_CLIENTEDGE,  // dwExStyle
+				MAKEINTATOM(windowClass.handle),  // lpClassName
+				"Hello window!",  // lpWindowName
+				WS_OVERLAPPEDWINDOW,  // dwStyle
+				CW_USEDEFAULT, CW_USEDEFAULT, 400, 300,  // X, Y, nWidth, nHeight
+				NULL, NULL, hInstance, NULL  // hWndParent, hMenu, hInstance, lpParam
+			);
 		if(window == NULL)
 			throw runtime_error("Cannot create window.");
 
