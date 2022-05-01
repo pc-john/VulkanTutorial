@@ -182,8 +182,11 @@ int main(int,char**)
 
 		// run event loop
 		cout << "entering main loop" << endl;
-		while(wl_display_dispatch(display.get()) != -1 && running) {
-			wl_display_flush(display.get());
+		while(running) {
+			if(wl_display_dispatch(display.get()) == -1)
+				throw runtime_error("wl_display_dispatch() failed.");
+			if(wl_display_flush(display.get()) == -1)
+				throw runtime_error("wl_display_flush() failed.");
 		}
 		cout << "main loop left" << endl;
 
