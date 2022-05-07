@@ -115,7 +115,7 @@ int main(int,char**)
 		if(xdg_wm_base_add_listener(xdgWmBase.get(), &xdgWmBaseListener, nullptr))
 			throw runtime_error("xdg_wm_base_add_listener() failed.");
 
-		// create window
+		// create Wayland surface
 		wlSurface.reset(wl_compositor_create_surface(compositor.get()));
 		if(wlSurface == nullptr)
 			throw runtime_error("wl_compositor_create_surface() failed.");

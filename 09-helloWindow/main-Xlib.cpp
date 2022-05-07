@@ -59,7 +59,6 @@ int main(int, char**)
 			throw runtime_error("Can not open display. No X-server running or wrong DISPLAY variable.");
 
 		// create window
-		Screen* screen = XDefaultScreenOfDisplay(display);
 		XSetWindowAttributes attr;
 		attr.event_mask = ExposureMask | StructureNotifyMask | VisibilityChangeMask;
 		window.handle =
@@ -67,7 +66,7 @@ int main(int, char**)
 				display,  // display
 				DefaultRootWindow(display.handle),  // parent
 				0, 0,  // x, y
-				XWidthOfScreen(screen)/2, XHeightOfScreen(screen)/2,  // width, height
+				400, 300,  // width, height
 				0,  // border_width
 				CopyFromParent,  // depth
 				InputOutput,  // class
