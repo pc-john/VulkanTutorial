@@ -2,6 +2,7 @@
 #include <vulkan/vulkan.hpp>
 #include <array>
 #include <iostream>
+#include <tchar.h>
 
 using namespace std;
 
@@ -83,7 +84,7 @@ int main(int, char**)
 					LoadCursor(NULL, IDC_ARROW),  // hCursor
 					NULL,                // hbrBackground
 					NULL,                // lpszMenuName
-					"HelloWindow",       // lpszClassName
+					_T("HelloWindow"),   // lpszClassName
 					LoadIcon(NULL, IDI_APPLICATION)  // hIconSm
 				}
 			);
@@ -95,7 +96,7 @@ int main(int, char**)
 			CreateWindowEx(
 				WS_EX_CLIENTEDGE,  // dwExStyle
 				MAKEINTATOM(windowClass.handle),  // lpClassName
-				"Hello window!",  // lpWindowName
+				_T("Hello window!"),  // lpWindowName
 				WS_OVERLAPPEDWINDOW,  // dwStyle
 				CW_USEDEFAULT, CW_USEDEFAULT, 400, 300,  // X, Y, nWidth, nHeight
 				NULL, NULL, hInstance, NULL  // hWndParent, hMenu, hInstance, lpParam

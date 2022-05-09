@@ -165,36 +165,41 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 
 	// register window class with the first window
 	_hInstance = GetModuleHandle(NULL);
-	WNDCLASSEX wc;
-	wc.cbSize        = sizeof(WNDCLASSEX);
-	wc.style         = 0;
-	wc.lpfnWndProc   = wndProc;
-	wc.cbClsExtra    = 0;
-	wc.cbWndExtra    = sizeof(LONG_PTR);
-	wc.hInstance     = _hInstance;
-	wc.hIcon         = LoadIcon(NULL, IDI_APPLICATION);
-	wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
-	wc.hbrBackground = (HBRUSH)(COLOR_WINDOW+1);
-	wc.lpszMenuName  = NULL;
-	wc.lpszClassName = _T("VulkanWindow");
-	wc.hIconSm       = LoadIcon(NULL, IDI_APPLICATION);
-	_windowClass = RegisterClassEx(&wc);
+	_windowClass =
+		RegisterClassEx(
+			&(const WNDCLASSEX&)WNDCLASSEX{
+				sizeof(WNDCLASSEX),  // cbSize
+				0,                   // style
+				wndProc,             // lpfnWndProc
+				0,                   // cbClsExtra
+				sizeof(LONG_PTR),    // cbWndExtra
+				_hInstance,          // hInstance
+				LoadIcon(NULL, IDI_APPLICATION),  // hIcon
+				LoadCursor(NULL, IDC_ARROW),  // hCursor
+				NULL,                // hbrBackground
+				NULL,                // lpszMenuName
+				_T("VulkanWindow"),  // lpszClassName
+				LoadIcon(NULL, IDI_APPLICATION)  // hIconSm
+			}
+		);
 	if(!_windowClass)
 		throw runtime_error("Cannot register window class.");
 
 	// create window
-	_hwnd = CreateWindowEx(
-		WS_EX_CLIENTEDGE,  // dwExStyle
-		MAKEINTATOM(_windowClass),  // lpClassName
-	#if _UNICODE
-		utf8toWString(title).c_str(),  // lpWindowName
-	#else
-		title,  // lpWindowName
-	#endif
-		WS_OVERLAPPEDWINDOW,  // dwStyle
-		CW_USEDEFAULT, CW_USEDEFAULT,  // x,y
-		surfaceExtent.width, surfaceExtent.height,  // width, height
-		NULL, NULL, _hInstance, NULL);  // hWndParent, hMenu, hInstance, lpParam
+	_hwnd =
+		CreateWindowEx(
+			WS_EX_CLIENTEDGE,  // dwExStyle
+			MAKEINTATOM(_windowClass),  // lpClassName
+		#if _UNICODE
+			utf8toWString(title).c_str(),  // lpWindowName
+		#else
+			title,  // lpWindowName
+		#endif
+			WS_OVERLAPPEDWINDOW,  // dwStyle
+			CW_USEDEFAULT, CW_USEDEFAULT,  // x,y
+			surfaceExtent.width, surfaceExtent.height,  // width, height
+			NULL, NULL, _hInstance, NULL  // hWndParent, hMenu, hInstance, lpParam
+		);
 	if(_hwnd == NULL)
 		throw runtime_error("Cannot create window.");
 
