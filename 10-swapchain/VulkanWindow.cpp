@@ -132,7 +132,7 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 #if defined(USE_PLATFORM_WIN32)
 
 	// window's message handling procedure
-	auto wndProc = [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) -> LRESULT {
+	auto wndProc = [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) noexcept -> LRESULT {
 		switch(msg)
 		{
 			case WM_ERASEBKGND:
@@ -143,10 +143,15 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				try {
 					cout << "WM_PAINT message" << endl;
+
+					// validate window area
 					if(!ValidateRect(hwnd, NULL))
 						throw runtime_error("ValidateRect(): The function failed.");
+					
+					// render frame
 					if(w->_frameCallback)
 						w->_frameCallback();
+
 				} catch(...) {
 					w->_wndProcException = std::current_exception();
 				}
