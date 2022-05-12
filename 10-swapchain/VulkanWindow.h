@@ -86,7 +86,7 @@ public:
 
 	VulkanWindow() = default;
 	~VulkanWindow();
-	void destroy();
+	void destroy() noexcept;
 
 	vk::SurfaceKHR init(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title = "Vulkan window");
 	void setRecreateSwapchainCallback(std::function<RecreateSwapchainCallback>&& cb);

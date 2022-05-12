@@ -77,6 +77,8 @@ int main(int, char**)
 		XSetStandardProperties(display, window, "Hello window!", "Hello window!", None, NULL, 0, NULL);
 		Atom wmDeleteMessage = XInternAtom(display, "WM_DELETE_WINDOW", False);
 		XSetWMProtocols(display, window, &wmDeleteMessage, 1);
+
+		// show window
 		XMapWindow(display, window);
 
 		// create surface

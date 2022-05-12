@@ -743,11 +743,12 @@ Dále vidíme seznam kompatibilních zařízení, v tomto případě Intel grafi
 Zmíněná llvmpipe je softwarová implementace Vulkanu, tedy softwarový rendrovač.
 Pak vidíme, že byla odstartována hlavní smyčka zpráv a že jsme obdrželi toplevel configure a surface configure.
 Protože jsme ale nevygenerovali žádný obsah okna a nepředali jej Waylandu,
-on nezobrazil žádné okno. To napravíme příště. Dnes nezbývá, než zmáčknout Ctrl-C a ukončit aplikaci.
+on díky svému designu nemohl zobrazit žádné okno.
+To napravíme příště. Dnes nezbývá, než zmáčknout Ctrl-C a ukončit aplikaci.
 
 
 <h3>Shrnutí</h3>
 
 <p>Dnes jsme si ukázali, jak vytvořit okno na třech různých platformách - Win32, Xlib a Wayland - a jak na něm
-vytvořit surface. Příště vytvoříme swapchain, vyrendrujeme svůj první obrázek na obrazovku
+vytvořit surface. Příště vytvoříme swapchain, vyrendrujeme svůj historicky první obrázek tohoto tutoriálu na obrazovku
 a začneme se ponořovat do tajů rendrování do okna.</p>

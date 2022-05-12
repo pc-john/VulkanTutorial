@@ -22,6 +22,7 @@ static struct UniqueWindow {
 	~UniqueWindow()  { if(handle) DestroyWindow(handle); }
 	operator HWND() const  { return handle; }
 } window;
+exception_ptr wndProcException = nullptr;
 
 // Vulkan window surface
 static vk::UniqueSurfaceKHR surface;
@@ -54,16 +55,19 @@ int main(int, char**)
 				});
 
 		// window's message handling procedure
-		auto wndProc = [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) -> LRESULT {
+		auto wndProc = [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) noexcept -> LRESULT {
 			switch(msg)
 			{
 				case WM_CLOSE:
-					DestroyWindow(hwnd);
+					if(!DestroyWindow(hwnd))
+						wndProcException = make_exception_ptr(runtime_error("DestroyWindow(): The function failed."));
 					window.handle = nullptr;
 					return 0;
+
 				case WM_DESTROY:
 					PostQuitMessage(0);
 					return 0;
+
 				default:
 					return DefWindowProc(hwnd, msg, wParam, lParam);
 			}
@@ -135,9 +139,20 @@ int main(int, char**)
 
 		// run event loop
 		MSG msg;
-		while(GetMessage(&msg, NULL, 0, 0) > 0) {
+		BOOL r;
+		while((r = GetMessage(&msg, NULL, 0, 0)) != 0) {
+
+			// handle GetMessage() errors
+			if(r == -1)
+				throw runtime_error("GetMessage(): The function failed.");
+
+			// handle message
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
+
+			// handle exceptions raised in window procedure
+			if(wndProcException)
+				rethrow_exception(wndProcException);
 		}
 
 	// catch exceptions

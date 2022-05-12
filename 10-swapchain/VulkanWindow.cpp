@@ -14,6 +14,7 @@
 
 using namespace std;
 
+
 // string utf8 to wstring conversion
 #if defined(USE_PLATFORM_WIN32) && defined(_UNICODE)
 static wstring utf8toWString(const char* s)
@@ -37,7 +38,7 @@ static wstring utf8toWString(const char* s)
 
 
 
-void VulkanWindow::destroy()
+void VulkanWindow::destroy() noexcept
 {
 	// destroy surface
 	if(_instance && _surface) {
@@ -137,6 +138,7 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 			case WM_ERASEBKGND:
 				cout << "WM_ERASEBKGND message" << endl;
 				return 1;  // returning non-zero means that background should be considered erased
+
 			case WM_PAINT: {
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				try {
@@ -150,14 +152,19 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 				}
 				return 0;
 			}
+
 			case WM_CLOSE: {
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				w->_hwnd = nullptr;
 				if(!DestroyWindow(hwnd))
 					w->_wndProcException = make_exception_ptr(runtime_error("DestroyWindow(): The function failed."));
-				PostQuitMessage(0);
 				return 0;
 			}
+
+			case WM_DESTROY:
+				PostQuitMessage(0);
+				return 0;
+
 			default:
 				return DefWindowProc(hwnd, msg, wParam, lParam);
 		}
@@ -262,10 +269,6 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 	return _surface;
 
 #elif defined(USE_PLATFORM_WAYLAND)
-
-	// no multiple init attempts
-	if(_display)
-		throw runtime_error("Multiple VulkanWindow::init() calls are not allowed.");
 
 	// open Wayland connection
 	_display = wl_display_connect(nullptr);
@@ -391,11 +394,17 @@ void VulkanWindow::mainLoop()
 	BOOL r;
 	_wndProcException = nullptr;
 	while((r = GetMessage(&msg, NULL, 0, 0)) != 0) {
+
+		// handle GetMessage() errors
 		if(r == -1)
 			throw runtime_error("GetMessage(): The function failed.");
+
+		// handle message
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
-		if(_wndProcException)  // handle exceptions raised in window procedure
+
+		// handle exceptions raised in window procedure
+		if(_wndProcException)
 			rethrow_exception(_wndProcException);
 	}
 }
