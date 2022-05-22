@@ -1,4 +1,5 @@
 #include "VulkanWindow.h"
+#include <algorithm>
 #include <iostream>
 
 using namespace std;
@@ -67,8 +68,7 @@ int main(int,char**)
 
 		// find compatible devices
 		vector<vk::PhysicalDevice> deviceList = instance->enumeratePhysicalDevices();
-		vector<tuple<vk::PhysicalDevice, uint32_t>> compatibleDevicesSingleQueue;
-		vector<tuple<vk::PhysicalDevice, uint32_t, uint32_t>> compatibleDevicesTwoQueues;
+		vector<tuple<vk::PhysicalDevice, uint32_t, uint32_t, vk::PhysicalDeviceProperties>> compatibleDevices;
 		for(vk::PhysicalDevice pd : deviceList) {
 
 			// skip devices without VK_KHR_swapchain
@@ -86,8 +86,9 @@ int main(int,char**)
 			for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
 				if(pd.getSurfaceSupportKHR(i, surface)) {
 					if(queueFamilyList[i].queueFlags & vk::QueueFlagBits::eGraphics) {
-						// if presentation and graphics operations are supported, we use single queue
-						compatibleDevicesSingleQueue.emplace_back(pd, i);
+						// if presentation and graphics operations are supported,
+						// we use single queue, e.g. both queues are the same
+						compatibleDevices.emplace_back(pd, i, i, pd.getProperties());
 						goto nextDevice;
 					}
 					else
@@ -103,41 +104,53 @@ int main(int,char**)
 				}
 			}
 			if(graphicsQueueFamily != UINT32_MAX && presentationQueueFamily != UINT32_MAX)
-				compatibleDevicesTwoQueues.emplace_back(pd, graphicsQueueFamily, presentationQueueFamily);
+				compatibleDevices.emplace_back(pd, graphicsQueueFamily, presentationQueueFamily, pd.getProperties());
 			nextDevice:;
 		}
 
 		// print compatible devices
 		cout << "Compatible devices:" << endl;
-		for(auto& t : compatibleDevicesSingleQueue)
-			cout << "   " << get<0>(t).getProperties().deviceName << endl;
-		for(auto& t : compatibleDevicesTwoQueues)
-			cout << "   " << get<0>(t).getProperties().deviceName << endl;
+		for(auto& t : compatibleDevices)
+			cout << "   " << get<3>(t).deviceName << " (graphics queue: " << get<1>(t)
+			     << ", presentation queue: " << get<2>(t)
+			     << ", type: " << to_string(get<3>(t).deviceType) << ")" << endl;
 
-		// choose device
-		if(compatibleDevicesSingleQueue.size() > 0) {
-			auto t = compatibleDevicesSingleQueue.front();
-			physicalDevice = get<0>(t);
-			graphicsQueueFamily = get<1>(t);
-			presentationQueueFamily = graphicsQueueFamily;
-		}
-		else if(compatibleDevicesTwoQueues.size() > 0) {
-			auto t = compatibleDevicesTwoQueues.front();
-			physicalDevice = get<0>(t);
-			graphicsQueueFamily = get<1>(t);
-			presentationQueueFamily = get<2>(t);
-		}
-		else
+		// choose the best device
+		auto bestDevice = compatibleDevices.begin();
+		if(bestDevice == compatibleDevices.end())
 			throw runtime_error("No compatible devices.");
+		constexpr const array deviceTypeScore = {
+			10, // vk::PhysicalDeviceType::eOther         - lowest score
+			40, // vk::PhysicalDeviceType::eIntegratedGpu - high score
+			50, // vk::PhysicalDeviceType::eDiscreteGpu   - highest score
+			30, // vk::PhysicalDeviceType::eVirtualGpu    - normal score
+			20, // vk::PhysicalDeviceType::eCpu           - low score
+			10, // unknown vk::PhysicalDeviceType
+		};
+		int bestScore = deviceTypeScore[min(unsigned(get<3>(*bestDevice).deviceType), 5u)];
+		if(get<1>(*bestDevice) == get<2>(*bestDevice))
+			bestScore++;
+		for(auto it=compatibleDevices.begin()+1; it!=compatibleDevices.end(); it++) {
+			int score = deviceTypeScore[min(unsigned(get<3>(*it).deviceType), 5u)];
+			if(get<1>(*it) == get<2>(*it))
+				score++;
+			if(score > bestScore) {
+				bestDevice = it;
+				bestScore = score;
+			}
+		}
 		cout << "Using device:\n"
-				"   " << physicalDevice.getProperties().deviceName << endl;
+				"   " << get<3>(*bestDevice).deviceName << endl;
+		physicalDevice = get<0>(*bestDevice);
+		graphicsQueueFamily = get<1>(*bestDevice);
+		presentationQueueFamily = get<2>(*bestDevice);
 
 		// create device
 		device =
 			physicalDevice.createDeviceUnique(
 				vk::DeviceCreateInfo{
 					vk::DeviceCreateFlags(),  // flags
-					compatibleDevicesSingleQueue.size()>0 ? uint32_t(1) : uint32_t(2),  // queueCreateInfoCount
+					graphicsQueueFamily==presentationQueueFamily ? uint32_t(1) : uint32_t(2),  // queueCreateInfoCount
 					array{  // pQueueCreateInfos
 						vk::DeviceQueueCreateInfo{
 							vk::DeviceQueueCreateFlags(),
