@@ -2,13 +2,17 @@
 
 <p>V letošní prázdninové sérii o Vulkan si ukážeme, jak otevřít okno
 a jak do něj rendrovat. Naším cílem budou primárně platformy
-Win32, Xlib a Wayland. V dalších dílech si ale ukážeme Vulkan i na
+Win32, Xlib a Wayland. V dalších dílech si ale ukážeme i
 <a href="https://www.qt.io/">Qt</a> a <a href="https://www.libsdl.org/">SDL</a>.
 Dnes začneme otevřením okna a vytvořením surface.</p>
 
-<p>Zdrojáky si můžeme <a href="">stáhnout</a> a zkusit zkompilovat.
-Ve zdrojácích máme tři cpp soubory, každý pro jednu platformu.
-Začneme od Win32, ať pak můžeme pokračovat knihovnou Xlib a následně Waylandem.<p>
+<p>Zdrojáky si můžeme <a href="">stáhnout</a>.
+Pro zkompilování na Win32 nepotřebujeme nic instalovat.
+Pro platformu Xlib a Wayland můžeme ale potřebovat vývojové balíčky, tedy pokud je již nemáme nainstalované.
+Na Ubuntu jsou to obyčejně libx11-dev pro Xlib a libwayland-dev a wayland-protocols pro Wayland.</p>
+
+<p>Ve zdrojácích máme tři cpp soubory, každý pro jednu platformu.
+Začneme od Win32, ať pak můžeme pokračovat knihovnou Xlib následovanou moderním Waylandem.<p>
 
 
 <h3>Win32</h3>
@@ -44,7 +48,7 @@ To si necháme až na další díl tutoriálu.
 Možná by se mě čtenáři v budoucnu zeptali, proč jsem nepoužil std::unique_resource.
 Důvod je prostý: tato třída prozatím není ve standardu, ale těšme se na ni.</p>
 
-<p>Další proměnné, které budeme potřebovat, jsou hInstance a windowClass:</p>
+<p>Další proměnné, které budeme potřebovat, jsou hInstance, windowClass a wndProcException:</p>
 
 <pre>
 static HINSTANCE hInstance = NULL;
@@ -61,12 +65,18 @@ Proměnná windowClass ponese třídu okna, přesněji řečeno win32 atom jedno
 třídu okna. Opět používáme strukturu s destruktorem, která se postará o zlikvidování
 třídy okna ve chvíli, kdy už není potřeba.</p>
 
-<p>Poslední proměnnou bude Vulkanní surface, do kterého budeme v dalších dílech rendrovat:</p>
+<p>Poslední dvě proměnné jsou wndProcException a surface:</p>
 
 <pre>
+static exception_ptr wndProcException = nullptr;
+
 // Vulkan window surface
 static vk::UniqueSurfaceKHR surface;
 </pre>
+
+<p>První z nich slouží na uložení výjimky vzniklé ve funkci obsluhy zpráv okna,
+kde si k tomu také řekneme více. Druhá proměnná surface reprezentuje povrch okna,
+do kterého budeme v dalších dílech rendrovat:</p>
 
 <p>Nyní můžeme zaměřit naše úsilí na vytvoření okna. Začneme Vulkanní instancí:</p>
 
@@ -101,16 +111,19 @@ všechno, co je specifické pro Win32.</p>
 
 <pre>
 // window's message handling procedure
-auto wndProc = [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) -&gt; LRESULT {
+auto wndProc = [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) noexcept -&gt; LRESULT {
 	switch(msg)
 	{
 		case WM_CLOSE:
-			DestroyWindow(hwnd);
+			if(!DestroyWindow(hwnd))
+				wndProcException = make_exception_ptr(runtime_error("DestroyWindow(): The function failed."));
 			window.handle = nullptr;
 			return 0;
+
 		case WM_DESTROY:
 			PostQuitMessage(0);
 			return 0;
+
 		default:
 			return DefWindowProc(hwnd, msg, wParam, lParam);
 	}
@@ -120,6 +133,15 @@ auto wndProc = [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) -&gt; LRESU
 <p>My se v tuto chvíli spokojíme pouze s ošetřením dvou zpráv: WM_CLOSE a WM_DESTROY.
 A protože toto není tutoriál o Win32, najdou zájemci detaily opět například ve WinAPI dokumentaci
 na stránkách Microsoftu. Zadáním WinAPI funkcí do googlu jsou mezi prvními odkazy právě tyto stránky.</p>
+
+<p>Avšak poznámka k výjimkám: Z funkce pro obsluhu zpráv okna není rozumné vyhazovat výjimky.
+Běh programu se vrací do systémových knihoven, které byly napsány v nespecifikovaném jazyce,
+a je poněkud problematické hádat, co se tam stane s výjimkou. Proto funkci wndProc označíme jako noexcept.
+Dále místo vyhození výjimek si ji jen vytvoříme a uložíme do proměnné wndProcException.
+Uloženou výjimku pak znova vyhodíme v hlavní smyčce aplikace.
+A až budeme v následujících dílech volat další funkce a metody z wndProc,
+které samy mohou vyhazovat výjimky, uzavřeme je do try-catch bloku
+a odchycenou výjimku opět uložíme do wndProcException.</p>
 
 <p>V dalším kroku zaregistrujeme třídu okna. K tomu použijeme funkci RegisterClassEx()
 a strukturu WNDCLASSEX, kterou inicializujeme mimo jiné i naší funkcí wndProc
@@ -210,10 +232,10 @@ for(string&amp; name : compatibleDevices)
    cout &lt;&lt; "   " &lt;&lt; name &lt;&lt; endl;
 </pre>
 
-<p>V kódu postupně procházíme všechna fyzická zařízení, dotazujeme se na počet front,
-a pak hledáme, zda je pro nějakou frontu podporována prezentace na náš surface,
+<p>V kódu postupně procházíme všechna fyzická zařízení, dotazujeme se na počet tříd front,
+a pak hledáme, zda je pro nějakou třídu front podporována prezentace na náš surface,
 což zjišťujeme zavoláním metody getSurfaceSupportKHR().
-A pokud je prezentace pro některou frontu podporována, pak si fyzické zařízení uložíme
+A pokud je prezentace pro některou třídu front podporována, pak si fyzické zařízení uložíme
 do seznamu. Tento seznam pak v zápětí vypíšeme do konzole.</p>
 
 <p>A jsme téměř hotovi. Abychom dostali okno na obrazovku,
@@ -225,13 +247,30 @@ ShowWindow(window, SW_SHOWDEFAULT);
 
 // run event loop
 MSG msg;
-while(GetMessage(&amp;msg, NULL, 0, 0) > 0) {
-   TranslateMessage(&amp;msg);
-   DispatchMessage(&amp;msg);
+BOOL r;
+while((r = GetMessage(&amp;msg, NULL, 0, 0)) != 0) {
+
+	// handle GetMessage() errors
+	if(r == -1)
+		throw runtime_error("GetMessage(): The function failed.");
+
+	// handle message
+	TranslateMessage(&amp;msg);
+	DispatchMessage(&amp;msg);
+
+	// handle exceptions raised in window procedure
+	if(wndProcException)
+		rethrow_exception(wndProcException);
 }
 </pre>
 
-<p>Po spuštění bychom měli vidět prázdné okno.</p>
+<p>Smyčka zpráv vybírá zprávy z fronty funkcí GetMessage().
+Samotná zpráva pak doručena oknu ve funkci DispatchMessage().
+V okně je obsloužena ve funkci wndProc, kterou jsme si již popsali.
+A pokud vznikla výjimka ve wndProc, budeme ji mít uloženu ve wndProcException.
+V tom případě výjimku znova vyhodíme.</p>
+
+<p>Aplikaci můžeme zkusit spustit a měli bychom vidět prázdné okno.</p>
 
 <img src="window-Win32.png">
 
@@ -242,6 +281,7 @@ Při obsluze WM_DESTROY zavoláme funkci PostQuitMessage(),
 která způsobí ukončení smyčky zpráv, neboť GetMessage() vrátí nulu.
 Aplikace pak opustí funkci main().
 Destuktor UniqueWindow neudělá nic, neboť okno je již uvolněno.
+Následuje destruktor UniqueWindowClass, který uvolní třídu okna.
 Posledním objektem je vk::UniqueInstance, jehož destruktor uvolní instanci Vulkan.
 Tím je aplikace korektně ukončena a my jsme hotovi s Win32 platformou pro tento díl tutoriálu.</p>
 

@@ -86,24 +86,25 @@ int main(int,char**)
 			for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
 				if(pd.getSurfaceSupportKHR(i, surface)) {
 					if(queueFamilyList[i].queueFlags & vk::QueueFlagBits::eGraphics) {
-						// if presentation and graphics operations are supported,
-						// we use single queue, e.g. both queues are the same
+						// if presentation and graphics operations are supported on the same queue,
+						// we will use single queue
 						compatibleDevices.emplace_back(pd, i, i, pd.getProperties());
 						goto nextDevice;
 					}
 					else
-						// if only presentation is supported, we remember the first such queue
+						// if only presentation is supported, we store the first such queue
 						if(presentationQueueFamily == UINT32_MAX)
 							presentationQueueFamily = i;
 				}
 				else {
 					if(queueFamilyList[i].queueFlags & vk::QueueFlagBits::eGraphics)
-						// if only graphics operations are supported, we remember the first such queue
+						// if only graphics operations are supported, we store the first such queue
 						if(graphicsQueueFamily == UINT32_MAX)
 							graphicsQueueFamily = i;
 				}
 			}
 			if(graphicsQueueFamily != UINT32_MAX && presentationQueueFamily != UINT32_MAX)
+				// presentation and graphics operations are supported on the different queues
 				compatibleDevices.emplace_back(pd, graphicsQueueFamily, presentationQueueFamily, pd.getProperties());
 			nextDevice:;
 		}
@@ -176,16 +177,18 @@ int main(int,char**)
 		graphicsQueue = device->getQueue(graphicsQueueFamily, 0);
 		presentationQueue = device->getQueue(presentationQueueFamily, 0);
 
+		// print surface formats
+		cout << "Surface formats:" << endl;
+		vector<vk::SurfaceFormatKHR> availableSurfaceFormats = physicalDevice.getSurfaceFormatsKHR(surface);
+		for(vk::SurfaceFormatKHR sf : availableSurfaceFormats)
+			cout << "   " << vk::to_string(sf.format) << " " << vk::to_string(sf.colorSpace) << endl;
+
 		// choose surface format
-		constexpr array allowedSurfaceFormats{
+		constexpr const array allowedSurfaceFormats{
 			vk::SurfaceFormatKHR{ vk::Format::eB8G8R8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear },
 			vk::SurfaceFormatKHR{ vk::Format::eR8G8B8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear },
 			vk::SurfaceFormatKHR{ vk::Format::eA8B8G8R8SrgbPack32, vk::ColorSpaceKHR::eSrgbNonlinear },
 		};
-		cout << "Surface formats:" << endl;
-		vector<vk::SurfaceFormatKHR> availableSurfaceFormats = physicalDevice.getSurfaceFormatsKHR(surface);
-			for(vk::SurfaceFormatKHR sf : availableSurfaceFormats)
-				cout << "   " << vk::to_string(sf.format) << " " << vk::to_string(sf.colorSpace) << endl;
 		if(availableSurfaceFormats.size()==1 && availableSurfaceFormats[0].format==vk::Format::eUndefined)
 			// Vulkan spec allowed single eUndefined value until 1.1.111 (2019-06-10)
 			// with the meaning you can use any valid vk::Format value.
@@ -204,6 +207,8 @@ int main(int,char**)
 			surfaceFormat = availableSurfaceFormats[0];
 		surfaceFormatFound:;
 		}
+		cout << "Using format:\n"
+		     << "   " << to_string(surfaceFormat.format) << " " << to_string(surfaceFormat.colorSpace) << endl;
 
 		// render pass
 		renderPass =
@@ -266,18 +271,14 @@ int main(int,char**)
 				swapchainImageViews.clear();
 				framebuffers.clear();
 
-				// create new swapchain
-				constexpr uint32_t requestedImageCount = 2;
+				// print info
 				cout << "Recreating swapchain (extent: " << newSurfaceExtent.width << "x" << newSurfaceExtent.height
 				     << ", extent by surfaceCapabilities: " << surfaceCapabilities.currentExtent.width << "x"
 					  << surfaceCapabilities.currentExtent.height << ", minImageCount: " << surfaceCapabilities.minImageCount
-					  << ", maxImageCount: "<<surfaceCapabilities.maxImageCount << ")" << endl;
-		// create swapchain
-		/*vk::SurfaceCapabilitiesKHR surfaceCapabilities=physicalDevice.getSurfaceCapabilitiesKHR(surface.get());
-		vk::Extent2D currentSurfaceExtent=(surfaceCapabilities.currentExtent.width!=std::numeric_limits<uint32_t>::max())
-				?surfaceCapabilities.currentExtent
-				:vk::Extent2D{max(min(windowWidth,surfaceCapabilities.maxImageExtent.width),surfaceCapabilities.minImageExtent.width),
-				              max(min(windowHeight,surfaceCapabilities.maxImageExtent.height),surfaceCapabilities.minImageExtent.height)};*/
+					  << ", maxImageCount: " << surfaceCapabilities.maxImageCount << ")" << endl;
+
+				// create new swapchain
+				constexpr const uint32_t requestedImageCount = 2;
 				vk::UniqueSwapchainKHR newSwapchain =
 					device->createSwapchainKHRUnique(
 						vk::SwapchainCreateInfoKHR(
@@ -476,7 +477,8 @@ int main(int,char**)
 	// wait for device idle state
 	// (to prevent errors during destruction of Vulkan resources)
 	try {
-		device->waitIdle();
+		if(device)
+			device->waitIdle();
 	} catch(vk::Error &e) {
 		cout << "Failed because of Vulkan exception: " << e.what() << endl;
 	}

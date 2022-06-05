@@ -22,7 +22,7 @@ static struct UniqueWindow {
 	~UniqueWindow()  { if(handle) DestroyWindow(handle); }
 	operator HWND() const  { return handle; }
 } window;
-exception_ptr wndProcException = nullptr;
+static exception_ptr wndProcException = nullptr;
 
 // Vulkan window surface
 static vk::UniqueSurfaceKHR surface;
