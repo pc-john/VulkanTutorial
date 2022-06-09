@@ -149,8 +149,7 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 						throw runtime_error("ValidateRect(): The function failed.");
 					
 					// render frame
-					if(w->_frameCallback)
-						w->_frameCallback();
+					w->_frameCallback();
 
 				} catch(...) {
 					w->_wndProcException = std::current_exception();
@@ -469,14 +468,14 @@ void VulkanWindow::mainLoop()
 
 	// main loop
 	cout << "Entering main loop."<<endl;
-	if(wl_display_flush(_display) == -1)
+	if(wl_display_flush(display.get()) == -1)
 		throw runtime_error("wl_display_flush() failed.");
 	while(_running) {
 
 		// dispatch events
 		if(wl_display_dispatch(_display) == -1)  // it blocks if there are no events
 			throw std::runtime_error("wl_display_dispatch() failed.");
-		if(wl_display_flush(_display) == -1)
+		if(wl_display_flush(display.get()) == -1)
 			throw runtime_error("wl_display_flush() failed.");
 
 	}

@@ -677,8 +677,6 @@ xdgToplevelListener = {
 if(xdg_toplevel_add_listener(xdgToplevel.get(), &amp;xdgToplevelListener, nullptr))
 	throw runtime_error("xdg_toplevel_add_listener() failed.");
 wl_surface_commit(wlSurface.get());
-if(wl_display_flush(display.get()) == -1)
-	throw runtime_error("wl_display_flush() failed.");
 </pre>
 
 <p>Toplevel vytvoříme z xdgSurface a nastavíme mu title, tedy text v záhlaví okna.
@@ -687,7 +685,8 @@ Funkci configure budeme využívat více v následujících dílech. Teď v ní 
 Při zavolání funkce close si pouze nastavíme flag running na false, který pak použijeme v hlavní smyčce aplikace.
 Na závěr provedeme commit nad wl_surfacem a provedeme flush nad spojením k serveru.</p>
 
-<p>Tím jsme hotovi s Waylandím oknem. Zbývá vytvořit surface Vulkanu:</p>
+<p>Tím jsme hotovi s Waylandím oknem. Zbývá vytvořit surface Vulkanu
+a pro jistotu vyflushovat buffery:</p>
 
 <pre>
 // create surface
@@ -699,6 +698,8 @@ surface =
 			wlSurface.get()  // surface
 		)
 	);
+if(wl_display_flush(display.get()) == -1)
+	throw runtime_error("wl_display_flush() failed.");
 </pre>
 
 <p>Pak se dotážeme, která fyzická zařízení jsou kompatibilní s naším Vulkanním surface.
@@ -708,25 +709,35 @@ Kód je stejný jako na dvou předchozích platformách, takže jej přeskočím
 
 <pre>
 // run event loop
-cout &lt;&lt; "entering main loop" &lt;&lt; endl;
+cout &lt;&lt; "Entering main loop." &lt;&lt; endl;
+if(wl_display_flush(display.get()) == -1)
+	throw runtime_error("wl_display_flush() failed.");
 while(running) {
 	if(wl_display_dispatch(display.get()) == -1)
 		throw runtime_error("wl_display_dispatch() failed.");
 	if(wl_display_flush(display.get()) == -1)
 		throw runtime_error("wl_display_flush() failed.");
 }
-cout &lt;&lt; "main loop left" &lt;&lt; endl;
+cout &lt;&lt; "Main loop left." &lt;&lt; endl;
 </pre>
 
-<p>Funkce wl_display_dispatch() obslouží všechny příchozí eventy, a pokud není žádný další event,
-tak blokuje. Následné zavolání wl_display_flush() odešle na Wayland server jakékoliv požadavky zatím čekající ve frontě.
+<p>Jádro smyčky zpráv tvoří funkce wl_display_dispatch() a wl_display_flush().
+Funkce wl_display_dispatch() obslouží všechny příchozí eventy,
+a pokud není žádný další event, tak blokuje.
+Následné zavolání wl_display_flush() odešle na Wayland server
+jakékoliv požadavky zatím čekající ve frontě.
 V této smyčce tedy cyklíme, dokud není flag running nastaven na false,
 nebo dokud nedojde k chybě.</p>
 
-<p>Můžeme aplikaci spustit. Ale co to? Aplikace vypsala hromadu textu, nicméně žádné okno se neobjevilo.
-A zde narážíme na vlastnost Waylandu: On nemá ve zvyku zobrazovat nekompletní okno.
-Nedefinovali jsme jeho obsah - jinými slovy, zatím jsme nic nevyrendrovali - takže Wayland také odmítl zobrazit
-nekompletní okno s nedefinovaným obsahem. Tuto problém vyřešíme příště.
+<p>Prvotní zavolání wl_display_flush() před vstupem do smyčky zabrání nechtěné situaci,
+že by nějaký požadavek na server nebyl odeslán a zůstal v bufferech, přičemž
+wl_display_dispatch() by marně blokovala a čekala na odpověď, protože požadavek vlastně neodešel.</p>
+
+<p>Můžeme asi aplikaci spustit. Ale co to?
+Aplikace vypsala hromadu textu, nicméně žádné okno se neobjevilo.
+A zde narážíme na vlastnost Waylandu: On nemá ve zvyku zobrazovat nekompletní okna.
+Nedefinovali jsme jeho obsah - jinými slovy, zatím jsme do něj nic nevyrendrovali - takže
+Wayland, věrný svému designu, odmítl takovéto okno zobrazit. Tento problém vyřešíme příště.
 Nicméně se alespoň můžeme podívat na obsah konzole:</p>
 
 <pre>

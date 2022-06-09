@@ -12,6 +12,7 @@ set(PACKAGES
     07-robustImage
     08-helloTriangle
     09-helloWindow
+    10-windowClass
     10-swapchain
     #11-resizableWindow
     12-qtWindow

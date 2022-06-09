@@ -181,14 +181,16 @@ int main(int,char**)
 			cout << "   " << name << endl;
 
 		// run event loop
-		cout << "entering main loop" << endl;
+		cout << "Entering main loop." << endl;
+		if(wl_display_flush(display.get()) == -1)
+			throw runtime_error("wl_display_flush() failed.");
 		while(running) {
 			if(wl_display_dispatch(display.get()) == -1)
 				throw runtime_error("wl_display_dispatch() failed.");
 			if(wl_display_flush(display.get()) == -1)
 				throw runtime_error("wl_display_flush() failed.");
 		}
-		cout << "main loop left" << endl;
+		cout << "Main loop left." << endl;
 
 	// catch exceptions
 	} catch(vk::Error &e) {
