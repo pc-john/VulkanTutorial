@@ -6,7 +6,7 @@ using namespace std;
 
 
 // constants
-constexpr const char* appName = "10-swapchain";
+constexpr const char* appName = "11-swapchain";
 
 
 // vk::Instance

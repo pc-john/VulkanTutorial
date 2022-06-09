@@ -1,4 +1,4 @@
-set(APP_NAME 10-swapchain)
+set(APP_NAME 11-swapchain)
 
 project(${APP_NAME})
 

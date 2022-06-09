@@ -1,4 +1,4 @@
-set(APP_NAME 11-resizableWindow)
+set(APP_NAME 12-resizableWindow)
 
 project(${APP_NAME})
 

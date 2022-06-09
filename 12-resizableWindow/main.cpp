@@ -12,7 +12,7 @@ using namespace std;
 
 
 // constants
-constexpr const char* appName = "11-resizableWindow";
+constexpr const char* appName = "12-resizableWindow";
 
 #if defined(USE_PLATFORM_QT)
 static unique_ptr<QGuiApplication> app;

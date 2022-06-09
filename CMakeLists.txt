@@ -13,9 +13,9 @@ set(PACKAGES
     08-helloTriangle
     09-helloWindow
     10-windowClass
-    10-swapchain
-    #11-resizableWindow
-    12-qtWindow
+    11-swapchain
+    #12-resizableWindow
+    13-qtWindow
    )
 
 foreach(pkg ${PACKAGES})
