@@ -468,14 +468,14 @@ void VulkanWindow::mainLoop()
 
 	// main loop
 	cout << "Entering main loop."<<endl;
-	if(wl_display_flush(display.get()) == -1)
+	if(wl_display_flush(_display) == -1)
 		throw runtime_error("wl_display_flush() failed.");
 	while(_running) {
 
 		// dispatch events
 		if(wl_display_dispatch(_display) == -1)  // it blocks if there are no events
 			throw std::runtime_error("wl_display_dispatch() failed.");
-		if(wl_display_flush(display.get()) == -1)
+		if(wl_display_flush(_display) == -1)
 			throw runtime_error("wl_display_flush() failed.");
 
 	}
