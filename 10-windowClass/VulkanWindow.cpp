@@ -467,7 +467,7 @@ void VulkanWindow::mainLoop()
 	_frameCallback();
 
 	// main loop
-	cout << "Entering main loop."<<endl;
+	cout << "Entering main loop." << endl;
 	if(wl_display_flush(_display) == -1)
 		throw runtime_error("wl_display_flush() failed.");
 	while(_running) {
@@ -479,7 +479,7 @@ void VulkanWindow::mainLoop()
 			throw runtime_error("wl_display_flush() failed.");
 
 	}
-	cout << "Main loop left."<<endl;
+	cout << "Main loop left." << endl;
 }
 
 

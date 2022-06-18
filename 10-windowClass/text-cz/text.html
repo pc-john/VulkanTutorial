@@ -1,15 +1,16 @@
 <h1>Vulkan: Window class (10. díl)</h1>
 
 <p>Minule jsme si ukázali, jak otevřít okno na třech plaformách.
-Dnes vytvoříme třídu zapouzdřující okno Vulkanu a ukážeme si,
-jak správně pracovat s prostředky.</p>
+Dnes vytvoříme třídu zapouzdřující okno Vulkanu
+a ošetříme některé záludnosti správy zdrojů v kontextu možné přítomnosti výjimek.</p>
 
 <p>Tento díl bude mít dva cíle. Nejprve sjednotíme
-všechny naše zdrojáky z minulého dílu do jediné třídy VulkanWindow.
+všechny naše zdrojáky z minulého dílu do jediné třídy VulkanWindow,
+přičemž si dáme pozor na správu zdrojů této třídy s ohledem na možné výjimky.
 Pak vytvoříme jednoduchý algoritmus pro výběr nejvhodnější grafické karty,
-na které budeme v budoucnu rendrovat. Tento algoritmus může být vzláště užitečný
-pro ty, kteří mají notebook s integrovanou i dedikovanou grafikou
-a nebyli by právě nadšeni, kdyby jim jejich aplikace jela na pomalé integrované grafice.</p>
+na které budeme chtít rendrovat. Význam tohoto algoritmu vynikne například
+na noteboocích se dvěma grafikami, kde často preferujeme,
+aby aplikace neběžela na integrované, ale na dedikované grafice.</p>
 
 <p>Zdrojáky si můžeme <a href="">stáhnout</a> a zkusit zkompilovat.</p>
 
