@@ -1,4 +1,20 @@
+#
 # find Wayland
+#
+# targets:
+#    Wayland::client
+#
+# variables:
+#    Wayland_client_FOUND
+#    Wayland_INCLUDE_DIR
+#    Wayland_client_INCLUDE_DIR
+#    Wayland_server_INCLUDE_DIR
+#    Wayland_client_LIBRARY
+#    Wayland_server_LIBRARY
+#    Wayland_SCANNER
+#    Wayland_PROTOCOLS_DIR
+#
+
 
 # find paths
 find_path(Wayland_client_INCLUDE_DIR NAMES wayland-client.h)
@@ -19,7 +35,7 @@ if(wayland-protocols_FOUND)
 endif()
 set(Wayland_PROTOCOLS_DIR "${Wayland_PROTOCOLS_DIR}" CACHE PATH "Wayland protocols directory.")
 
-# Wayland client target
+# Wayland::client target
 if(Wayland_client_INCLUDE_DIR AND Wayland_client_LIBRARY)
 	set(Wayland_client_FOUND TRUE)
 	if(NOT TARGET Wayland::client)
