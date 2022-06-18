@@ -14,7 +14,7 @@ set(PACKAGES
     09-helloWindow
     10-windowClass
     11-swapchain
-    #12-resizableWindow
+    12-resizableWindow
     13-qtWindow
    )
 
