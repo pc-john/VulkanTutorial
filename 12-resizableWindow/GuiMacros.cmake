@@ -11,6 +11,9 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines inc
 			find_package(X11)
 			if(X11_FOUND)
 				set(guiTypeDetected "Xlib")
+			else()
+				# default to Wayland on Linux
+				set(guiTypeDetected "Wayland")
 			endif()
 		endif()
 	endif()
@@ -77,7 +80,8 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines inc
 	elseif("${GUI_TYPE}" STREQUAL "Qt5")
 
 		# configure for Qt5
-		find_package(Qt5Gui REQUIRED)
+		# (we need at least version 5.10 because of Vulkan support)
+		find_package(Qt5Gui 5.10 REQUIRED)
 		set(${libs} ${${libs}} Qt5::Gui)
 		set(${defines} ${${defines}} USE_PLATFORM_QT)
 

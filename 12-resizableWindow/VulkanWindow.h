@@ -1,26 +1,19 @@
 #pragma once
 
 #if defined(USE_PLATFORM_WIN32)
-  #include <exception>
   typedef struct HWND__* HWND;
+  typedef struct HINSTANCE__* HINSTANCE;
+  typedef unsigned short ATOM;
 #elif defined(USE_PLATFORM_XLIB)
   typedef struct _XDisplay Display;
-  #if 1 //sizeof(unsigned long) == 8, FIXME: test on some 32-bit system
-    typedef unsigned long Window;  // Window is XID type (X11/X.h) that is defined as unsigned long or CARD32 (in X11/X.h based on _XSERVER64 define) while CARD32 is defined as unsigned int or unsigned long in X11/Xmd.h based on LONG64 define
-    typedef unsigned long Atom;  // in X11/X.h and X11/Xdefs.h
-  #else
-    typedef unsigned int Window;
-    typedef unsigned int Atom;
-  #endif
+  typedef unsigned long Window;  // Window is XID type (X11/X.h) that is defined as unsigned long (or CARD32 but that does not apply to client applications; CARD32 might be used only when compiling X server sources)
+  typedef unsigned long Atom;  // in X11/X.h and X11/Xdefs.h
 #elif defined(USE_PLATFORM_WAYLAND)
   #include "xdg-shell-client-protocol.h"
   #include "xdg-decoration-client-protocol.h"
-#elif defined(USE_PLATFORM_QT)
-#include <QWindow>
-#elif defined(USE_PLATFORM_SDL)
-  struct SDL_Window;
 #endif
 #include <vulkan/vulkan.hpp>
+#include <functional>
 
 
 
@@ -34,95 +27,79 @@ protected:
 
 #if defined(USE_PLATFORM_WIN32)
 
-	HWND m_hwnd = nullptr;
-	std::exception_ptr m_wndProcException;
-	vk::PhysicalDevice m_physicalDevice;
-	vk::Device m_device;
-	vk::SurfaceKHR m_surface;
-	FrameCallback* m_frameCallback;
+	HWND _hwnd = nullptr;
+	std::exception_ptr _wndProcException;
+	HINSTANCE _hInstance;
+	ATOM _windowClass = 0;
 
-	void onWmPaint();
-	static inline const std::vector<const char*> s_requiredInstanceExtensions =
+	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_win32_surface" };
 
 #elif defined(USE_PLATFORM_XLIB)
 
-	Display* m_display = nullptr;
-	Window m_window = 0;
-	Atom m_wmDeleteMessage;
-	bool m_visible = false;
-	bool m_framePending = true;
+	Display* _display = nullptr;
+	Window _window = 0;
+	Atom _wmDeleteMessage;
 
-	static inline const std::vector<const char*> s_requiredInstanceExtensions =
+	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_xlib_surface" };
 
 #elif defined(USE_PLATFORM_WAYLAND)
 
 	// globals
-	wl_display* m_display = nullptr;
-	wl_registry* m_registry;
-	wl_compositor* m_compositor;
-	xdg_wm_base* m_xdgWmBase = nullptr;
-	zxdg_decoration_manager_v1* m_zxdgDecorationManagerV1;
+	wl_display* _display = nullptr;
+	wl_registry* _registry;
+	wl_compositor* _compositor;
+	xdg_wm_base* _xdgWmBase = nullptr;
+	zxdg_decoration_manager_v1* _zxdgDecorationManagerV1;
 
 	// objects
-	wl_surface* m_wlSurface = nullptr;
-	xdg_surface* m_xdgSurface = nullptr;
-	xdg_toplevel* m_xdgTopLevel = nullptr;
-	zxdg_toplevel_decoration_v1* m_decoration = nullptr;
+	wl_surface* _wlSurface = nullptr;
+	xdg_surface* _xdgSurface = nullptr;
+	xdg_toplevel* _xdgTopLevel = nullptr;
+	zxdg_toplevel_decoration_v1* _decoration = nullptr;
 
 	// state
-	bool m_running = true;
-	bool m_forceFrame = true;
-	wl_callback* m_scheduledFrameCallback = nullptr;
+	bool _running = true;
 
 	// listeners
-	wl_registry_listener m_registryListener;
-	xdg_wm_base_listener m_xdgWmBaseListener;
-	xdg_surface_listener m_xdgSurfaceListener;
-	xdg_toplevel_listener m_xdgToplevelListener;
-	wl_callback_listener m_frameListener;
+	wl_registry_listener _registryListener;
+	xdg_wm_base_listener _xdgWmBaseListener;
+	xdg_surface_listener _xdgSurfaceListener;
+	xdg_toplevel_listener _xdgToplevelListener;
 
-	// mainLoop parameters
-	vk::PhysicalDevice m_physicalDevice;
-	vk::Device m_device;
-	vk::SurfaceKHR m_surface;
-	FrameCallback* m_frameCallback;
-	void doFrame();
-
-	static inline const std::vector<const char*> s_requiredInstanceExtensions =
+	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_wayland_surface" };
-
-#elif defined(USE_PLATFORM_QT)
-
-	QWindow* m_window = nullptr;
-
-#elif defined(USE_PLATFORM_SDL)
-
-	bool m_sdlInitialized = false;
-	SDL_Window* m_window = nullptr;
-	bool m_visible = false;
-	bool m_framePending = true;
 
 #endif
 
-	vk::Extent2D m_surfaceExtent = vk::Extent2D(0,0);
-	bool m_swapchainResizePending = true;
-	RecreateSwapchainCallback* m_recreateSwapchainCallback = nullptr;
+	std::function<FrameCallback> _frameCallback;
+	vk::Instance _instance;
+	vk::PhysicalDevice _physicalDevice;
+	vk::Device _device;
+	vk::SurfaceKHR _surface;
+
+	vk::Extent2D _surfaceExtent = vk::Extent2D(0,0);
+	bool _swapchainResizePending = true;
+	std::function<RecreateSwapchainCallback> _recreateSwapchainCallback;
 
 public:
 
 	VulkanWindow() = default;
 	~VulkanWindow();
+	void destroy() noexcept;
 
-	[[nodiscard]] vk::SurfaceKHR init(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title = "Vulkan window");
-	vk::UniqueSurfaceKHR initUnique(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title = "Vulkan window");
-	void setRecreateSwapchainCallback(RecreateSwapchainCallback cb);
-	void mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface, FrameCallback cb);
+	vk::SurfaceKHR init(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title = "Vulkan window");
+	void setRecreateSwapchainCallback(std::function<RecreateSwapchainCallback>&& cb);
+	void setRecreateSwapchainCallback(const std::function<RecreateSwapchainCallback>& cb);
+	void setFrameCallback(std::function<FrameCallback>&& cb, vk::PhysicalDevice physicalDevice, vk::Device device);
+	void setFrameCallback(const std::function<FrameCallback>& cb, vk::PhysicalDevice physicalDevice, vk::Device device);
+	void mainLoop();
 
+	vk::SurfaceKHR surface() const;
 	vk::Extent2D surfaceExtent() const;
 
-	void scheduleNextFrame();
+	void scheduleFrame();
 	void scheduleSwapchainResize();
 
 	// required Vulkan Instance extensions
@@ -131,30 +108,19 @@ public:
 	static uint32_t requiredExtensionCount();
 	static const char* const* requiredExtensionNames();
 
-	// Wayland prefers the use of mailbox present mode
-#if defined(USE_PLATFORM_WAYLAND)
-	static inline constexpr const bool mailboxPresentModePreferred = true;
-#else
-	static inline constexpr const bool mailboxPresentModePreferred = false;
-#endif
-
 };
 
 
 // inline methods
-inline vk::UniqueSurfaceKHR VulkanWindow::initUnique(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title)  { return vk::UniqueSurfaceKHR(init(instance, surfaceExtent, title), {instance}); }
-inline void VulkanWindow::setRecreateSwapchainCallback(RecreateSwapchainCallback cb)  { m_recreateSwapchainCallback = cb; }
-inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return m_surfaceExtent; }
-#if defined(USE_PLATFORM_WIN32)
-inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; scheduleNextFrame(); }
-#elif defined(USE_PLATFORM_XLIB)
-inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; m_framePending = true; }
-#elif defined(USE_PLATFORM_WAYLAND)
-inline void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; m_forceFrame = true; }
-#endif
-#if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_WAYLAND)
-inline const std::vector<const char*>& VulkanWindow::requiredExtensions()  { return s_requiredInstanceExtensions; }
-inline void VulkanWindow::appendRequiredExtensions(std::vector<const char*>& v)  { v.emplace_back(s_requiredInstanceExtensions[0]); v.emplace_back(s_requiredInstanceExtensions[1]); }
-inline uint32_t VulkanWindow::requiredExtensionCount()  { return 2; }
-inline const char* const* VulkanWindow::requiredExtensionNames()  { return s_requiredInstanceExtensions.data(); }
-#endif
+inline VulkanWindow::~VulkanWindow()  { destroy(); }
+inline void VulkanWindow::setRecreateSwapchainCallback(std::function<RecreateSwapchainCallback>&& cb)  { _recreateSwapchainCallback = move(cb); }
+inline void VulkanWindow::setRecreateSwapchainCallback(const std::function<RecreateSwapchainCallback>& cb)  { _recreateSwapchainCallback = cb; }
+inline void VulkanWindow::setFrameCallback(std::function<FrameCallback>&& cb, vk::PhysicalDevice physicalDevice, vk::Device device)  { _frameCallback = std::move(cb); _physicalDevice = physicalDevice; _device = device; }
+inline void VulkanWindow::setFrameCallback(const std::function<FrameCallback>& cb, vk::PhysicalDevice physicalDevice, vk::Device device)  { _frameCallback = cb; _physicalDevice = physicalDevice; _device = device; }
+inline vk::SurfaceKHR VulkanWindow::surface() const  { return _surface; }
+inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return _surfaceExtent; }
+inline void VulkanWindow::scheduleSwapchainResize()  { _swapchainResizePending = true; }
+inline const std::vector<const char*>& VulkanWindow::requiredExtensions()  { return _requiredInstanceExtensions; }
+inline void VulkanWindow::appendRequiredExtensions(std::vector<const char*>& v)  { v.insert(v.end(), _requiredInstanceExtensions.begin(), _requiredInstanceExtensions.end()); }
+inline uint32_t VulkanWindow::requiredExtensionCount()  { return uint32_t(_requiredInstanceExtensions.size()); }
+inline const char* const* VulkanWindow::requiredExtensionNames()  { return _requiredInstanceExtensions.data(); }
