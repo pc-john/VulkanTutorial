@@ -35,7 +35,7 @@ static vector<vk::UniqueFramebuffer> framebuffers;
 static vk::UniqueCommandPool commandPool;
 static vk::CommandBuffer commandBuffer;
 static vk::UniqueSemaphore imageAvailableSemaphore;
-static vk::UniqueSemaphore renderFinishedSemaphore;
+static vk::UniqueSemaphore renderingFinishedSemaphore;
 
 
 int main(int,char**)
@@ -371,7 +371,7 @@ int main(int,char**)
 					vk::SemaphoreCreateFlags()  // flags
 				)
 			);
-		renderFinishedSemaphore =
+		renderingFinishedSemaphore =
 			device->createSemaphoreUnique(
 				vk::SemaphoreCreateInfo(
 					vk::SemaphoreCreateFlags()  // flags
@@ -393,7 +393,7 @@ int main(int,char**)
 				// record command buffer
 				commandBuffer.begin(
 					vk::CommandBufferBeginInfo(
-						vk::CommandBufferUsageFlagBits::eSimultaneousUse,  // flags
+						vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
 						nullptr  // pInheritanceInfo
 					)
 				);
@@ -404,7 +404,7 @@ int main(int,char**)
 						vk::Rect2D(vk::Offset2D(0,0), window.surfaceExtent()),  // renderArea
 						1,  // clearValueCount
 						&(const vk::ClearValue&)vk::ClearValue(  // pClearValues
-							vk::ClearColorValue(array<float,4>{0.5f,0.5f,1.f,1.f})
+							vk::ClearColorValue(array<float,4>{0.56f,0.56f,0.80f,1.f})
 						)
 					),
 					vk::SubpassContents::eInline
@@ -417,14 +417,11 @@ int main(int,char**)
 					vk::ArrayProxy<const vk::SubmitInfo>(
 						1,
 						&(const vk::SubmitInfo&)vk::SubmitInfo(
-							1,                         // waitSemaphoreCount
-							&imageAvailableSemaphore.get(),  // pWaitSemaphores
+							1, &imageAvailableSemaphore.get(),  // waitSemaphoreCount + pWaitSemaphores +
 							&(const vk::PipelineStageFlags&)vk::PipelineStageFlags(  // pWaitDstStageMask
 								vk::PipelineStageFlagBits::eColorAttachmentOutput),
-							1,                         // commandBufferCount
-							&commandBuffer,            // pCommandBuffers
-							1,                         // signalSemaphoreCount
-							&renderFinishedSemaphore.get()  // pSignalSemaphores
+							1, &commandBuffer,  // commandBufferCount + pCommandBuffers
+							1, &renderingFinishedSemaphore.get()  // signalSemaphoreCount + pSignalSemaphores
 						)
 					),
 					vk::Fence(nullptr)
@@ -434,33 +431,19 @@ int main(int,char**)
 				ignore =
 					presentationQueue.presentKHR(
 						vk::PresentInfoKHR(
-							1, &renderFinishedSemaphore.get(),  // waitSemaphoreCount+pWaitSemaphores
-							1, &swapchain.get(), &imageIndex,  // swapchainCount+pSwapchains+pImageIndices
+							1, &renderingFinishedSemaphore.get(),  // waitSemaphoreCount + pWaitSemaphores
+							1, &swapchain.get(), &imageIndex,  // swapchainCount + pSwapchains + pImageIndices
 							nullptr  // pResults
 						)
 					);
+
+				// wait for work completion
 				presentationQueue.waitIdle();
 
 			},
 			physicalDevice,
 			device.get()
 		);
-
-/*#ifdef _WIN32
-
-#elif USE_WAYLAND
-
-		cout<<"Before showWindow..."<<endl;
-		if(wl_display_roundtrip(wl.display) == -1)
-			throw runtime_error("wl_display_roundtrip() failed.");
-
-		// run event loop
-		cout<<"Entering main loop..."<<endl;
-		while(running) {
-			if(wl_display_dispatch_pending(wl.display) == -1)
-				throw std::runtime_error("wl_display_dispatch_pending() failed.");
-
-#endif*/
 
 		// run main loop
 		window.mainLoop();

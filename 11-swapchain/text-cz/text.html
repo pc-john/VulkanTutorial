@@ -1,513 +1,37 @@
-<h1>Vulkan: Swapchain (10. díl)</h1>
+<h1>Vulkan: Swapchain (11. díl)</h1>
 
-<p>Minule jsme si ukázali, jak otevřít okno.
-Dnes vytvoříme swapchain, abychom mohli v okně
-zobrazovat nějaký obsah.</p>
+<p>Minule jsme vytvořili třídu VulkanWindow.
+Tématem dneška bude swapchain, tedy objekt Vulkan API
+pro zobrazování výsledků rendrování v okně.</p>
 
-<p>Tento díl bude mít několik cílů. Nejprve sjednotíme
+<p>Swapchain znamená česky něco jako vyměňovací řetěz, či vyměňovací soustrojí.
+Dokumentace k Vulkan definuje swapchain jako objekt,
+který poskytuje schopnost zobrazit výsledky rendrování na surface.
+A protože většinou nerendrujeme jediný obrázek,
+tak jako ani film není složen z jediného obrázku,
+je potřeba je jeden za druhým vyměňovat tak,
+aby například vznikla na obrazovce vizualizace nějakého děje.</p>
+
+<p>V tomto dílu si nejprve vypíšeme seznam podporovaných formátů.
+Z nich si vybereme jeden, který následně použijeme při vytváření swapchainu.
+Pak si mimo jiné vytvoříme objekt framebufferu a
+
+Tento díl bude mít několik cílů. Nejprve sjednotíme
 všechny naše zdrojáky z minulého dílu do jediného objektu
 VulkanWindow. Pak si vytvoříme swapchain a zobrazíme
 vyrendrovanou barvu pozadí na nás surface.</p>
 
-<p>Zmínili jsme slovo swapchain, česky něco jako vyměňovací řetaz,
-či vyměňovací soustrojí. Dokumentace k Vulkan definuje swapchain jako objekt,
-který poskytuje schopnost zobrazit výsledky rendrování na surface.
-A protože většinou nerendrujeme jediný obrázek, je potřeba obrázky jeden
-za druhým vyměňovat tak, jak je postupně rendrujeme.</p>
-
 <p>Zdrojáky si můžeme <a href="">stáhnout</a> a zkusit zkompilovat.</p>
 
 
-<h3>Zapouzdření do VulkanWindow</h3>
+<h3>Výběr surface formátu</h3>
 
-<p>V minulém díle jsme vytvářeli okno ve třech různých souborech pro tři různé platformy.
-V tomto díle vše sjednotíme do jediné třídy VulkanWindow.
-Můžeme si otevřít soubor VulkanWindow.h a začít hned od místa,
-kde většinou najdeme klauzule include:</p>
+<p>V minulém díle jsme nevybírali použité fyzické zařízení ze všech dostupných zařízení,
+ale přeskočili jsme všechna, která nepodporují VK_KHR_swapchain extension.
+Dále jsme tuto extension povolili při vytváření logického zařízení.
+A dnes tuto extension použijeme.</p>
 
-<pre>
-#if defined(USE_PLATFORM_WIN32)
-  typedef struct HWND__* HWND;
-  typedef struct HINSTANCE__* HINSTANCE;
-  typedef unsigned short ATOM;
-#elif defined(USE_PLATFORM_XLIB)
-  typedef struct _XDisplay Display;
-  typedef unsigned long Window;
-  typedef unsigned long Atom;
-#elif defined(USE_PLATFORM_WAYLAND)
-  #include "xdg-shell-client-protocol.h"
-  #include "xdg-decoration-client-protocol.h"
-#endif
-</pre>
-
-<p>První pohled na tento kód nás překvapí definicemi typů pro jednotlivé platformy.
-Pouze Wayland má poctivé klauzule include. Proč to?
-Důvod je prostý: Minimalizujeme množství hlavičkových souborů, které se includují
-v případě, že někdo použije náš VulkanWindow.h. Méně hlavičkových souborů
-pak znamená rychlejší kompilaci a občas i podstatně méně problémů.</p>
-
-<p>Windows.h je typickým reprezentantem hlavičkových souborů,
-které opravdu umějí programátorovi zkomplikovat život.
-Tento hlavičkový soubor includuje obrovské množství dalších souborů
-a doslova znečistí kompilační prostředí obrovským množstvím maker
-a definicí typů v globálním namespace.
-Ty pak kolidují s názvy proměnných a funkcí v našem vlastním kódu.
-Navíc, includovat windows.h znamená na mém i7-10875@2.3GHz (boost 5.1GHz)
-prodloužit kompilaci o 350ms v každém souboru, kde je includován.
-To samozřejmě platí pro single-thread kompilaci, ale i při paralelní kompilaci
-je každé vlákno zpožděno přibližně o tento čas.
-Definovat si typy HWND, HINSTANCE a ATOM sami nám ušetří všechny tyto problémy.
-Pro platformu Xlib pak provedeme totéž definicí typů pro Display, Window a Atom.
-Tato API jsou na těchto platformách natolik binárně stabilní, že si to můžeme dovolit udělat.</p>
-
-<p>Následuje začátek definice třídy:</p>
-
-<pre>
-class VulkanWindow {
-public:
-
-	typedef void FrameCallback();
-	typedef void RecreateSwapchainCallback(const vk::SurfaceCapabilitiesKHR&amp; surfaceCapabilities, vk::Extent2D newSurfaceExtent);
-
-protected:
-</pre>
-
-<p>Ve třídě budeme vždy nejprve uvádět její data,
-neboť ta tvoří srdce třídy, nikoliv desítky metod, která nad těmito daty pracují.
-Data budeme dávat nejčastěji jako protected. Výjiměčně se pak vyskytnou typy,
-které potřebujeme definovat na začátku třídy, jako například zde: tedy typ pro frame callback
-a pro znovuvytvoření swapchainu.</p>
-
-<p>Pro Win32 a Xlib platformy budeme potřebovat tyto proměnné:</p>
-
-<pre>
-#if defined(USE_PLATFORM_WIN32)
-
-	HWND _hwnd = nullptr;
-	std::exception_ptr _wndProcException;
-	HINSTANCE _hInstance;
-	ATOM _windowClass = 0;
-
-	static inline const std::vector&lt;const char*&gt; _requiredInstanceExtensions =
-		{ "VK_KHR_surface", "VK_KHR_win32_surface" };
-
-#elif defined(USE_PLATFORM_XLIB)
-
-	Display* _display = nullptr;
-	Window _window = 0;
-	Atom _wmDeleteMessage;
-
-	static inline const std::vector&lt;const char*&gt; _requiredInstanceExtensions =
-		{ "VK_KHR_surface", "VK_KHR_xlib_surface" };
-
-</pre>
-
-<p>Význam jednotlivých proměnných si vysvětlíme až v kódu, nicméně z velké části
-jejich význam můžeme tušit z minulého dílu. Mnohé může zarazit použití podtržítka
-před názvem proměnné. Objevila se totiž praxe převzatá z jazyka Python začínat
-privátní (či protected) proměnné tříd podtržítkem. Objevily se dokonce názory,
-že je to proti standardu C++, ale není. C a C++ nedovoluje dvě podtržítka na začátku
-a nedovoluje jedno podtržítko následované velkým písmenem.
-Ale podtržítko a malé písmeno neodporuje standardu. Toto platí pro proměnné tříd.
-V globálním namespace jsou však jména začínající podtržítkem rezervovaná.
-Globální proměnné tedy nebudeme podtržítkem nikdy začínat.</p>
-
-<p>Druhá věc, která nás může překvapit, je nepoužití unique objektů pro jednotlivé proměnné,
-které by krásně zajištovaly korektní uvolňování zdrojů při výjimkách.
-Místo toho budeme všechny alokované zdroje uvolňovat v destruktoru VulkanWindow.
-Proč takováto změna?
-Argumenty pro toto řešení jsou dva: Jednak to odstraní nutnost struktur UniqueWindow
-a jí podobným, na Waylandu nutnost definovat Deleter struktury pro unique_ptr a podobně.
-A druhý důvod je drobné zvýšení spotřeby paměti u některých Unique objektů.
-Toto se týká v prvé řadě knihovny Vulkan.hpp, kde Unique objekty obyčejně nesou
-kromě handlu daného resource i ukazatel na device, neboť device je potřeba pro likvidaci handlu.
-Navíc potřebují i allocator, který se používá vyjímečně, nicméně tam musí být.
-Místo jednoho pointeru máme tedy obyčejně tři.
-Naše řešení je tedy zapouzdření do VulkanWindow třídy, která se postará o likvidaci
-všech zdrojů, které vlastní.</p>
-
-<p>Pro Wayland pak využijeme tyto proměnné:</p>
-
-<pre>
-#elif defined(USE_PLATFORM_WAYLAND)
-
-	// globals
-	wl_display* _display = nullptr;
-	wl_registry* _registry;
-	wl_compositor* _compositor;
-	xdg_wm_base* _xdgWmBase = nullptr;
-	zxdg_decoration_manager_v1* _zxdgDecorationManagerV1;
-
-	// objects
-	wl_surface* _wlSurface = nullptr;
-	xdg_surface* _xdgSurface = nullptr;
-	xdg_toplevel* _xdgTopLevel = nullptr;
-	zxdg_toplevel_decoration_v1* _decoration = nullptr;
-
-	// state
-	bool _running = true;
-
-	// listeners
-	wl_registry_listener _registryListener;
-	xdg_wm_base_listener _xdgWmBaseListener;
-	xdg_surface_listener _xdgSurfaceListener;
-	xdg_toplevel_listener _xdgToplevelListener;
-
-	static inline const std::vector&lt;const char*&gt; _requiredInstanceExtensions =
-		{ "VK_KHR_surface", "VK_KHR_wayland_surface" };
-
-#endif
-</pre>
-
-<p>V kódu vidíme, že kód je lehčí o množství Deleter objektů a že opět nepoužívá unique_ptr,
-neboť o likvidaci objektů se postará destruktor VulkanWindow.</p>
-
-<p>Následuje pár proměnných, které budeme potřebovat napříč platformami:</p>
-
-<pre>
-	std::function&lt;FrameCallback&gt; _frameCallback;
-	vk::Instance _instance;
-	vk::PhysicalDevice _physicalDevice;
-	vk::Device _device;
-	vk::SurfaceKHR _surface;
-
-	vk::Extent2D _surfaceExtent = vk::Extent2D(0,0);
-	std::function&lt;RecreateSwapchainCallback&gt; _recreateSwapchainCallback;
-</pre>
-
-<h3>Metody VulkanWindow</h3>
-
-<p>Jádro rozhranní VulkanWindow, včetně budoucích dílů, pak bude množina metod,
-kterou začněme od inicializace a destrukce:</p>
-
-<pre>
-	VulkanWindow() = default;
-	~VulkanWindow();
-	void destroy() noexcept;
-	vk::SurfaceKHR init(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title = "Vulkan window");
-</pre>
-
-<p>V prvé řadě oddělíme default konstruktor a metodu init. Toto oddělení dá uživateli naší třídy
-možnost deklarovat si VulkanWindow třeba jako globální objekt,
-aniž by v tu chvíli musel inicializovat celý objekt. K inicializaci by totiž potřeboval vk::Instance,
-a ta při konstrukci globálních proměnných typicky ještě neexistuje.
-Navíc můžeme volat init() metodu vícenásobně pro re-inicializaci našeho okna.</p>
-
-<p>Druhé věci, které si můžeme všimnout, je oddělení destruktoru a metody destroy().
-Destruktor volá destroy(), která teprve likviduje celý objekt.
-Takto můžeme využít destroy() i z ostatních metod.
-Například při vícenásobném zavolání init() vždy před novou inicializací VulkanWindow uvolníme všechny
-dříve alokované zdroje.</p>
-
-<p>Třetí úvaha jsou pak exceptions. Opět se potřebujeme ujistit, že při vzniku jakékoliv exception v kódu
-budou uvolněny všechny alokované prostředky a to i kdyby ten, kdo vyhodil výjimku, byl samotný konstruktor.
-V tom případě se totiž nevolá destruktor. Jinými slovy, destruktor je volán pouze pro objekty, pro něž doběhl
-konstruktor až do konce. Pokud tedy alokujeme něco v těle konstruktoru, měli bychom to buď uložit do proměnné,
-která má destruktor zodpovědný za případé uvolnění, např. unique_ptr,
-nebo bychom měli kód konstruktoru uzavřít do try-catch bloku
-a být připraveni uvolnit již alokované prostředky.
-Před tělem konstruktoru pak může probíhat ještě "member initialization" - inicializace členů třídy.
-Tam ale nemáme možnost žádné výjimky odchytávat.
-Proto členy třídy například inicializujeme pouze na nullptr a samotnou případnou alokaci
-provedeme až v těle konstruktoru, kde již máme možnost odchytat výjimky a případně po sobě korektně uklidit.
-My zmíněné problémy obejdeme už v návrhu tím, že v konstruktoru nic nealokujeme
-a přenecháme tuto činnost až do metody init().</p>
-
-<p>Tím máme navrženu inicializaci a destrukci třídy. Další část rozhranní tvoří metody,
-které budeme pravděpodobně potřebovat po zavolání VulkanWindow::init(). Jsou jimi:</p>
-
-<pre>
-	void setRecreateSwapchainCallback(std::function&lt;RecreateSwapchainCallback&gt;&amp;&amp; cb);
-	void setRecreateSwapchainCallback(const std::function&lt;RecreateSwapchainCallback&gt;&amp; cb);
-	void setFrameCallback(std::function&lt;FrameCallback&gt;&amp;&amp; cb, vk::PhysicalDevice physicalDevice, vk::Device device);
-	void setFrameCallback(const std::function&lt;FrameCallback&gt;&amp; cb, vk::PhysicalDevice physicalDevice, vk::Device device);
-	void mainLoop();
-</pre>
-
-<p>První dvojice metod nastavuje callback, který bude zavolán ve chvíli, kdy je potřeba nový swapchain.
-Co je swapchain se dozvíme už za chvíli.
-Pro callbacky budeme často používat std::function pro její velkou flexibilitu.
-Někdo by mohl namítnout, že std::function není výkonnostně efektivní.
-Nicméne dle mého měření na i7-10875@2.3GHz (boost 5.1GHz) rychlost volání není nějaký problém:
-1.9 a 2.3ns při porovnání C-čkového callbacku se std::function, pokud nepředáváme žádné parametry.
-S počtem parametrů pak záleží na kompilátoru, jak efektivně se porve s jejich předáváním na zásobníku.
-Nicméně i pro čtyři int parametry není zpoždění velké: 2.0ns proti 3.0ns.
-Pokud se tedy nebude jednat o výkonnostně kritické rutiny,
-budeme často používat std::function pro její velkou flexibilitu.
-A ještě pro zajímavost: Velikost std::function je obyčejně 32 bajtů, tedy 4 pointery.</p>
-
-<p>Druhá dvojice funkcí nastaví frame callback. Tento callback bude obsahovat kód,
-který vždy při zavolání vyrendruje nový snímek.</p>
-
-<p>Pátá metoda pak rozjede smyčku zpráv a vrátí se teprve,
-až vznikne požadavek na ukončení aplikace.</p>
-
-<p>Poslední část metod tvoří gettery a statické funkce vracející seznam vyžadovaných extensions:</p>
-
-<pre>
-	vk::SurfaceKHR surface() const;
-	vk::Extent2D surfaceExtent() const;
-
-	// required Vulkan Instance extensions
-	static const std::vector&lt;const char*&gt;&amp; requiredExtensions();
-	static void appendRequiredExtensions(std::vector&lt;const char*&gt;&amp; v);
-	static uint32_t requiredExtensionCount();
-	static const char* const* requiredExtensionNames();
-</pre>
-
-<p>Vyžadované extensions se liší podle platformy.
-Už jsme si je uvedli v minulém díle a nyní si jejich seznam pro danou plaformu snadno dohledáme v kódu.</p>
-
-<p>Implementace všech inline method je triviální a samovysvětlující, takže si je ani nebudeme uvádět.
-Místo toho se podíváme do VulkanWindow.cpp. Zmíníme jen to nejzajímavější, neboť používáme mnoho z kódu
-vysvětleného v minulém díle. A první zajímavost je hned ve VulkanWindow::destroy().</p>
-
-<p>Ve VulkanWindow::destroy() máme kód, který uvolňuje všechny zdroje, které VulkanWindow vlastní.
-Kód je pak pro všechny podporované platformy. Některé použité funkce ale mohou vrátit chybový kód.
-V takových případech jsme vyhazovali výjimky. Zde si ale podobnou věc nedovolíme.
-Metoda destroy() je volána přímo z destruktoru a v rámci běhu destruktoru se opravdu nedoporučuje vyhazovat výjimky.
-Metodu destroy() tedy označíme jako noexcept a případné chyby budeme v release configuraci ignorovat
-a v debug je oznámíme programátorovi assertem.</p>
-
-<p>Do metody VulkanWindow::init() se přemístilo mnoho kódu ze všech třech platforem minulého dílu.
-Na platformě Win32 si můžeme všimnout, že jsme doplnili obsluhu dalších zpráv.
-Kromě WM_CLOSE nyní obsluhujeme i WM_PAINT a WM_ERASEBKGND.
-Vyčistit pozadí okna před rendrováním nepotřebujeme, takže pouze vrátíme jedničku.
-Nicméně WM_PAINT je zajímavější. Za prvé musíme validovat obsah okna, aby nám WM_PAINT
-nechodila stále dokola. To provedeme funkcí ValidateRect().
-Za druhé zavoláme náš frame callback, aby se vyrendroval obsah okna.
-A za třetí musíme uvážit, že v tomto kódu může vzniknout výjimka a WIN32 API nemá rádo,
-když se šíří výjimky ven z funkce pro obsluhu zpráv okna.
-Všechny výjimky tedy odchytíme a uložíme si je do wndProcException.
-V hlavní smyčce aplikace je pak znova vyhodíme.</p>
-
-<p>Pokud by se někdo podivoval nad #if _UNICODE, konverzí utf8 na wstring a _T makrem,
-je to pro přepínání mezi multi-byte a unicode kódováním textu na Windows.
-Tuto volbu přepínáme ve Visual C++ v nastavení projektu.</p>
-
-<p>V kódu nám navíc přibyla funkce SetWindowLongPtr(), kterou si uložíme ukazatel na VulkanWindow
-přímo do okna. Ve wndProc si funkcí GetWindowLongPtr() tento ukazatel opět vyzvedneme.
-Vše funguje díky rezervaci 8 byte ve struktuře WNDCLASSEX v položce cbWndExtra.</p>
-
-<p>Kód pro platformu Xlib je prakticky stejný a pro Wayland je jediný rozdíl přidání
-podpory pro zxdg_decoration_manager_v1 Wayland interface, který vytvoří kolem okna dekorace.
-Bez dekorací by nám chybělo i tlačítko "x" pro uzavření okna.
-Název zxdg_decoration_manager_v1 může vypadat zvláštně. Jedná se totiž ještě o nestabilní protokol
-ve verzi 1. Toto platí v létě 2022, kdy tento článek vychází.
-Nicméně, až bude protokol prohlášen za stabilní, změní se jeho název na xdg_decoration_manager,
-tedy bez počátečního z a bez přípony v podobě verze protokolu.
-Tato změna pak bude pravděpodobně promítnuta na zdrojáky tohoto tutoriálu umístěného na
-<a href="">na githubu</a>.</p>
-
-<h3>Soubor main.cpp</h3>
-
-<p>Při pohledu do souboru main.cpp si již nebudeme uvádět seznam globálních proměnných.
-Pouze připomínám, že jejich pořadí není náhodné, ale uvádí pořadí jejich destrukce při ukončování aplikace,
-tedy od poslední proměnné k první. Zvláště vk::Instance a pak okno a jeho handly musí být uvolněny jako poslední.
-V případě nedodržení těchto pravidel může sice aplikace zdánlivě fungovat správně,
-ale při aktivaci validačních vrstev přes vkconfig utilitu dostaneme varování o špatném použití Vulkan API.</p>
-
-<p>V samotné funkci main() nejprve vytvoříme instanci tak, jak jsme zvyklí:</p>
-
-<pre>
-// Vulkan instance
-instance =
-	vk::createInstanceUnique(
-		vk::InstanceCreateInfo{
-			vk::InstanceCreateFlags(),  // flags
-			&amp;(const vk::ApplicationInfo&amp;)vk::ApplicationInfo{
-				appName,                 // application name
-				VK_MAKE_VERSION(0,0,0),  // application version
-				nullptr,                 // engine name
-				VK_MAKE_VERSION(0,0,0),  // engine version
-				VK_API_VERSION_1_0,      // api version
-			},
-			0, nullptr,  // no layers
-			<b>VulkanWindow::requiredExtensionCount(),  // enabled extension count</b>
-			<b>VulkanWindow::requiredExtensionNames(),  // enabled extension names</b>
-		}
-	);
-</pre>
-
-<p>Jediný větší rozdíl je ve specifikaci vyžadovaných extensions, které si zjistíme z VulkanWindow.
-VulkanWindow nám podle použité platformy vrátí, co je potřeba.</p>
-
-<p>Dalším krokem je vytvoření surface:</p>
-
-<pre>
-// create surface
-vk::SurfaceKHR surface =
-	window.init(instance.get(), {1024, 768}, appName);
-</pre>
-
-<p>Vidíme, že VulkanWindow.init() nám zapouzdřilo celou konstrukci okna a následné vytvoření surface.
-Jako první parametr předáváme objekt vk::Instance, jako druhý rozměry okna a jako třetí titulek okna.
-Surface je nám vrácen, ale jeho vlastníkem je VulkanWindow, které se postará i o jeho uvolnění
-při ukončení aplikace. Proto si vracíme pouze vk::SurfaceKHR a ne unique objekt vk::UniqueSurfaceKHR.</p>
-
-<p>Dalším úkolem je výběr kompatibilního zařízení. Výběr je však složitější, než v minulém díle.
-Potřebujeme podporu VK_KHR_swapchain, grafickou a prezentační frontu a nelepší zařízení z kompatibilních
-vybereme na základě jeho typu ve vk::PhysicalDeviceProperties.</p>
-
-<pre>
-// find compatible devices
-vector&lt;vk::PhysicalDevice&gt; deviceList = instance->enumeratePhysicalDevices();
-vector&lt;tuple&lt;vk::PhysicalDevice, uint32_t, uint32_t, vk::PhysicalDeviceProperties&gt;&gt; compatibleDevices;
-for(vk::PhysicalDevice pd : deviceList) {
-
-	// skip devices without VK_KHR_swapchain
-	auto extensionList = pd.enumerateDeviceExtensionProperties();
-	for(vk::ExtensionProperties&amp; e : extensionList)
-		if(strcmp(e.extensionName, "VK_KHR_swapchain") == 0)
-			goto swapchainSupported;
-	continue;
-	swapchainSupported:
-
-	// select queues for graphics rendering and for presentation
-	uint32_t graphicsQueueFamily = UINT32_MAX;
-	uint32_t presentationQueueFamily = UINT32_MAX;
-	vector&lt;vk::QueueFamilyProperties&gt; queueFamilyList = pd.getQueueFamilyProperties();
-	for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i&lt;c; i++) {
-		if(pd.getSurfaceSupportKHR(i, surface)) {
-			if(queueFamilyList[i].queueFlags &amp; vk::QueueFlagBits::eGraphics) {
-				// if presentation and graphics operations are supported on the same queue,
-				// we will use single queue
-				compatibleDevices.emplace_back(pd, i, i, pd.getProperties());
-				goto nextDevice;
-			}
-			else
-				// if only presentation is supported, we store the first such queue
-				if(presentationQueueFamily == UINT32_MAX)
-					presentationQueueFamily = i;
-		}
-		else {
-			if(queueFamilyList[i].queueFlags &amp; vk::QueueFlagBits::eGraphics)
-				// if only graphics operations are supported, we store the first such queue
-				if(graphicsQueueFamily == UINT32_MAX)
-					graphicsQueueFamily = i;
-		}
-	}
-	if(graphicsQueueFamily != UINT32_MAX &amp;&amp; presentationQueueFamily != UINT32_MAX)
-		// presentation and graphics operations are supported on the different queues
-		compatibleDevices.emplace_back(pd, graphicsQueueFamily, presentationQueueFamily, pd.getProperties());
-	nextDevice:;
-}
-</pre>
-
-<p>Procházíme tedy všechna fyzická zařízení a přeskočíme ty, které nepodporují VK_KHR_swapchain extension.
-Pro ty, které podporují tuto extension, procházíme seznam tříd front.
-U každé se zeptáme, zda podporuje prezentaci na náš surface a zda podporuje grafické operace.
-Pokud podporuje některá třída front obojí naráz, což bude naše preferenční volba,
-uložíme si ji do seznamu se stejným indexem do třídy front.
-V opačném případě si uložíme index první fronty, která podporuje prezentaci a první fronty,
-která podporuje grafické operace.</p>
-
-<p>Následně si seznam kompatibilních zařízení vypíšeme:</p>
-
-<pre>
-// print compatible devices
-cout &lt;&lt; "Compatible devices:" &lt;&lt; endl;
-for(auto&amp; t : compatibleDevices)
-	cout &lt;&lt; "   " &lt;&lt; get&lt;3>(t).deviceName &lt;&lt; " (graphics queue: " &lt;&lt; get&lt;1>(t)
-			&lt;&lt; ", presentation queue: " &lt;&lt; get&lt;2>(t)
-			&lt;&lt; ", type: " &lt;&lt; to_string(get&lt;3>(t).deviceType) &lt;&lt; ")" &lt;&lt; endl;
-</pre>
-
-<p>Výpis na obrazovce může vypadat například takto:</p>
-
-<pre>
-Compatible devices:
-   Intel(R) HD Graphics 530 (SKL GT2) (graphics queue: 0, presentation queue: 0, type: IntegratedGpu)
-   NVIDIA GeForce GTX 1050 (graphics queue: 0, presentation queue: 0, type: DiscreteGpu)
-   AMD RADV POLARIS11 (graphics queue: 0, presentation queue: 0, type: DiscreteGpu)
-   llvmpipe (LLVM 13.0.1, 256 bits) (graphics queue: 0, presentation queue: 0, type: Cpu)
-</pre>
-
-<p>Jak vidíme, výpis obsahuje čtyři Vulkanní zařízení. Na každém řádku se nachází název zařízení,
-grafická fronta, prezentační fronta a typ zařízení. Co se týká typu zařízení, máme
-integrované GPU, dvě diskrétní grafiky a jednu cpu implementaci.
-Jak vybrat jedno zařízení, které je pro uživatele nejvhodnější?</p>
-
-<p>Obyčejně bude nejlepší volbou jedna z diskrétních grafik.
-Pokud na daném počítači není diskrétní grafika, pak se jeví jako vhodná volba integrovaná grafika.
-V dalším sledu by to pak byla virtuální grafika typicky využívající virtualizaci,
-pak cpu implementace, a pak vše ostatní. Vše implementuje následující kód hledající bestDevice
-v našem seznamu compatibleDevices. Klíčovou roli zde hraje pole deviceTypeScore,
-které každému typu grafiky přiřazuje skóre. Toto skóre je ještě zvětšeno o jedničku,
-pokud zařízení používá stejnou frontu pro grafické operace i prezentaci.</p>
-
-<pre>
-// choose the best device
-auto bestDevice = compatibleDevices.begin();
-if(bestDevice == compatibleDevices.end())
-	throw runtime_error("No compatible devices.");
-constexpr const array deviceTypeScore = {
-	10, // vk::PhysicalDeviceType::eOther         - lowest score
-	40, // vk::PhysicalDeviceType::eIntegratedGpu - high score
-	50, // vk::PhysicalDeviceType::eDiscreteGpu   - highest score
-	30, // vk::PhysicalDeviceType::eVirtualGpu    - normal score
-	20, // vk::PhysicalDeviceType::eCpu           - low score
-	10, // unknown vk::PhysicalDeviceType
-};
-int bestScore = deviceTypeScore[min(unsigned(get&lt;3>(*bestDevice).deviceType), 5u)];
-if(get&lt;1&gt;(*bestDevice) == get&lt;2&gt;(*bestDevice))
-	bestScore++;
-for(auto it=compatibleDevices.begin()+1; it!=compatibleDevices.end(); it++) {
-	int score = deviceTypeScore[min(unsigned(get&lt;3&gt;(*it).deviceType), 5u)];
-	if(get&lt;1&gt;(*it) == get&lt;2&gt;(*it))
-		score++;
-	if(score &gt; bestScore) {
-		bestDevice = it;
-		bestScore = score;
-	}
-}
-cout &lt;&lt; "Using device:\n"
-		"   " &lt;&lt; get&lt;3&gt;(*bestDevice).deviceName &lt;&lt; endl;
-physicalDevice = get&lt;0&gt;(*bestDevice);
-graphicsQueueFamily = get&lt;1&gt;(*bestDevice);
-presentationQueueFamily = get&lt;2&gt;(*bestDevice);
-</pre>
-
-<p>V našem případě je vybrána první diskrétní grafika, tedy NVIDIA GeForce GTX 1050.
-Následuje vytvoření logického zařízení. V kódu jsou zvýrazněny řádky, které jsou odlišné od toho,
-na co jsme zvyklí z minulých dílů:</p>
-
-<pre>
-// create device
-device =
-	physicalDevice.createDeviceUnique(
-		vk::DeviceCreateInfo{
-			vk::DeviceCreateFlags(),  // flags
-			<b>graphicsQueueFamily==presentationQueueFamily ? uint32_t(1) : uint32_t(2),  // queueCreateInfoCount</b>
-			<b>array{  // pQueueCreateInfos</b>
-				vk::DeviceQueueCreateInfo{
-					vk::DeviceQueueCreateFlags(),
-					graphicsQueueFamily,
-					1,
-					&amp;(const float&amp;)1.f,
-				},
-				<b>vk::DeviceQueueCreateInfo{
-					vk::DeviceQueueCreateFlags(),
-					presentationQueueFamily,
-					1,
-					&amp;(const float&amp;)1.f,
-				},
-			}.data(),</b>
-			0, nullptr,  // no layers
-			<b>1,           // number of enabled extensions
-			array&lt;const char*, 1&gt;{ "VK_KHR_swapchain" }.data(),  // enabled extension names</b>
-			nullptr,    // enabled features
-		}
-	);
-</pre>
-
-<p>Jak vidíme, počet front nastavujeme na jednu, pokud je grafická a prezentační fronta jedna a ta samá.
-Jinak použijeme fronty dvě. V poli informací o frontách pak předáváme dvě struktury: Jedna pro grafickou a
-druhá pro prezentační frontu. Pokud používáme jedinou frontu, bude druhá struktura ignorována.
-A poslední změna nás čeká mezi požadovanými extensions, kde budeme vyžadovat podporu VK_KHR_swapchain,
-kterou budeme používat.</p>
-
-<p>Z dalšího kódu je zajímavá podpora surface formátů:</p>
+<p>Nejprve si ale vypíšeme seznam podporovaných surface formátů:</p>
 
 <pre>
 // print surface formats
@@ -517,7 +41,7 @@ for(vk::SurfaceFormatKHR sf : availableSurfaceFormats)
 	cout &lt;&lt; "   " &lt;&lt; vk::to_string(sf.format) &lt;&lt; " " &lt;&lt; vk::to_string(sf.colorSpace) &lt;&lt; endl;
 </pre>
 
-<p>Jejich výpis může vypadat takto:</p>
+<p>Jejich výpis může vypadat například takto:</p>
 
 <pre>
 Surface formats:
@@ -534,18 +58,22 @@ Barvy jsou shodné se standardem <a href="https://en.wikipedia.org/wiki/Rec._709
 ale transférová funkce je trochu jiná. Pro nás stačí vědět, že je to přibližně
 <a href="https://en.wikipedia.org/wiki/Gamma_correction">gamma</a> s koeficientem 2.2.</p>
 
-<p>A když už jsme zmínili, že gamma není rovno jedné, znamená to, že 256 hodnot, kterou máme pro
-každou z barevných složek RGB není rozloženo linearně. Rozdíl mezi 0 a 1 je mnohem menší než rozdíl mezi 254 a 255.
+<p>A když už jsme zmínili, že gamma není rovno jedné, znamená to,
+že 256 hodnot, kterou máme pro každou z barevných složek RGB, není rozloženo linearně.
+Rozdíl mezi 0 a 1 je mnohem menší než rozdíl mezi 254 a 255.
 U nízkých hodnot tedy dochází ke kompresi a u vysokých k expanzi.
-Historicky toto zakódování vzniklo díky starým CRT obrazovkám, které přesně takto zobrazovaly.
-Nicméně i dnes v době LCD obrazovek má toto kódování smysl, neboť velmi dobře sedí s citlivostí lidského oka.
-Lidské oko je velmi citlivé na drobné změny jasu u temných barev a zároveň méně citlivé na absolutní změnu jasu
-u světlých barev. Mnohem efektivněji tedy využijeme 256 hodnot, které máme k dispozici.
-Pro tyto výhody je sRGB kódování často používáno i při zobrazování textur.</p>
+Historicky toto zakódování vzniklo díky starým CRT obrazovkám, které tímto způsobem zobrazovaly.
+Nicméně i dnes v době LCD obrazovek má toto kódování smysl,
+neboť velmi dobře sedí s citlivostí lidského oka.
+Lidské oko je velmi citlivé na drobné změny jasu u temných barev
+a zároveň méně citlivé na absolutní změnu jasu u světlých barev.
+Mnohem efektivněji tedy využijeme 256 hodnot, které máme k dispozici.
+Pro tyto výhody je sRGB kódování často používáno například i při ukládání a zobrazování textur.</p>
 
 <p>Jak tedy využít tohoto gamma zakódování, které nám sRGB formáty nabízí?
-V našem případě stačí použít B8G8R8A8Srgb formát. Při jeho použití je naše barva, kterou zapisujeme
-ve fragment shaderu automaticky zkonvertována na odpovídající sRGB hodnotu a zapsána do color bufferu.
+V našem případě stačí použít B8G8R8A8Srgb formát.
+Při jeho použití je naše barva, kterou zapisujeme ve fragment shaderu
+automaticky zkonvertována gamma konverzí na odpovídající sRGB hodnotu a zapsána do color bufferu.
 Pokud bychom použili formát, který není Srgb, v našem případě tedy jeden ze dvou formátů Unorm,
 museli bychom si gamma konverzi počítat v shaderu sami.</p>
 
@@ -586,18 +114,19 @@ Kód je trochu složitější, protože ošetřuje nestandardní situace, ale j�
 který je zvýrazněn tučně a který prochází všechny availableSurfaceFormats.</p>
 
 <p>Kód vytváření renderPasu můžeme přeskočit, neboť je stejný jako v minulých dílech.
-Můžeme se tedy vrhnout na vytvoření swapchainu v callbacku VulkanWindow::setRecreateSwapchainCallback().</p>
+Můžeme se tedy vrhnout na vytvoření swapchainu
+v callbacku VulkanWindow::setRecreateSwapchainCallback().</p>
 
 <h3>Swapchain</h3>
 
 <p>Swapchain nám umožňuje zobrazit výsledky rendrování na vk::Surface.
-Swapchain je abstrakce pro skupinu vk::Image obrázků, které jsou vlastněny vk::Surface,
-a které mohou být prezentovány na daném vk::Surface.</p>
+Swapchain je abstrakce pro skupinu vk::Image obrázků svázaných s vk::Surface,
+které mohou být prezentovány na daném vk::Surface.</p>
 
 <p>Swapchain typicky vytváříme vždy znova při změně velikosti okna.
 Proto si pro jeho nové vytvoření uděláme callback.
-Zavoláme tedy VulkanWindow::setRecreateSwapchainCallback() a jako parametr předáme lambda funkci
-dělající vše potřebné:</p>
+To v našem kódu uděláme tak, že zavoláme VulkanWindow::setRecreateSwapchainCallback()
+a jako parametr předáme lambda funkci dělající vše potřebné:</p>
 
 <pre>
 window.setRecreateSwapchainCallback(
@@ -649,34 +178,36 @@ swapchain = move(newSwapchain);
 
 <p>Swapchain vlastní několik obrázků typu vk::Image.
 Jejich počet nastavíme v konstantě requestedImageCount.
-Nám pro tento díl budou stačit obrázky dva. Tedy double buffering. Jeden pro front a druhý pro back buffer.
+Nám pro tento díl budou stačit obrázky dva. Tedy double buffering.
+Jeden pro front a druhý pro back buffer.
 Front buffer je typicky zobrazován na obrazovce a do back bufferu kreslíme.
 Až je obrázek dokončen, je dán swapchainu požadavek k prohození těchto dvou bufferů.</p>
 
 <p>Pojďme na jednotlivé parametry, které předáváme pro vytvoření swapchainu.
 Prvním netriviálním parametrem je třetí parametr, tedy minImageCount.
 Zde potřebujeme omezit náš requestedImageCount do mezí, které podporuje surface.
-Kód není jednoduchý clamp(), protože maxImageCount může být nulový, což indikuje, že není horní mez.
+Kód není obyčejný clamp(), protože maxImageCount může být nulový, což indikuje, že není horní mez.
 Musíme tedy uzpůsobit kód, aby správně ošetřil tento případ.</p>
 
 <p>Jako další parametry předáváme formát a colorSpace, které jsme dříve vybrali.
 Parametr imageExtent nastavíme na rozměry okna, přesněji řečeno na rozměry klientské části okna, tedy okna bez dekorace.</p>
 
-<p>K zajajímavým parametrům patří ještě imageSharingMode, který nastavíme na eConcurrent,
+<p>K zajímavým parametrům patří ještě imageSharingMode, který nastavíme na eConcurrent,
 pokud používáme jinou frontu tříd pro rendering a jinou pro prezentaci.
 Při eConcurrent sharing mode pak musíme nastavit i následující dva parametry, které udávají,
 které třidy front budou se swapchainem pracovat.</p>
 
 <p>Dalšími parametry říkáme, že obraz nebudeme transformovat ani nechceme provádět alpha-blending
-s objekty za naším oknem, jinými slovy, nemáme poloprůhledné okno.
+s okny a pozadím za naším oknem, jinými slovy, nemáme poloprůhledné okno.
 Parametr presentMode si vysvětlíme v budoucnu. Prozatím jej necháme na hodnotě eFifo,
 což v případě dvou bufferů odpovídá jednoduché funkci double-bufferingu.</p>
 
 <p>Parametr clipped necháme na hodnotě VK_TRUE, abychom dovolili driveru nerendrovat části okna,
 které jsou například zakryty jiným oknem nebo jinak neviditelné.
 Poslední parametr oldSwapchain nastavíme na předchozí swapchain, který jsme pro okno měli vytvořen,
-a tím umožníme recyklovat mnohé prostředky, takže nejsou s minulým swapchain zlikvidovány
-a nyní znova pracně konstruovány. Pokud aplikace právě startuje a proměnná swapchain obsahuje ještě nullptr,
+a tím umožníme recyklovat mnohé objekty a zdroje. Ty pak nejsou zbytečně se starým swapchainem zlikvidovány
+a nejsou znova alokovány v novém swapchainu. Co Vulkan zrecykluje pak záleží na driveru.
+Pokud aplikace právě startuje a proměnná swapchain obsahuje ještě nullptr,
 není pochopitelně ještě co recyklovat a Vulkan tak musí vše vytvořit.
 Nicméně pokud při každé změně velikosti okna znovuvytváříme swapchain, je to pěkná optimalizace.
 Starý swapchain je pak uvolněn na posledním řádku ve chvíli přiřazení newSwapchain do proměnné swapchain.</p>
@@ -713,7 +244,7 @@ for(vk::Image image : swapchainImages)
 že nám poskytuje něco jako "pohled do obrázku".
 Tento ImageView ihned použijeme pro vytvoření framebufferu.
 Kolik má swapchain obrázků, tolik vytvoříme objektů vk::ImageView
-a tolik také vyrvoříme objektů vk::Framebuffer:</p>
+a tolik také vytvoříme objektů vk::Framebuffer:</p>
 
 <pre>
 	// framebuffers
@@ -780,7 +311,7 @@ imageAvailableSemaphore =
 			vk::SemaphoreCreateFlags()  // flags
 		)
 	);
-renderFinishedSemaphore =
+renderingFinishedSemaphore =
 	device->createSemaphoreUnique(
 		vk::SemaphoreCreateInfo(
 			vk::SemaphoreCreateFlags()  // flags
@@ -790,11 +321,12 @@ renderFinishedSemaphore =
 
 <p>Semafor je synchronizační objekt, který umožňuje vložit závislost mezi operacemi ve frontě.
 Toto platí pro klasický binární semafor. Vulkan 1.2 však přidal i timeline semafor,
-který my ale hned tak používat nebudeme. Proto se další informace budou vztahovat pouze k binárnímu semaforu.</p>
+který my ale v žádném z nejbližších dílů používat nebudeme.
+Proto se další informace budou vztahovat pouze k binárním semaforům.</p>
 
 <p>Binární semafor má dva stavy: signalizovaný (signaled) a nesignalizovaný (unsignaled).
-Po vytvoření je semafor nesignalizovaný. Na frontě může být semafor zasignalizován po dokončení nějaké práce
-nebo naopak, fronta může čekat se započetím práce na to, až je semafor zasignalizován.
+Po vytvoření je semafor nesignalizovaný. Na frontě může být semafor zasignalizován po dokončení nějaké práce.
+Nebo naopak fronta může čekat se započetím práce na to, až je semafor zasignalizován.
 Praktické použití uvidíme za pár okamžiků.</p>
 
 <p>Mohli bychom se ale ptát, co dělat, kdybychom potřebovali synchronizovat práci ne mezi dvěma operacemi ve frontě,
@@ -802,4 +334,289 @@ ale mezi frontou a procesorem. Odpověď je až překvapivě jednoduchá: Stač�
 což je věc přesně k tomuto účelu navržená a kterou jsme si už ukázali v <a href="">pátém díle</a> tohoto tutoriálu.</p>
 
 
+<h3>Frame callback</h3>
 
+<p>Před vstupem do hlavní smyčky aplikace ještě potřebujeme zaregistrovat frame callback,
+jehož úkolem je vyrendrovat a zobrazit snímek na obrazovce, kdykoliv je tento callback zavolán.</p>
+
+<p>Callback má pět částí:</p>
+<ol><li>acquire image - získání obrázku, do kterého můžeme rendrovat</li>
+<li>command buffer recording - nahrátí command bufferu</li>
+<li>command buffer submission - odeslání command bufferu k provedení</li>
+<li>present image - odeslání obrázku k prezentaci</li></ol>
+
+<p>Obrázek získáme zavoláním metody acquireNextImageKHR():</p>
+
+<pre>
+window.setFrameCallback(
+	[]() {
+
+		// make sure commandBuffer is not being executed
+		graphicsQueue.waitIdle();
+
+		// acquire image
+		uint32_t imageIndex =
+			device->acquireNextImageKHR(
+				swapchain.get(),                  // swapchain
+				numeric_limits&lt;uint64_t&gt;::max(),  // timeout
+				imageAvailableSemaphore.get(),    // semaphore to signal
+				vk::Fence(nullptr)                // fence to signal
+			).value;
+</pre>
+
+<p>Ovšem, jak už to bývá v super optimalizovaném prostředí, věci nejsou tak jednoduché.
+Metoda acquireNextImageKHR() totiž obyčejně pracuje asynchronně.
+To, že nám vrátila index obrázku, znamená pouze, že jednou bude obrázek k dispozici.
+A kdy bude k dispozici, to nám řekne imageAvailableSemaphore, tedy třetí parametr.
+Tento semafor bude zasignalizován ve chvíli, kdy můžeme začít s obrázkem pracovat.
+Do té chvíle může být obrázek zobrazován na obrazovce, nebo jiným způsobem používán,
+a není tedy vhodné do něj předčasně začít rendrovat.
+Místo semaforu můžeme použít i fence zadanou ve čtvrtém parametru.
+Pak bychom na chvíli, kdy můžeme začít pracovat s obrázkem, mohli čekat na procesoru.
+To ale většinou není, co bychom chtěli, protože pro procesor máme v mnoha aplikacích jinou práci
+než čekat na GPU.</p>
+
+<p>Z dalších parametrů předáváme swapchain a timeout. Timeout udává čas, po který se má čekat,
+pokud by obrázek nebyl k dispozici. My nechceme řádný timeout, tak nastavíme maximální hodnotu.</p>
+
+<p>Dále si nahrajeme command buffer. Do command bufferu vložíme pouze renderpass.
+Kód je téměř stejný, jako v <a href="">šestém díle</p>, takže si jej nebudeme vysvětlovat:</p>
+
+<pre>
+		// record command buffer
+		commandBuffer.begin(
+			vk::CommandBufferBeginInfo(
+				vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
+				nullptr  // pInheritanceInfo
+			)
+		);
+		commandBuffer.beginRenderPass(
+			vk::RenderPassBeginInfo(
+				renderPass.get(),  // renderPass
+				framebuffers[imageIndex].get(),  // framebuffer
+				vk::Rect2D(vk::Offset2D(0,0), window.surfaceExtent()),  // renderArea
+				1,  // clearValueCount
+				&amp;(const vk::ClearValue&amp;)vk::ClearValue(  // pClearValues
+					vk::ClearColorValue(array&lt;float,4&gt;{0.56f,0.56f,0.80f,1.f})
+				)
+			),
+			vk::SubpassContents::eInline
+		);
+		commandBuffer.endRenderPass();
+		commandBuffer.end();
+</pre>
+
+<p>Dalším úkolem je odeslání nahraného command bufferu k provedení:</p>
+
+<pre>
+		// submit frame
+		graphicsQueue.submit(
+			vk::ArrayProxy&lt;const vk::SubmitInfo&gt;(
+				1,
+				&amp;(const vk::SubmitInfo&amp;)vk::SubmitInfo(
+					1, &amp;imageAvailableSemaphore.get(),  // waitSemaphoreCount + pWaitSemaphores +
+					&amp;(const vk::PipelineStageFlags&amp;)vk::PipelineStageFlags(  // pWaitDstStageMask
+						vk::PipelineStageFlagBits::eColorAttachmentOutput),
+					1, &amp;commandBuffer,  // commandBufferCount + pCommandBuffers
+					1, &amp;renderingFinishedSemaphore.get()  // signalSemaphoreCount + pSignalSemaphores
+				)
+			),
+			vk::Fence(nullptr)
+		);
+</pre>
+
+<p>Jako parametry funkce bychom asi čekali pouze seznam command bufferů k provedení,
+které najdeme jako čtvrtý a pátý parametr. Nicméně ve vysoce optimalizovaném prostředí,
+kde se pracuje hodně asynchronně, jsou věci složitější.</p>
+
+<p>V prvé řadě se command buffer nesmí začít provádět dříve,
+než bude imageAvailableSemaphore zasignalizován.
+Jeho zasignalizování značí, že obrázek, který jsme získali v acquireNextImageKHR()
+je již k dispozici pro čtení a pro zápis. A pokud budeme chtít být úplně přesní,
+tak třetí parametr pWaitDstStageMask říká, že na semafor musí počkat pouze
+zápisy do color attachmentu, tedy do našeho výsledného obrázku.
+Ostatní operace na tento semafor čekat nemusí a mohou se provádět už dopředu.
+Tím máme pokryty závislosti do minulosti.</p>
+
+<p>A co závislosti do budoucnosti? K tomu slouží šestý a sedmý parametr,
+tedy seznam semaforů k zasignalizování. Tam předáme náš druhý semafor,
+tedy renderingFinishedSemaphore. Jakmile bude provádění veškeré práce
+odesílané tímto příkazem hotovo, je semafor zasignalizován.</p>
+
+<p>Zůstává nám čtvrtý krok, tedy prezentace výsledků rendrování na obrazovku:</p>
+
+<pre>
+		// present
+		ignore =
+			presentationQueue.presentKHR(
+				vk::PresentInfoKHR(
+					1, &amp;renderingFinishedSemaphore.get(),  // waitSemaphoreCount + pWaitSemaphores
+					1, &amp;swapchain.get(), &amp;imageIndex,  // swapchainCount + pSwapchains + pImageIndices
+					nullptr  // pResults
+				)
+			);
+</pre>
+
+<p>Do prezentační fronty pošleme prezentační příkaz.
+Protože je funkce pravděpodobně implementována asynchronně,
+bude teď ve frontě čekat prezentační příkaz, který čeká na renderingFinishedSemaphore,
+který jsme zadali v prvním a druhém parametru.
+Jakmile je rendrování dokončeno a semafor je zasignalizován,
+může prezentační engine zobrazit tento obrázek na obrazovce.
+Podle nastavení Vulkanu to může provést hned nebo počkat na vertikální synchronizaci displeje.
+O tomto si více povíme příště.</p>
+
+<p>Který snímek se má na obrazovce zobrazit, zadáváme kombinací swapchainu a indexu obrázku,
+tedy parametry tři, čtyři a pět.</p>
+
+<p>Na závěr už jen počkáme na procesoru, až bude práce dokončena a snímek bezpečně na obrazovce.
+Je to jednoduché řešení synchronizace. Nicméně příště věc vylepšíme, abychom procesor neblokovali:</p>
+
+<pre>
+		// wait for work completion
+		presentationQueue.waitIdle();
+
+	},
+	physicalDevice,
+	device.get()
+);
+
+// run main loop
+window.mainLoop();
+</pre>
+
+<p>Na závěr ještě předáme physicalDevice a device jako parametry metody VulkanWindow::setFrameCallback(),
+aby VulkanWindow věděla, které zařízení používáme. Pak už jen zavoláme VulkanWindow::mainLoop().</p>
+
+<p>Kód VulkanWindow::mainLoop je podobný tomu, co jsme si ukázali v <a href="">devátém díle</a>
+kromě toho, že jsme nepoužívali ani swapchain ani frame callback, ale nechali jsme okno prázdné.
+V tomto díle máme pro obě věci již vytvořen callback. Zůstává jej tedy zavolat.
+Toto provedeme různě na různých platformách.</p>
+
+<h3>Win32</h3>
+
+<p>Pro zavolání _recreateSwapchainCallback použijeme na Win32 následující kód,
+který umístíme hned na začátek VulkanWindow::mainLoop():</p>
+
+<pre>
+	// update surface extent by the real window size
+	vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
+	_surfaceExtent = surfaceCapabilities.currentExtent;
+
+	// create swapchain
+	_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
+</pre>
+
+<p>Nejprve si vrátíme surface capabilities z Vulkan, pak aktualizujeme rozměr okna,
+a pak teprve provedeme zavolání callbacku s oběma věcma jako parametr.
+Windows z rozměrů našeho okna ukously kus na jeho dekorace, tedy záhlaví a okraje.
+Není to příjemný zvyk, nicméně takto funguje Win32 API.
+A protože na Windows musí rozměr swapchainu přesně sedět na rozměry okna,
+musíme aktualizovat _surfaceExtent, podle které pak vytváříme swapchain požadovaných rozměrů.</p>
+
+<p>Zavolání _frameCallbacku neprovedeme na Win32 z hlavní smyčky zpráv, ale ve funkci zpráv okna,
+kterou jsme v kódu nazvali wndProc. Provedeme to obsluhou zprávy WM_PAINT, přičemž doplníme i WM_ERASEBKGND:</p>
+
+<pre>
+case WM_ERASEBKGND:
+	cout &lt;&lt; "WM_ERASEBKGND message" &lt;&lt; endl;
+	return 1;  // returning non-zero means that background should be considered erased
+
+case WM_PAINT: {
+	VulkanWindow* w = reinterpret_cast&lt;VulkanWindow*&gt;(GetWindowLongPtr(hwnd, 0));
+	try {
+		cout &lt;&lt; "WM_PAINT message" &lt;&lt; endl;
+
+		// validate window area
+		if(!ValidateRect(hwnd, NULL))
+			throw runtime_error("ValidateRect(): The function failed.");
+
+		// render frame
+		w-&gt;_frameCallback();
+
+	} catch(...) {
+		w-&gt;_wndProcException = std::current_exception();
+	}
+	return 0;
+}
+</pre>
+
+<p>Detaily k WM_ERASEBKGND, WM_PAINT, GetWindowLongPtr() i ValidateRect() jsme
+si uvedli v <a href="">desátém díle</p> tohoto tutoriálu.
+Můžeme tedy pouze připojit, že zde zavoláme i _frameCallback().</p>
+
+
+<h3>Xlib</h3>
+
+<p>Na Xlib pouze doplníme zavolání obou _recreateSwapchainCallback() a _frameCallback()
+z VulkanWindow::mainLoop():
+
+<pre>
+<b>// create swapchain
+_recreateSwapchainCallback(_physicalDevice.getSurfaceCapabilitiesKHR(_surface), _surfaceExtent);</b>
+
+// run Xlib event loop
+XEvent e;
+while(true) {
+
+	XNextEvent(_display, &amp;e);
+
+	<b>// handle expose event
+	if(e.type == Expose) {
+		cout &lt;&lt; "Expose event" &lt;&lt; endl;
+		_frameCallback();
+		continue;
+	}</b>
+
+	// handle window close
+	if(e.type==ClientMessage &amp;&amp; ulong(e.xclient.data.l[0])==_wmDeleteMessage)
+		break;
+
+}
+</pre>
+
+<p>Doplněný kód je zvýrazněn tučně. Oproti Windows vidíme,
+že nemusíme aktualizovat _surfaceExtent.
+Dostaneme přesně velikost okna, o kterou jsme požádali při jeho vytváření.</p>
+
+
+<h3>Wayland</h3>
+
+<p>Wayland nás může svým přístupem zaskočit:</p>
+
+<pre>
+	<b>// create swapchain
+	_recreateSwapchainCallback(_physicalDevice.getSurfaceCapabilitiesKHR(_surface), _surfaceExtent);
+
+	// render frame
+	_frameCallback();</b>
+
+	// main loop
+	cout &lt;&lt; "Entering main loop." &lt;&lt; endl;
+	if(wl_display_flush(_display) == -1)
+		throw runtime_error("wl_display_flush() failed.");
+	while(_running) {
+
+		// dispatch events
+		if(wl_display_dispatch(_display) == -1)  // it blocks if there are no events
+			throw std::runtime_error("wl_display_dispatch() failed.");
+		if(wl_display_flush(_display) == -1)
+			throw runtime_error("wl_display_flush() failed.");
+
+	}
+	cout &lt;&lt; "Main loop left." &lt;&lt; endl;
+</pre>
+
+<p>Vidíme, že jak _recreateSwapchainCallback() tak _frameCallback() voláme
+ještě před vstupem do smyčky obsluhy zpráv.
+Toto je rys Waylandu - jednou obsah okna specifikujeme a Wayland si to už pamatuje
+až do chvíle, než mu pošleme nový obsah.</p>
+
+
+<h3>Závěr</h3>
+
+<p>Aplikaci můžeme nyní spustit na všech třech platformách a vždy dostaneme
+okno s vykresleným modrošedým (anglicky: griseous) pozadím,
+které může reprezentovat barvu například oblohy.</p>
+
+<p>Příště doplníme okno o možnost změny jeho velikosti....
