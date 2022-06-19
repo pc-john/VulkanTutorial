@@ -140,37 +140,30 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 				return 1;  // returning non-zero means that background should be considered erased
 
 			case WM_PAINT: {
+
+				cout << "WM_PAINT message" << endl;
+
+				// set _framePending flag
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
-				try {
-					cout << "WM_PAINT message" << endl;
+				w->_framePending = true;
 
-					// validate window area
-					if(!ValidateRect(hwnd, NULL))
-						throw runtime_error("ValidateRect(): The function failed.");
+				// validate window area
+				if(!ValidateRect(hwnd, NULL))
+					w->_wndProcException = make_exception_ptr(runtime_error("ValidateRect(): The function failed."));
 
-					// render frame
-					w->_frameCallback();
-
-				} catch(...) {
-					w->_wndProcException = std::current_exception();
-				}
 				return 0;
 			}
 
 			case WM_SIZE: {
+				cout << "WM_SIZE message (" << LOWORD(lParam) << "x" << HIWORD(lParam) << ")" << endl;
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
-				try {
-					cout << "WM_SIZE message" << endl;
-					w->_surfaceExtent.width  = LOWORD(lParam);
-					w->_surfaceExtent.height = HIWORD(lParam);
-					w->scheduleSwapchainResize();
-				} catch(...) {
-					w->m_wndProcException = std::current_exception();
-				}
+				w->_framePending = true;
+				w->_swapchainResizePending = true;
 				return DefWindowProc(hwnd, msg, wParam, lParam);
 			}
 
 			case WM_CLOSE: {
+				cout << "WM_CLOSE message" << endl;
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				w->_hwnd = nullptr;
 				if(!DestroyWindow(hwnd))
@@ -179,6 +172,7 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 			}
 
 			case WM_DESTROY:
+				cout << "WM_DESTROY message" << endl;
 				PostQuitMessage(0);
 				return 0;
 
@@ -403,30 +397,68 @@ void VulkanWindow::mainLoop()
 	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
-	// update surface extent by the real window size
-	vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
-	_surfaceExtent = surfaceCapabilities.currentExtent;
-
-	// create swapchain
-	_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
-
 	// run Win32 event loop
 	MSG msg;
-	BOOL r;
 	_wndProcException = nullptr;
-	while((r = GetMessage(&msg, NULL, 0, 0)) != 0) {
+	while(true) {
 
-		// handle GetMessage() errors
-		if(r == -1)
-			throw runtime_error("GetMessage(): The function failed.");
+		// handle all messages
+		while(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE) != 0) {
 
-		// handle message
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
+			// handle WM_QUIT
+			if(msg.message == WM_QUIT)
+				return;
 
-		// handle exceptions raised in window procedure
-		if(_wndProcException)
-			rethrow_exception(_wndProcException);
+			// handle message
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);
+
+			// handle exceptions raised in window procedure
+			if(_wndProcException)
+				rethrow_exception(_wndProcException);
+		}
+
+		// no frame pending?
+		if(!_framePending) {
+
+			// wait messages
+			if(WaitMessage() == 0)
+				throw runtime_error("WaitMessage() failed.");
+			
+			continue;
+		}
+
+		// recreate swapchain if requested
+		if(_swapchainResizePending) {
+
+			// make sure that we finished all the rendering
+			// (this is necessary for swapchain re-creation)
+			_device.waitIdle();
+
+			// get surface capabilities
+			// On Win32, currentExtent, minImageExtent and maxImageExtent are all equal.
+			// It means we can create a new swapchain only with imageExtent being equal to the window size.
+			// The currentExtent of 0,0 means the window is minimized with the result
+			// we cannot create swapchain for such window. If the currentExtent is not 0,0,
+			// both width and height must be greater than 0.
+			vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
+
+			// do not allow swapchain creation and rendering when currentExtent is 0,0
+			if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0)) {
+				_framePending = false;  // this will be rescheduled on the first window resize
+				continue;
+			}
+
+			// recreate swapchain
+			_swapchainResizePending = false;
+			_surfaceExtent = surfaceCapabilities.currentExtent;
+			_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
+		}
+
+		// render scene
+		cout << "Frame callback (" << _surfaceExtent.width << "x" << _surfaceExtent.height << ")" << endl;
+		_framePending = false;
+		_frameCallback();
 	}
 }
 
@@ -490,7 +522,7 @@ void VulkanWindow::mainLoop()
 		} while(numEvents > 0);
 
 
-		// no frame pending?
+		// frame pending?
 		if(!_framePending)
 			continue;
 
@@ -515,8 +547,10 @@ void VulkanWindow::mainLoop()
 			// do not allow swapchain creation and rendering when currentExtent is 0,0
 			// (this never happened on my KDE 5.80.0 (Kubuntu 21.04) and KDE 5.44.0 (Kubuntu 18.04.5);
 			// window minimalizing just unmaps the window)
-			if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0))
+			if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0)) {
+				_framePending = false;  // this will be rescheduled on the first window resize
 				continue;
+			}
 
 			// recreate swapchain
 			_swapchainResizePending = false;

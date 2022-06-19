@@ -31,6 +31,7 @@ protected:
 	std::exception_ptr _wndProcException;
 	HINSTANCE _hInstance;
 	ATOM _windowClass = 0;
+	bool _framePending = true;
 
 	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_win32_surface" };
