@@ -440,37 +440,94 @@ void VulkanWindow::mainLoop()
 	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
-	// create swapchain
-	_recreateSwapchainCallback(_physicalDevice.getSurfaceCapabilitiesKHR(_surface), _surfaceExtent);
-
 	// run Xlib event loop
 	XEvent e;
 	while(true) {
 
-		XNextEvent(_display, &e);
+		// get number of pending events
+		int numEvents = XPending(_display);
 
-		// handle expose event
-		if(e.type == Expose) {
-			cout << "Expose event" << endl;
-			_frameCallback();
-			continue;
-		}
+		// handle zero events
+		if(numEvents == 0)
+			if(_framePending)
+				goto renderFrame;  // frame request -> render frame
+			else
+				numEvents = 1;  // no frame request -> wait for events in XNextEvent()
 
-		//
-		if(e.type == ConfigureNotify) {
-			if(e.xconfigure.width != _surfaceExtent.width || e.xconfigure.height != _surfaceExtent.height) {
-				cout << "Configure event " << e.xconfigure.width << "x" << e.xconfigure.height << endl;
-				_surfaceExtent = vk::Extent2D(e.xconfigure.width, e.xconfigure.height);
-				//m_framePending = true;
-				//_swapchainResizePending = true;
-				_recreateSwapchainCallback(_physicalDevice.getSurfaceCapabilitiesKHR(_surface), _surfaceExtent);
+		// process events
+		do {
+
+			for(int i=0; i<numEvents; i++) {
+
+				// get event
+				XNextEvent(_display, &e);
+
+				// expose event
+				if(e.type == Expose) {
+					cout << "Expose event" << endl;
+					_framePending = true;
+					continue;
+				}
+
+				// configure event
+				if(e.type == ConfigureNotify) {
+					if(e.xconfigure.width != _surfaceExtent.width || e.xconfigure.height != _surfaceExtent.height) {
+						cout << "Configure event " << e.xconfigure.width << "x" << e.xconfigure.height << endl;
+						_framePending = true;
+						_swapchainResizePending = true;
+					}
+					continue;
+				}
+
+				// handle window close
+				if(e.type==ClientMessage && ulong(e.xclient.data.l[0])==_wmDeleteMessage)
+					return;
 			}
+
+			// if more events came in the mean time, handle them as well
+			numEvents = XPending(_display);
+
+		} while(numEvents > 0);
+
+
+		// no frame pending?
+		if(!_framePending)
 			continue;
+
+		// render frame code starts with swapchain re-creation
+		renderFrame:
+
+		// recreate swapchain if requested
+		if(_swapchainResizePending) {
+
+			// make sure that we finished all the rendering
+			// (this is necessary for swapchain re-creation)
+			_device.waitIdle();
+
+			// get surface capabilities
+			// On Xlib, currentExtent, minImageExtent and maxImageExtent are all equal.
+			// It means we can create a new swapchain only with imageExtent being equal to the window size.
+			// The currentExtent of 0,0 means the window is minimized with the result
+			// we cannot create swapchain for such window. If the currentExtent is not 0,0,
+			// both width and height must be greater than 0.
+			vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
+
+			// do not allow swapchain creation and rendering when currentExtent is 0,0
+			// (this never happened on my KDE 5.80.0 (Kubuntu 21.04) and KDE 5.44.0 (Kubuntu 18.04.5);
+			// window minimalizing just unmaps the window)
+			if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0))
+				continue;
+
+			// recreate swapchain
+			_swapchainResizePending = false;
+			_surfaceExtent = surfaceCapabilities.currentExtent;
+			_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
 		}
 
-		// handle window close
-		if(e.type==ClientMessage && ulong(e.xclient.data.l[0])==_wmDeleteMessage)
-			break;
+		// render frame
+		cout << "Frame callback (" << _surfaceExtent.width << "x" << _surfaceExtent.height << ")" << endl;
+		_framePending = false;
+		_frameCallback();
 
 	}
 }
