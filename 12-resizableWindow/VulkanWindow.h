@@ -31,7 +31,6 @@ protected:
 	std::exception_ptr _wndProcException;
 	HINSTANCE _hInstance;
 	ATOM _windowClass = 0;
-	bool _framePending = true;
 
 	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_win32_surface" };
@@ -41,7 +40,6 @@ protected:
 	Display* _display = nullptr;
 	Window _window = 0;
 	Atom _wmDeleteMessage;
-	bool _framePending = true;
 
 	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_xlib_surface" };
@@ -75,6 +73,7 @@ protected:
 
 #endif
 
+	bool _framePending = true;
 	std::function<FrameCallback> _frameCallback;
 	vk::Instance _instance;
 	vk::PhysicalDevice _physicalDevice;

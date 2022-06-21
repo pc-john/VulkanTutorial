@@ -358,8 +358,27 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 	xdg_toplevel_set_title(_xdgTopLevel, title);
 	_xdgToplevelListener = {
 		.configure =
-			[](void* data, xdg_toplevel* toplevel, int32_t width, int32_t height, wl_array*) -> void {
+			[](void* data, xdg_toplevel* toplevel, int32_t width, int32_t height, wl_array*) -> void
+			{
 				cout << "toplevel configure (width=" << width << ", height=" << height << ")" << endl;
+
+				// if width or height of the window changed,
+				// schedule swapchain resize and force new frame rendering
+				// (width and height of zero means that the compositor does not know the window dimension)
+				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(data);
+				if(width != w->_surfaceExtent.width && width != 0) {
+					w->_surfaceExtent.width = width;
+					if(height != w->_surfaceExtent.height && height != 0)
+						w->_surfaceExtent.height = height;
+					w->_framePending = true;
+					w->_swapchainResizePending = true;
+				}
+				else if(height != w->_surfaceExtent.height && height != 0) {
+					w->_surfaceExtent.height = height;
+					w->_framePending = true;
+					w->_swapchainResizePending = true;
+				}
+
 			},
 		.close =
 			[](void* data, xdg_toplevel* xdgTopLevel) {
@@ -576,23 +595,62 @@ void VulkanWindow::mainLoop()
 	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
-	// create swapchain
-	_recreateSwapchainCallback(_physicalDevice.getSurfaceCapabilitiesKHR(_surface), _surfaceExtent);
-
-	// render frame
-	_frameCallback();
-
-	// main loop
+	// flush outgoing buffers
 	cout << "Entering main loop." << endl;
 	if(wl_display_flush(_display) == -1)
 		throw runtime_error("wl_display_flush() failed.");
+
+	// main loop
 	while(_running) {
 
 		// dispatch events
-		if(wl_display_dispatch(_display) == -1)  // it blocks if there are no events
-			throw std::runtime_error("wl_display_dispatch() failed.");
+		if(_framePending) {
+
+			// dispatch events without blocking
+			while(wl_display_prepare_read(_display) != 0)
+				if(wl_display_dispatch_pending(_display) == -1)
+					throw runtime_error("wl_display_dispatch_pending() failed.");
+			if(wl_display_flush(_display) == -1)
+				throw runtime_error("wl_display_flush() failed.");
+			if(wl_display_read_events(_display) == -1)
+				throw runtime_error("wl_display_read_events() failed.");
+			if(wl_display_dispatch_pending(_display) == -1)
+				throw runtime_error("wl_display_dispatch_pending() failed.");
+
+		}
+		else
+			// dispatch events with blocking
+			if(wl_display_dispatch(_display) == -1)  // it blocks if there are no events
+				throw std::runtime_error("wl_display_dispatch() failed.");
+
+		// flush outgoing buffers
 		if(wl_display_flush(_display) == -1)
 			throw runtime_error("wl_display_flush() failed.");
+
+		if(!_framePending)
+			continue;
+
+		if(_swapchainResizePending) {
+
+			// make sure that we finished all the rendering
+			// (this is necessary for swapchain re-creation)
+			_device.waitIdle();
+
+			// get surface capabilities
+			// On Wayland, currentExtent is 0xffffffff, 0xffffffff with the meaning that the window extent
+			// will be determined by the extent of the swapchain,
+			// minImageExtent is 1,1 and maxImageExtent is the maximum supported surface size.
+			vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
+
+			// recreate swapchain
+			_swapchainResizePending = false;
+			_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
+		}
+
+		// render frame
+		cout << "Frame callback (" << _surfaceExtent.width << "x" << _surfaceExtent.height << ")" << endl;
+		_framePending = false;
+		_frameCallback();
 
 	}
 	cout << "Main loop left." << endl;
