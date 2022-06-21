@@ -15,6 +15,7 @@ set(PACKAGES
     10-windowClass
     11-swapchain
     12-resizableWindow
+    13-spinningTriangle
     13-qtWindow
    )
 
