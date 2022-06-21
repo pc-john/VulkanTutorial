@@ -132,7 +132,7 @@ int main(int,char**)
 			}
 		}
 		cout << "Using device:\n"
-				"   " << get<3>(*bestDevice).deviceName << endl;
+		        "   " << get<3>(*bestDevice).deviceName << endl;
 		physicalDevice = get<0>(*bestDevice);
 		graphicsQueueFamily = get<1>(*bestDevice);
 		presentationQueueFamily = get<2>(*bestDevice);
