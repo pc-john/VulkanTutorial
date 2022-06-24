@@ -1,5 +1,6 @@
 #include "VulkanWindow.h"
 #include <algorithm>
+#include <chrono>
 #include <iostream>
 
 using namespace std;
@@ -49,14 +50,41 @@ static vk::UniqueShaderModule vsModule;
 static vk::UniqueShaderModule fsModule;
 static vk::UniquePipelineLayout pipelineLayout;
 static vk::UniquePipeline pipeline;
+
+enum class FrameUpdateMode { OnDemand, Continuous, MaxFrameRate };
+static FrameUpdateMode frameUpdateMode = FrameUpdateMode::Continuous;
 static size_t frameID = ~size_t(0);
+static size_t fpsNumFrames = ~size_t(0);
+static chrono::high_resolution_clock::time_point fpsStartTime;
 
 
-int main(int,char**)
+int main(int argc, char** argv)
 {
 	// catch exceptions
 	// (vulkan.hpp functions throws if they fail)
 	try {
+
+		// process command-line arguments
+		for(int i=1; i<argc; i++)
+			if(strcmp(argv[i], "--on-demand") == 0)
+				frameUpdateMode = FrameUpdateMode::OnDemand;
+			else if(strcmp(argv[i], "--continuous") == 0)
+				frameUpdateMode = FrameUpdateMode::Continuous;
+			else if(strcmp(argv[i], "--max-frame-rate") == 0)
+				frameUpdateMode = FrameUpdateMode::MaxFrameRate;
+			else {
+				if(strcmp(argv[i], "--help") != 0 && strcmp(argv[i], "-h") != 0)
+					cout << "Unrecognized option: " << argv[i] << endl;
+				cout << appName << " usage:\n"
+						"   --help or -h:  usage information\n"
+						"   --on-demand:   on demand window content refresh,\n"
+						"                  this conserves computing resources\n"
+						"   --continuous:  constantly update window content using\n"
+						"                  screen refresh rate, this is the default\n"
+						"   --max-frame-rate:  ignore screen refresh rate, update\n"
+						"                      window content as often as possible\n" << endl;
+				exit(99);
+			}
 
 		// Vulkan instance
 		instance =
@@ -311,7 +339,26 @@ int main(int,char**)
 							(graphicsQueueFamily==presentationQueueFamily) ? nullptr : array<uint32_t,2>{graphicsQueueFamily,presentationQueueFamily}.data(),  // pQueueFamilyIndices
 							surfaceCapabilities.currentTransform,    // preTransform
 							vk::CompositeAlphaFlagBitsKHR::eOpaque,  // compositeAlpha
-							vk::PresentModeKHR::eFifo,  // presentMode
+							[]()  // presentMode
+								{
+									if(VulkanWindow::mailboxPresentModePreferred)
+										return vk::PresentModeKHR::eMailbox;
+									else
+									{
+										// for MaxFrameRate, try Mailbox and Immediate if they are available
+										if(frameUpdateMode == FrameUpdateMode::MaxFrameRate) {
+											vector<vk::PresentModeKHR> modes =
+												physicalDevice.getSurfacePresentModesKHR(window.surface());
+											if(find(modes.begin(), modes.end(), vk::PresentModeKHR::eMailbox) != modes.end())
+												return vk::PresentModeKHR::eMailbox;
+											if(find(modes.begin(), modes.end(), vk::PresentModeKHR::eImmediate) != modes.end())
+												return vk::PresentModeKHR::eImmediate;
+										}
+
+										// return Fifo that is always supported
+										return vk::PresentModeKHR::eFifo;
+									}
+								}(),
 							VK_TRUE,  // clipped
 							swapchain.get()  // oldSwapchain
 						)
@@ -543,8 +590,26 @@ int main(int,char**)
 		window.setFrameCallback(
 			[]() {
 
+				// wait for previous frame
+				// if still not finished
+				presentationQueue.waitIdle();
+
 				// increment frame counter
 				frameID++;
+
+				// measure FPS
+				fpsNumFrames++;
+				if(fpsNumFrames == 0)
+					fpsStartTime = chrono::high_resolution_clock::now();
+				else {
+					auto t = chrono::high_resolution_clock::now();
+					auto dt = t - fpsStartTime;
+					if(dt >= chrono::seconds(2)) {
+						cout << "FPS: " << fpsNumFrames/chrono::duration<double>(dt).count() << endl;
+						fpsNumFrames = 0;
+						fpsStartTime = t;
+					}
+				}
 
 				// acquire image
 				uint32_t imageIndex;
@@ -636,8 +701,9 @@ int main(int,char**)
 						throw runtime_error("Vulkan error: vkQueuePresentKHR() failed with error " + to_string(r) + ".");
 				}
 
-				// wait for work completion
-				presentationQueue.waitIdle();
+				// wait for completion
+				if(frameUpdateMode != FrameUpdateMode::OnDemand)
+					window.scheduleFrame();
 
 			},
 			physicalDevice,

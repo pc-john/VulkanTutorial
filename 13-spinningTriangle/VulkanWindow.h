@@ -40,6 +40,7 @@ protected:
 	Display* _display = nullptr;
 	Window _window = 0;
 	Atom _wmDeleteMessage;
+	bool _visible = false;
 
 	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_xlib_surface" };
@@ -100,6 +101,7 @@ public:
 	vk::SurfaceKHR surface() const;
 	vk::Extent2D surfaceExtent() const;
 
+	void scheduleFrame();
 	void scheduleSwapchainResize();
 
 	// required Vulkan Instance extensions
@@ -107,6 +109,13 @@ public:
 	static void appendRequiredExtensions(std::vector<const char*>& v);
 	static uint32_t requiredExtensionCount();
 	static const char* const* requiredExtensionNames();
+
+	// Wayland prefers the use of mailbox present mode
+#if defined(USE_PLATFORM_WAYLAND)
+	static inline constexpr const bool mailboxPresentModePreferred = true;
+#else
+	static inline constexpr const bool mailboxPresentModePreferred = false;
+#endif
 
 };
 
@@ -119,6 +128,7 @@ inline void VulkanWindow::setFrameCallback(std::function<FrameCallback>&& cb, vk
 inline void VulkanWindow::setFrameCallback(const std::function<FrameCallback>& cb, vk::PhysicalDevice physicalDevice, vk::Device device)  { _frameCallback = cb; _physicalDevice = physicalDevice; _device = device; }
 inline vk::SurfaceKHR VulkanWindow::surface() const  { return _surface; }
 inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return _surfaceExtent; }
+inline void VulkanWindow::scheduleFrame()  { _framePending = true; }
 inline void VulkanWindow::scheduleSwapchainResize()  { _swapchainResizePending = true; _framePending = true; }
 inline const std::vector<const char*>& VulkanWindow::requiredExtensions()  { return _requiredInstanceExtensions; }
 inline void VulkanWindow::appendRequiredExtensions(std::vector<const char*>& v)  { v.insert(v.end(), _requiredInstanceExtensions.begin(), _requiredInstanceExtensions.end()); }

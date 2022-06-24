@@ -500,7 +500,7 @@ void VulkanWindow::mainLoop()
 
 		// handle zero events
 		if(numEvents == 0)
-			if(_framePending)
+			if(_framePending && _visible)
 				goto renderFrame;  // frame request -> render frame
 			else
 				numEvents = 1;  // no frame request -> wait for events in XNextEvent()
@@ -530,6 +530,19 @@ void VulkanWindow::mainLoop()
 					continue;
 				}
 
+				// map, unmap, obscured, unobscured
+				if(e.type==MapNotify || (e.type==VisibilityNotify && e.xvisibility.state!=VisibilityFullyObscured)) {
+					cout << "Window visible" << endl;
+					_visible = true;
+					_framePending = true;
+					continue;
+				}
+				if(e.type==UnmapNotify || (e.type==VisibilityNotify && e.xvisibility.state==VisibilityFullyObscured)) {
+					cout << "Window not visible" << endl;
+					_visible = false;
+					continue;
+				}
+
 				// handle window close
 				if(e.type==ClientMessage && ulong(e.xclient.data.l[0])==_wmDeleteMessage)
 					return;
@@ -542,7 +555,7 @@ void VulkanWindow::mainLoop()
 
 
 		// frame pending?
-		if(!_framePending)
+		if(!_framePending || !_visible)
 			continue;
 
 		// render frame code starts with swapchain re-creation
@@ -578,7 +591,6 @@ void VulkanWindow::mainLoop()
 		}
 
 		// render frame
-		cout << "Frame callback (" << _surfaceExtent.width << "x" << _surfaceExtent.height << ")" << endl;
 		_framePending = false;
 		_frameCallback();
 
