@@ -542,6 +542,10 @@ int main(int,char**)
 		window.setFrameCallback(
 			[]() {
 
+				// wait for previous frame
+				// if still not finished
+				presentationQueue.waitIdle();
+
 				// acquire image
 				uint32_t imageIndex;
 				vk::Result r =
@@ -631,9 +635,6 @@ int main(int,char**)
 					} else
 						throw runtime_error("Vulkan error: vkQueuePresentKHR() failed with error " + to_string(r) + ".");
 				}
-
-				// wait for work completion
-				presentationQueue.waitIdle();
 
 			},
 			physicalDevice,
