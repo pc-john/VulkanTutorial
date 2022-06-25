@@ -110,13 +110,6 @@ public:
 	static uint32_t requiredExtensionCount();
 	static const char* const* requiredExtensionNames();
 
-	// Wayland prefers the use of mailbox present mode
-#if defined(USE_PLATFORM_WAYLAND)
-	static inline constexpr const bool mailboxPresentModePreferred = true;
-#else
-	static inline constexpr const bool mailboxPresentModePreferred = false;
-#endif
-
 };
 
 

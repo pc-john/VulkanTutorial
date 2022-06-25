@@ -341,23 +341,18 @@ int main(int argc, char** argv)
 							vk::CompositeAlphaFlagBitsKHR::eOpaque,  // compositeAlpha
 							[]()  // presentMode
 								{
-									if(VulkanWindow::mailboxPresentModePreferred)
-										return vk::PresentModeKHR::eMailbox;
-									else
-									{
-										// for MaxFrameRate, try Mailbox and Immediate if they are available
-										if(frameUpdateMode == FrameUpdateMode::MaxFrameRate) {
-											vector<vk::PresentModeKHR> modes =
-												physicalDevice.getSurfacePresentModesKHR(window.surface());
-											if(find(modes.begin(), modes.end(), vk::PresentModeKHR::eMailbox) != modes.end())
-												return vk::PresentModeKHR::eMailbox;
-											if(find(modes.begin(), modes.end(), vk::PresentModeKHR::eImmediate) != modes.end())
-												return vk::PresentModeKHR::eImmediate;
-										}
-
-										// return Fifo that is always supported
-										return vk::PresentModeKHR::eFifo;
+									// for MaxFrameRate, try Mailbox and Immediate if they are available
+									if(frameUpdateMode == FrameUpdateMode::MaxFrameRate) {
+										vector<vk::PresentModeKHR> modes =
+											physicalDevice.getSurfacePresentModesKHR(window.surface());
+										if(find(modes.begin(), modes.end(), vk::PresentModeKHR::eMailbox) != modes.end())
+											return vk::PresentModeKHR::eMailbox;
+										if(find(modes.begin(), modes.end(), vk::PresentModeKHR::eImmediate) != modes.end())
+											return vk::PresentModeKHR::eImmediate;
 									}
+
+									// return Fifo that is always supported
+									return vk::PresentModeKHR::eFifo;
 								}(),
 							VK_TRUE,  // clipped
 							swapchain.get()  // oldSwapchain

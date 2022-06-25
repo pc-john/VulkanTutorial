@@ -475,7 +475,6 @@ void VulkanWindow::mainLoop()
 		}
 
 		// render scene
-		cout << "Frame callback (" << _surfaceExtent.width << "x" << _surfaceExtent.height << ")" << endl;
 		_framePending = false;
 		_frameCallback();
 	}
@@ -642,6 +641,7 @@ void VulkanWindow::mainLoop()
 		if(!_framePending)
 			continue;
 
+		// recreate swapchain if requested
 		if(_swapchainResizePending) {
 
 			// make sure that we finished all the rendering
@@ -660,7 +660,6 @@ void VulkanWindow::mainLoop()
 		}
 
 		// render frame
-		cout << "Frame callback (" << _surfaceExtent.width << "x" << _surfaceExtent.height << ")" << endl;
 		_framePending = false;
 		_frameCallback();
 
