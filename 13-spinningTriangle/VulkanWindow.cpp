@@ -143,9 +143,9 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 
 				cout << "WM_PAINT message" << endl;
 
-				// set _framePending flag
+				// render frame
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
-				w->_framePending = true;
+				w->doFrame();
 
 				// validate window area
 				if(!ValidateRect(hwnd, NULL))
@@ -155,10 +155,18 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 			}
 
 			case WM_SIZE: {
+
 				cout << "WM_SIZE message (" << LOWORD(lParam) << "x" << HIWORD(lParam) << ")" << endl;
+
+				// set flags
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				w->_framePending = true;
 				w->_swapchainResizePending = true;
+
+				// invalidate window content (this results in future WM_PAINT)
+				if(!InvalidateRect(hwnd, NULL, FALSE))
+					w->_wndProcException = make_exception_ptr(runtime_error("InvalidateRect(): The function failed."));
+
 				return DefWindowProc(hwnd, msg, wParam, lParam);
 			}
 
@@ -447,37 +455,43 @@ void VulkanWindow::mainLoop()
 			continue;
 		}
 
-		// recreate swapchain if requested
-		if(_swapchainResizePending) {
+		doFrame();
+	}
+}
 
-			// make sure that we finished all the rendering
-			// (this is necessary for swapchain re-creation)
-			_device.waitIdle();
 
-			// get surface capabilities
-			// On Win32, currentExtent, minImageExtent and maxImageExtent are all equal.
-			// It means we can create a new swapchain only with imageExtent being equal to the window size.
-			// The currentExtent of 0,0 means the window is minimized with the result
-			// we cannot create swapchain for such window. If the currentExtent is not 0,0,
-			// both width and height must be greater than 0.
-			vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
+void VulkanWindow::doFrame()
+{
+	// recreate swapchain if requested
+	if(_swapchainResizePending) {
 
-			// do not allow swapchain creation and rendering when currentExtent is 0,0
-			if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0)) {
-				_framePending = false;  // this will be rescheduled on the first window resize
-				continue;
-			}
+		// make sure that we finished all the rendering
+		// (this is necessary for swapchain re-creation)
+		_device.waitIdle();
 
-			// recreate swapchain
-			_swapchainResizePending = false;
-			_surfaceExtent = surfaceCapabilities.currentExtent;
-			_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
+		// get surface capabilities
+		// On Win32, currentExtent, minImageExtent and maxImageExtent are all equal.
+		// It means we can create a new swapchain only with imageExtent being equal to the window size.
+		// The currentExtent of 0,0 means the window is minimized with the result
+		// we cannot create swapchain for such window. If the currentExtent is not 0,0,
+		// both width and height must be greater than 0.
+		vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
+
+		// do not allow swapchain creation and rendering when currentExtent is 0,0
+		if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0)) {
+			_framePending = false;  // this will be rescheduled on the first window resize
+			return;
 		}
 
-		// render scene
-		_framePending = false;
-		_frameCallback();
+		// recreate swapchain
+		_swapchainResizePending = false;
+		_surfaceExtent = surfaceCapabilities.currentExtent;
+		_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
 	}
+
+	// render scene
+	_framePending = false;
+	_frameCallback();
 }
 
 

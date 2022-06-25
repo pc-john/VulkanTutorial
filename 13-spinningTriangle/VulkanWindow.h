@@ -32,6 +32,8 @@ protected:
 	HINSTANCE _hInstance;
 	ATOM _windowClass = 0;
 
+	void doFrame();
+
 	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_win32_surface" };
 
