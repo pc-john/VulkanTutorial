@@ -30,7 +30,7 @@ static vk::UniqueSurfaceKHR surface;
 int main(int, char**)
 {
 	// catch exceptions
-	// (vulkan.hpp functions throws if they fail)
+	// (vulkan.hpp functions throw if they fail)
 	try {
 
 		// Vulkan instance
@@ -95,9 +95,9 @@ int main(int, char**)
 		vector<vk::PhysicalDevice> deviceList = instance->enumeratePhysicalDevices();
 		vector<string> compatibleDevices;
 		for(vk::PhysicalDevice pd : deviceList) {
-			uint32_t c;
-			pd.getQueueFamilyProperties(&c, nullptr);
-			for(uint32_t i=0; i<c; i++)
+			uint32_t numQueues;
+			pd.getQueueFamilyProperties(&numQueues, nullptr);
+			for(uint32_t i=0; i<numQueues; i++)
 				if(pd.getSurfaceSupportKHR(i, surface.get())) {
 					compatibleDevices.push_back(pd.getProperties().deviceName);
 					break;
@@ -116,9 +116,9 @@ int main(int, char**)
 		}
 
 	// catch exceptions
-	} catch(vk::Error &e) {
+	} catch(vk::Error& e) {
 		cout << "Failed because of Vulkan exception: " << e.what() << endl;
-	} catch(exception &e) {
+	} catch(exception& e) {
 		cout << "Failed because of exception: " << e.what() << endl;
 	} catch(...) {
 		cout << "Failed because of unspecified exception." << endl;

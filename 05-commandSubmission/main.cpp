@@ -24,7 +24,7 @@ static vk::UniqueFence renderingFinishedFence;
 int main(int, char**)
 {
 	// catch exceptions
-	// (vulkan.hpp fuctions throw if they fail)
+	// (vulkan.hpp functions throw if they fail)
 	try {
 
 		// Vulkan instance

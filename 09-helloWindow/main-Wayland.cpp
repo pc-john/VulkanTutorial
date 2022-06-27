@@ -42,10 +42,10 @@ static xdg_toplevel_listener xdgToplevelListener;
 static vk::UniqueSurfaceKHR surface;
 
 
-int main(int,char**)
+int main(int, char**)
 {
 	// catch exceptions
-	// (vulkan.hpp functions throws if they fail)
+	// (vulkan.hpp functions throw if they fail)
 	try {
 
 		// Vulkan instance
@@ -151,8 +151,6 @@ int main(int,char**)
 		if(xdg_toplevel_add_listener(xdgToplevel.get(), &xdgToplevelListener, nullptr))
 			throw runtime_error("xdg_toplevel_add_listener() failed.");
 		wl_surface_commit(wlSurface.get());
-		if(wl_display_flush(display.get()) == -1)
-			throw runtime_error("wl_display_flush() failed.");
 
 		// create surface
 		surface =
@@ -163,6 +161,8 @@ int main(int,char**)
 					wlSurface.get()  // surface
 				)
 			);
+		if(wl_display_flush(display.get()) == -1)
+			throw runtime_error("wl_display_flush() failed.");
 
 		// find compatible devices
 		vector<vk::PhysicalDevice> deviceList = instance->enumeratePhysicalDevices();
@@ -193,12 +193,12 @@ int main(int,char**)
 		cout << "Main loop left." << endl;
 
 	// catch exceptions
-	} catch(vk::Error &e) {
-		cout<<"Failed because of Vulkan exception: "<<e.what()<<endl;
-	} catch(exception &e) {
-		cout<<"Failed because of exception: "<<e.what()<<endl;
+	} catch(vk::Error& e) {
+		cout << "Failed because of Vulkan exception: " << e.what() << endl;
+	} catch(exception& e) {
+		cout << "Failed because of exception: " << e.what() << endl;
 	} catch(...) {
-		cout<<"Failed because of unspecified exception."<<endl;
+		cout << "Failed because of unspecified exception." << endl;
 	}
 
 	return 0;

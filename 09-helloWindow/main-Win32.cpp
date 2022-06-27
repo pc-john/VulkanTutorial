@@ -31,7 +31,7 @@ static vk::UniqueSurfaceKHR surface;
 int main(int, char**)
 {
 	// catch exceptions
-	// (vulkan.hpp functions throws if they fail)
+	// (vulkan.hpp functions throw if they fail)
 	try {
 
 		// Vulkan instance
@@ -156,9 +156,9 @@ int main(int, char**)
 		}
 
 	// catch exceptions
-	} catch(vk::Error &e) {
+	} catch(vk::Error& e) {
 		cout << "Failed because of Vulkan exception: " << e.what() << endl;
-	} catch(exception &e) {
+	} catch(exception& e) {
 		cout << "Failed because of exception: " << e.what() << endl;
 	} catch(...) {
 		cout << "Failed because of unspecified exception." << endl;
