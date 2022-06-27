@@ -1,14 +1,12 @@
 <h1>Vulkan: Vytvoření okna (9. díl)</h1>
 
-<p>V letošní prázdninové sérii o Vulkan si ukážeme, jak otevřít okno
+<p>V letošní prázdninové sérii o API Vulkan si ukážeme, jak otevřít okno
 a jak do něj rendrovat. Naším cílem budou primárně platformy
-Win32, Xlib a Wayland. V dalších dílech si ale ukážeme i
-<a href="https://www.qt.io/">Qt</a> a <a href="https://www.libsdl.org/">SDL</a>.
-Dnes začneme otevřením okna a vytvořením surface.</p>
+Win32, Xlib a Wayland. Dnes začneme otevřením okna a vytvořením surface.</p>
 
-<p>Zdrojáky si můžeme <a href="">stáhnout</a>.
+<p>Zdrojáky si můžeme <a href="09-helloWindow.zip">stáhnout</a>.
 Pro zkompilování na Win32 nepotřebujeme nic instalovat.
-Pro platformu Xlib a Wayland můžeme ale potřebovat vývojové balíčky, tedy pokud je již nemáme nainstalované.
+Pro platformu Xlib a Wayland ale můžeme potřebovat vývojové balíčky, tedy pokud je již nemáme nainstalované.
 Na Ubuntu jsou to obyčejně libx11-dev pro Xlib a libwayland-dev a wayland-protocols pro Wayland.</p>
 
 <p>Ve zdrojácích máme tři cpp soubory, každý pro jednu platformu.
@@ -29,8 +27,9 @@ tak pro Win64. Budeme-li tedy hovořit o Win32 platformě,
 budeme implicitně myslet i na Win64, která je ze stejného kódu kompilovatelná.<p>
 
 <p>Jak tedy vytvořit okno pro Vulkan?
-V prvé řadě potřebujeme mít okno kde uložit. A protože používáme výjimky,
-nepoužijeme přímo HWND, což je ve Win32 typ pro handle okna,
+V prvé řadě potřebujeme mít kam uložit jeho handle.
+Win32 používá typ HWND.
+Ale protože my používáme výjimky, nepoužijeme přímo HWND,
 ale zapouzdříme si jej do struktury UniqueWindow,
 ve které implementujeme destruktor:</p>
 
@@ -48,14 +47,14 @@ To si necháme až na další díl tutoriálu.
 Možná by se mě čtenáři v budoucnu zeptali, proč jsem nepoužil std::unique_resource.
 Důvod je prostý: tato třída prozatím není ve standardu, ale těšme se na ni.</p>
 
-<p>Další proměnné, které budeme potřebovat, jsou hInstance, windowClass a wndProcException:</p>
+<p>Další proměnné, které budeme potřebovat, jsou hInstance a windowClass:</p>
 
 <pre>
 static HINSTANCE hInstance = NULL;
 static struct UniqueWindowClass {
-	ATOM handle = 0;
-	~UniqueWindowClass()  { if(handle) UnregisterClass(MAKEINTATOM(handle), hInstance); }
-	operator ATOM() const  { return handle; }
+   ATOM handle = 0;
+   ~UniqueWindowClass()  { if(handle) UnregisterClass(MAKEINTATOM(handle), hInstance); }
+   operator ATOM() const  { return handle; }
 } windowClass;
 </pre>
 
@@ -75,35 +74,35 @@ static vk::UniqueSurfaceKHR surface;
 </pre>
 
 <p>První z nich slouží na uložení výjimky vzniklé ve funkci obsluhy zpráv okna,
-kde si k tomu také řekneme více. Druhá proměnná surface reprezentuje povrch okna,
-do kterého budeme v dalších dílech rendrovat:</p>
+k čemuž si řekneme později více. Druhá proměnná surface reprezentuje povrch okna,
+do kterého budeme v dalších dílech rendrovat.</p>
 
 <p>Nyní můžeme zaměřit naše úsilí na vytvoření okna. Začneme Vulkanní instancí:</p>
 
 <pre>
 // Vulkan instance
 instance =
-	vk::createInstanceUnique(
-		vk::InstanceCreateInfo{
-			vk::InstanceCreateFlags(),  // flags
-			&amp;(const vk::ApplicationInfo&amp;)vk::ApplicationInfo{
-				"09-helloWindow-Win32",  // application name
-				VK_MAKE_VERSION(0,0,0),  // application version
-				nullptr,                 // engine name
-				VK_MAKE_VERSION(0,0,0),  // engine version
-				VK_API_VERSION_1_0,      // api version
-			},
-			0, nullptr,  // no layers
-			2,           // enabled extension count
-			array&lt;const char*, 2&gt;{  // enabled extension names
-				"VK_KHR_surface",
-				"VK_KHR_win32_surface",
-			}.data(),
-		});
+   vk::createInstanceUnique(
+      vk::InstanceCreateInfo{
+         vk::InstanceCreateFlags(),  // flags
+         &amp;(const vk::ApplicationInfo&amp;)vk::ApplicationInfo{
+            "09-helloWindow-Win32",  // application name
+            VK_MAKE_VERSION(0,0,0),  // application version
+            nullptr,                 // engine name
+            VK_MAKE_VERSION(0,0,0),  // engine version
+            VK_API_VERSION_1_0,      // api version
+         },
+         0, nullptr,  // no layers
+         2,           // enabled extension count
+         <b>array&lt;const char*, 2&gt;{  // enabled extension names
+            "VK_KHR_surface",
+            "VK_KHR_win32_surface",
+         }.data(),</b>
+      });
 </pre>
 
-<p>Kód je stejný, jako jsme zvyklí, až na jednu změnu: enabled extensions (česky: zapnutá rozšíření).
-Abychom mohli rendrovat do okna, potřebujeme rozšírení VK_KHR_surface a VK_KHR_win32_surface.
+<p>Kód je skoro stejný, jako jsme zvyklí, až na jednu podstatnější změnu, která je zvýrazněna tučně.
+Abychom mohli rendrovat do okna, potřebujeme zapnout rozšíření VK_KHR_surface a VK_KHR_win32_surface.
 První z nich řeší všeobecnou práci se surface (tedy s "povrchem" okna), druhá pak
 všechno, co je specifické pro Win32.</p>
 
@@ -112,32 +111,34 @@ všechno, co je specifické pro Win32.</p>
 <pre>
 // window's message handling procedure
 auto wndProc = [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) noexcept -&gt; LRESULT {
-	switch(msg)
-	{
-		case WM_CLOSE:
-			if(!DestroyWindow(hwnd))
-				wndProcException = make_exception_ptr(runtime_error("DestroyWindow(): The function failed."));
-			window.handle = nullptr;
-			return 0;
+   switch(msg)
+   {
+      case WM_CLOSE:
+         if(!DestroyWindow(hwnd))
+            wndProcException = make_exception_ptr(runtime_error("DestroyWindow(): The function failed."));
+         window.handle = nullptr;
+         return 0;
 
-		case WM_DESTROY:
-			PostQuitMessage(0);
-			return 0;
+      case WM_DESTROY:
+         PostQuitMessage(0);
+         return 0;
 
-		default:
-			return DefWindowProc(hwnd, msg, wParam, lParam);
-	}
+      default:
+         return DefWindowProc(hwnd, msg, wParam, lParam);
+   }
 };
 </pre>
 
 <p>My se v tuto chvíli spokojíme pouze s ošetřením dvou zpráv: WM_CLOSE a WM_DESTROY.
 A protože toto není tutoriál o Win32, najdou zájemci detaily opět například ve WinAPI dokumentaci
-na stránkách Microsoftu. Zadáním WinAPI funkcí do googlu jsou mezi prvními odkazy právě tyto stránky.</p>
+na stránkách Microsoftu. Zadáním názvu WinAPI funkcí do googlu tyto stránky obyčejně snadno najdeme.</p>
 
-<p>Avšak poznámka k výjimkám: Z funkce pro obsluhu zpráv okna není rozumné vyhazovat výjimky.
+<p>Avšak poznámka k výjimkám: Z funkce wndProc pro obsluhu zpráv okna není rozumné vyhazovat výjimky.
 Běh programu se vrací do systémových knihoven, které byly napsány v nespecifikovaném jazyce,
-a je poněkud problematické hádat, co se tam stane s výjimkou. Proto funkci wndProc označíme jako noexcept.
-Dále místo vyhození výjimek si ji jen vytvoříme a uložíme do proměnné wndProcException.
+a je poněkud problematické hádat, co se tam stane s výjimkou.
+Proto funkci wndProc označíme jako noexcept a
+místo vyhození výjimek si ji jen vytvoříme skrz std::make_exception_ptr
+a uložíme si ji do proměnné wndProcException.
 Uloženou výjimku pak znova vyhodíme v hlavní smyčce aplikace.
 A až budeme v následujících dílech volat další funkce a metody z wndProc,
 které samy mohou vyhazovat výjimky, uzavřeme je do try-catch bloku
@@ -151,24 +152,24 @@ pro zpracování zpráv zaslaných oknu:</p>
 // register window class
 hInstance = GetModuleHandle(NULL);
 windowClass.handle =
-	RegisterClassEx(
-		&amp;(const WNDCLASSEX&amp;)WNDCLASSEX{
-			sizeof(WNDCLASSEX),  // cbSize
-			0,                   // style
-			wndProc,             // lpfnWndProc
-			0,                   // cbClsExtra
-			0,                   // cbWndExtra
-			hInstance,           // hInstance
-			LoadIcon(NULL, IDI_APPLICATION),  // hIcon
-			LoadCursor(NULL, IDC_ARROW),  // hCursor
-			NULL,                // hbrBackground
-			NULL,                // lpszMenuName
-			"HelloWindow",       // lpszClassName
-			LoadIcon(NULL, IDI_APPLICATION)  // hIconSm
-		}
-	);
+   RegisterClassEx(
+      &amp;(const WNDCLASSEX&amp;)WNDCLASSEX{
+         sizeof(WNDCLASSEX),  // cbSize
+         0,                   // style
+         wndProc,             // lpfnWndProc
+         0,                   // cbClsExtra
+         0,                   // cbWndExtra
+         hInstance,           // hInstance
+         LoadIcon(NULL, IDI_APPLICATION),  // hIcon
+         LoadCursor(NULL, IDC_ARROW),  // hCursor
+         NULL,                // hbrBackground
+         NULL,                // lpszMenuName
+         "HelloWindow",       // lpszClassName
+         LoadIcon(NULL, IDI_APPLICATION)  // hIconSm
+      }
+   );
 if(!windowClass.handle)
-	throw runtime_error("Cannot register window class.");
+   throw runtime_error("Cannot register window class.");
 </pre>
 
 <p>A po registraci třídy okna už můžeme vytvořit samotné okno:</p>
@@ -176,33 +177,34 @@ if(!windowClass.handle)
 <pre>
 // create window
 window.handle =
-	CreateWindowEx(
-		WS_EX_CLIENTEDGE,  // dwExStyle
-		MAKEINTATOM(windowClass.handle),  // lpClassName
-		"Hello window!",  // lpWindowName
-		WS_OVERLAPPEDWINDOW,  // dwStyle
-		CW_USEDEFAULT, CW_USEDEFAULT, 400, 300,  // X, Y, nWidth, nHeight
-		NULL, NULL, hInstance, NULL  // hWndParent, hMenu, hInstance, lpParam
-	);
+   CreateWindowEx(
+      WS_EX_CLIENTEDGE,  // dwExStyle
+      MAKEINTATOM(windowClass.handle),  // lpClassName
+      _T("Hello window!"),  // lpWindowName
+      WS_OVERLAPPEDWINDOW,  // dwStyle
+      CW_USEDEFAULT, CW_USEDEFAULT, 400, 300,  // X, Y, nWidth, nHeight
+      NULL, NULL, hInstance, NULL  // hWndParent, hMenu, hInstance, lpParam
+   );
 if(window == NULL)
-	throw runtime_error("Cannot create window.");
+   throw runtime_error("Cannot create window.");
 </pre>
 
-<p>Pro detaily opět odkazuji na dokumentaci WinAPI. A máme-li okno, můžeme vytvořit surface:</p>
+<p>Pro detaily opět odkazuji na dokumentaci WinAPI. A máme-li okno, můžeme vytvořit i surface:</p>
 
 <pre>
 // create surface
 vk::UniqueSurfaceKHR surface =
-	instance->createWin32SurfaceKHRUnique(
-		vk::Win32SurfaceCreateInfoKHR(
-			vk::Win32SurfaceCreateFlagsKHR(),  // flags
-			wc.hInstance,  // hinstance
-			window  // hwnd
-		)
-	);
+   instance->createWin32SurfaceKHRUnique(
+      vk::Win32SurfaceCreateInfoKHR(
+         vk::Win32SurfaceCreateFlagsKHR(),  // flags
+         hInstance,  // hinstance
+         window  // hwnd
+      )
+   );
 </pre>
 
-<p>Jak vidíme v kódu, pro vytvoření surface potřebujeme HINSTANCE okna a handle samotného okna.</p>
+<p>Jak vidíme v kódu, pro vytvoření surface jsme potřebovali
+pouze HINSTANCE okna a handle samotného okna.</p>
 
 <p>Nyní máme okno a Vulkanní surface, na kterém máme úmysl zobrazovat,
 či přesněji řečeno, prezentovat výsledek našeho renderingu.
@@ -212,17 +214,17 @@ Například počítač se dvěma grafickými kartami nemusí podporovat
 rendering na jedné kartě a prezentaci výsledků na obrazovku, která je připojena skrz druhou grafickou kartu.
 A jsou dokonce fyzická zařízení, které nazýváme výpočetní akcelerátory,
 a které neumějí prezentovat vůbec a ani nemají konektor pro připojení obrazovky.
-Potřebujeme tedy zjistit, která fyzická zařízení jsou kompatibilní s naším surface.</p>
+Potřebujeme tedy zjistit, která fyzická zařízení jsou kompatibilní s naším surface:</p>
 
 <pre>
 // find compatible devices
 vector&lt;vk::PhysicalDevice&gt; deviceList = instance->enumeratePhysicalDevices();
 vector&lt;string&gt; compatibleDevices;
 for(vk::PhysicalDevice pd : deviceList) {
-   uint32_t c;
-   pd.getQueueFamilyProperties(&amp;c, nullptr);
-   for(uint32_t i=0; i&lt;c; i++)
-      if(pd.getSurfaceSupportKHR(i, surface.get())) {
+   uint32_t numQueues;
+   pd.getQueueFamilyProperties(&amp;numQueues, nullptr);
+   for(uint32_t i=0; i&lt;numQueues; i++)
+      if(<b>pd.getSurfaceSupportKHR(</b>i, surface.get()<b>)</b>) {
          compatibleDevices.push_back(pd.getProperties().deviceName);
          break;
       }
@@ -234,9 +236,10 @@ for(string&amp; name : compatibleDevices)
 
 <p>V kódu postupně procházíme všechna fyzická zařízení, dotazujeme se na počet tříd front,
 a pak hledáme, zda je pro nějakou třídu front podporována prezentace na náš surface,
-což zjišťujeme zavoláním metody getSurfaceSupportKHR().
+což zjišťujeme zavoláním metody vk::PhysicalDevice::getSurfaceSupportKHR(),
+která je v kódu zdůrazněna tučně.
 A pokud je prezentace pro některou třídu front podporována, pak si fyzické zařízení uložíme
-do seznamu. Tento seznam pak v zápětí vypíšeme do konzole.</p>
+do seznamu. Tento seznam pak vypíšeme do konzole.</p>
 
 <p>A jsme téměř hotovi. Abychom dostali okno na obrazovku,
 zbývá již pouze zavolat funkci ShowWindow() a rozjet smyčku zpráv:</p>
@@ -250,22 +253,22 @@ MSG msg;
 BOOL r;
 while((r = GetMessage(&amp;msg, NULL, 0, 0)) != 0) {
 
-	// handle GetMessage() errors
-	if(r == -1)
-		throw runtime_error("GetMessage(): The function failed.");
+   // handle GetMessage() errors
+   if(r == -1)
+      throw runtime_error("GetMessage(): The function failed.");
 
-	// handle message
-	TranslateMessage(&amp;msg);
-	DispatchMessage(&amp;msg);
+   // handle message
+   TranslateMessage(&amp;msg);
+   DispatchMessage(&amp;msg);
 
-	// handle exceptions raised in window procedure
-	if(wndProcException)
-		rethrow_exception(wndProcException);
+   // handle exceptions raised in window procedure
+   if(wndProcException)
+      rethrow_exception(wndProcException);
 }
 </pre>
 
 <p>Smyčka zpráv vybírá zprávy z fronty funkcí GetMessage().
-Samotná zpráva pak doručena oknu ve funkci DispatchMessage().
+Samotná zpráva je pak doručena oknu ve funkci DispatchMessage().
 V okně je obsloužena ve funkci wndProc, kterou jsme si již popsali.
 A pokud vznikla výjimka ve wndProc, budeme ji mít uloženu ve wndProcException.
 V tom případě výjimku znova vyhodíme.</p>
@@ -328,23 +331,23 @@ struct UniqueWindow {
 <pre>
 // Vulkan instance
 instance =
-	vk::createInstanceUnique(
-		vk::InstanceCreateInfo{
-			vk::InstanceCreateFlags(),  // flags
-			&amp;(const vk::ApplicationInfo&amp;)vk::ApplicationInfo{
-				"09-helloWindow-Xlib",   // application name
-				VK_MAKE_VERSION(0,0,0),  // application version
-				nullptr,                 // engine name
-				VK_MAKE_VERSION(0,0,0),  // engine version
-				VK_API_VERSION_1_0,      // api version
-			},
-			0, nullptr,  // no layers
-			2,           // enabled extension count
-			array&lt;const char*, 2&gt;{  // enabled extension names
-				"VK_KHR_surface",
-				"VK_KHR_xlib_surface",
-			}.data(),
-		});
+   vk::createInstanceUnique(
+      vk::InstanceCreateInfo{
+         vk::InstanceCreateFlags(),  // flags
+         &amp;(const vk::ApplicationInfo&amp;)vk::ApplicationInfo{
+            "09-helloWindow-Xlib",   // application name
+            VK_MAKE_VERSION(0,0,0),  // application version
+            nullptr,                 // engine name
+            VK_MAKE_VERSION(0,0,0),  // engine version
+            VK_API_VERSION_1_0,      // api version
+         },
+         0, nullptr,  // no layers
+         2,           // enabled extension count
+         array&lt;const char*, 2&gt;{  // enabled extension names
+            <b>"VK_KHR_surface",
+            "VK_KHR_xlib_surface",</b>
+         }.data(),
+      });
 </pre>
 
 <p>Kód je opět stejný jako jsme zvyklí kromě toho,
@@ -368,28 +371,30 @@ if(display == nullptr)
 XSetWindowAttributes attr;
 attr.event_mask = ExposureMask | StructureNotifyMask | VisibilityChangeMask;
 window.handle =
-	XCreateWindow(
-		display,  // display
-		DefaultRootWindow(display.handle),  // parent
-		0, 0,  // x, y
-		400, 300,  // width, height
-		0,  // border_width
-		CopyFromParent,  // depth
-		InputOutput,  // class
-		CopyFromParent,  // visual
-		CWEventMask,  // valuemask
-		&amp;attr  // attributes
-	);
+   XCreateWindow(
+      display,  // display
+      DefaultRootWindow(display.handle),  // parent
+      0, 0,  // x, y
+      400, 300,  // width, height
+      0,  // border_width
+      CopyFromParent,  // depth
+      InputOutput,  // class
+      CopyFromParent,  // visual
+      CWEventMask,  // valuemask
+      &amp;attr  // attributes
+   );
 </pre>
 
 <p>Pro detaily k jednotlivým parametrům opět odkazuji na internet.
 Samotné okno potřebuje ještě nastavit věci jako například titulek okna a
-WM_DELETE_WINDOW atom a okno namapovat, tedy zobrazit na obrazovce:</p>
+WM_DELETE_WINDOW atom. Pak je také potřeba okno namapovat - tedy zobrazit na obrazovce:</p>
 
 <pre>
 XSetStandardProperties(display, window, "Hello window!", "Hello window!", None, NULL, 0, NULL);
 Atom wmDeleteMessage = XInternAtom(display, "WM_DELETE_WINDOW", False);
 XSetWMProtocols(display, window, &amp;wmDeleteMessage, 1);
+
+// show window
 XMapWindow(display, window);
 </pre>
 
@@ -398,13 +403,13 @@ XMapWindow(display, window);
 <pre>
 // create surface
 surface =
-	instance->createXlibSurfaceKHRUnique(
-		vk::XlibSurfaceCreateInfoKHR(
-			vk::XlibSurfaceCreateFlagsKHR(),  // flags
-			display,  // dpy
-			window  // window
-		)
-	);
+   instance->createXlibSurfaceKHRUnique(
+      vk::XlibSurfaceCreateInfoKHR(
+         vk::XlibSurfaceCreateFlagsKHR(),  // flags
+         display,  // dpy
+         window  // window
+      )
+   );
 </pre>
 
 <p>Surface máme vytvořen. Nyní, tak jako na Windows, potřebujeme zjistit,
@@ -415,9 +420,9 @@ ze kterých fyzických zařízení na náš surface můžeme prezentovat:</p>
 vector&lt;vk::PhysicalDevice&gt; deviceList = instance->enumeratePhysicalDevices();
 vector&lt;string> compatibleDevices;
 for(vk::PhysicalDevice pd : deviceList) {
-   uint32_t c;
-   pd.getQueueFamilyProperties(&amp;c, nullptr);
-   for(uint32_t i=0; i&lt;c; i++)
+   uint32_t numQueues;
+   pd.getQueueFamilyProperties(&amp;numQueues, nullptr);
+   for(uint32_t i=0; i&lt;numQueues; i++)
       if(pd.getSurfaceSupportKHR(i, surface.get())) {
          compatibleDevices.push_back(pd.getProperties().deviceName);
          break;
@@ -430,7 +435,7 @@ for(string&amp; name : compatibleDevices)
 
 <p>Kód je stejný jak na platformě Win32. Pro detaily tedy odkazuji tam.</p>
 
-<p>A zbývá poslední bod, aby naše aplikace fungovala: Rozjet smyčku zpráv.</p>
+<p>A zbývá poslední bod, aby naše aplikace fungovala, tedy rozjet smyčku zpráv:</p>
 
 <pre>
 // run event loop
@@ -445,9 +450,9 @@ while(true) {
 <p>Smyčka zpráv pouze odebírá zprávy z fronty zpráv.
 Ve smyčce obsluhujeme jedinou zprávu a to žádost o smazání okna.
 Pokud tato zpráva přijde, opustíme smyčku zpráv i funkci main().
-Následně je smazáno okno v destruktoru UniqueWindow,
-pak je uzavřeno spojení s X-serverem, což se stane v destruktoru UniqueDisplay
-a vše zakončí uvolnění instance Vulkan. Že vše funguje, ověříme spuštěním aplikace:</p>
+Následně je zavolán destruktor UniqueWindow a je smazáno okno.
+Po té je zavolán destruktor UniqueDisplay a je uzavřeno spojení s X-serverem.
+Na závěr je uvolněna instance Vulkan. Že vše funguje, ověříme spuštěním aplikace:</p>
 
 <img src="window-Xlib.png">
 
@@ -476,18 +481,20 @@ Ohledně dalších protokolů doporučuji stránku <a href="https://wayland.app/
 kde najdeme jednotlivé protokoly, informaci o jejich stabilitě a popis jejich API.</p>
 
 <p>Samotný Wayland si do našich počítačů hledal cestu dlouho.
-Úvahy o jeho nasazení v Ubuntu distribuci byly již pro verzi 11.10
+Úvahy o jeho nasazení v Ubuntu distribuci byly již v roce 2011 pro verzi 11.10
 (<a href="https://www.phoronix.com/scan.php?page=news_item&amp;px=ODc1Ng">zdroj</a>).
 Obstojné podpory jsme se však dočkali až ve verzi 17.10.
 Nicméně, jedna věc je, že něco "nějak" jede, a druhá věc je, že je to vychytané a spolehlivé.
 A tak po úvodním nadšení ve verzi 17.10 nebyl už dále Wayland defaultním desktopem.
 Na to jsme museli počkat tři a půl roku až na verzi 21.04, tedy pokud nepatříte k těm, kteří mají Nvidia grafickou kartu.
 Nvidia totiž připravila svým Linuxovým uživatelům další taškařici v podobě nepodpory GBM API.
-To by snad od verze driverů 495.44 mělo být již vyřešeno,
-nicmémě ani tak není Wayland defaultní rozhranní ani ve verzi Ubuntu 22.04.</p>
+To by snad od verze driverů 495.44 mělo být již vyřešeno, nicméně není.
+Stále jsou zde problémy. Pokud je tedy detekována Nvidia grafická karta,
+není Wayland defaultní rozhranní ani ve verzi Ubuntu 22.04,
+alespoň ne v době psaní tohoto článku (léto 2022).</p>
 
 <p>Pojďme na samotný kód. Wayland používá pro handly pointery. Pro správu handlů tedy použijeme unique_ptr.
-K tomu, ale potřebujeme custom deletery:</p>
+K tomu, ale potřebujeme custom deleters:</p>
 
 <pre>
 // deleters
@@ -504,15 +511,15 @@ struct XdgToplevelDeleter { void operator()(xdg_toplevel* t) { xdg_toplevel_dest
 
 <pre>
 // globals
-static unique_ptr<wl_display, DisplayDeleter> display;
-static unique_ptr<wl_registry, RegistryDeleter> registry;
-static unique_ptr<wl_compositor, CompositorDeleter> compositor;
-static unique_ptr<xdg_wm_base, XdgWmBaseDeleter> xdgWmBase;
+static unique_ptr&lt;wl_display, DisplayDeleter&gt; display;
+static unique_ptr&lt;wl_registry, RegistryDeleter&gt; registry;
+static unique_ptr&lt;wl_compositor, CompositorDeleter&gt; compositor;
+static unique_ptr&lt;xdg_wm_base, XdgWmBaseDeleter&gt; xdgWmBase;
 
 // objects
-static unique_ptr<wl_surface, WlSurfaceDeleter> wlSurface;
-static unique_ptr<xdg_surface, XdgSurfaceDeleter> xdgSurface;
-static unique_ptr<xdg_toplevel, XdgToplevelDeleter> xdgToplevel;
+static unique_ptr&lt;wl_surface, WlSurfaceDeleter&gt; wlSurface;
+static unique_ptr&lt;xdg_surface, XdgSurfaceDeleter&gt; xdgSurface;
+static unique_ptr&lt;xdg_toplevel, XdgToplevelDeleter&gt; xdgToplevel;
 </pre>
 
 <p>Dále budeme potřebovat stavovou proměnnou running, několik listenerů a surface:</p>
@@ -536,23 +543,23 @@ static vk::UniqueSurfaceKHR surface;
 <pre>
 // Vulkan instance
 instance =
-	vk::createInstanceUnique(
-		vk::InstanceCreateInfo{
-			vk::InstanceCreateFlags(),  // flags
-			&amp;(const vk::ApplicationInfo&amp;)vk::ApplicationInfo{
-				"09-helloWindow-Wayland",  // application name
-				VK_MAKE_VERSION(0,0,0),  // application version
-				nullptr,                 // engine name
-				VK_MAKE_VERSION(0,0,0),  // engine version
-				VK_API_VERSION_1_0,      // api version
-			},
-			0, nullptr,  // no layers
-			2,           // enabled extension count
-			array&lt;const char*, 2&gt;{  // enabled extension names
-				"VK_KHR_surface",
-				"VK_KHR_wayland_surface",
-			}.data(),
-		});
+   vk::createInstanceUnique(
+      vk::InstanceCreateInfo{
+         vk::InstanceCreateFlags(),  // flags
+         &amp;(const vk::ApplicationInfo&amp;)vk::ApplicationInfo{
+            "09-helloWindow-Wayland",  // application name
+            VK_MAKE_VERSION(0,0,0),  // application version
+            nullptr,                 // engine name
+            VK_MAKE_VERSION(0,0,0),  // engine version
+            VK_API_VERSION_1_0,      // api version
+         },
+         0, nullptr,  // no layers
+         2,           // enabled extension count
+         array&lt;const char*, 2&gt;{  // enabled extension names
+            <b>"VK_KHR_surface",
+            "VK_KHR_wayland_surface",</b>
+         }.data(),
+      });
 </pre>
 
 <p>Pak si otevřeme Wayland spojení:</p>
@@ -561,7 +568,7 @@ instance =
 // open Wayland connection
 display.reset(wl_display_connect(nullptr));
 if(display == nullptr)
-	throw runtime_error("Cannot connect to Wayland display. No Wayland server is running or invalid WAYLAND_DISPLAY variable.");
+   throw runtime_error("Cannot connect to Wayland display. No Wayland server is running or invalid WAYLAND_DISPLAY variable.");
 </pre>
 
 <p>Dále budeme potřebovat globální seznam objektů, který je poskytován skrze Wayland registry a registry listener:</p>
@@ -570,28 +577,28 @@ if(display == nullptr)
 // registry listener
 registry.reset(wl_display_get_registry(display.get()));
 if(registry == nullptr)
-	throw runtime_error("Cannot get Wayland registry object.");
+   throw runtime_error("Cannot get Wayland registry object.");
 compositor = nullptr;
 registryListener = {
-	.global =
-		[](void* data, wl_registry* registry, uint32_t name, const char* interface, uint32_t version) {
-			cout &lt;&lt; "   " &lt;&lt; interface &lt;&lt; endl;
-			if(strcmp(interface, wl_compositor_interface.name) == 0)
-				compositor.reset(
-					static_cast&lt;wl_compositor*&gt;(
-						wl_registry_bind(registry, name, &amp;wl_compositor_interface, 1)));
-			else if(strcmp(interface, xdg_wm_base_interface.name) == 0)
-				xdgWmBase.reset(
-					static_cast&lt;xdg_wm_base*&gt;(
-						wl_registry_bind(registry, name, &amp;xdg_wm_base_interface, 1)));
-		},
-	.global_remove =
-		[](void*, wl_registry*, uint32_t) {
-		},
+   .global =
+      [](void* data, wl_registry* registry, uint32_t name, const char* interface, uint32_t version) {
+         cout &lt;&lt; "   " &lt;&lt; interface &lt;&lt; endl;
+         if(strcmp(interface, wl_compositor_interface.name) == 0)
+            compositor.reset(
+               static_cast&lt;wl_compositor*&gt;(
+                  wl_registry_bind(registry, name, &amp;wl_compositor_interface, 1)));
+         else if(strcmp(interface, xdg_wm_base_interface.name) == 0)
+            xdgWmBase.reset(
+               static_cast&lt;xdg_wm_base*&gt;(
+                  wl_registry_bind(registry, name, &amp;xdg_wm_base_interface, 1)));
+      },
+   .global_remove =
+      [](void*, wl_registry*, uint32_t) {
+      },
 };
 cout &lt;&lt; "Wayland global registry objects:" &lt;&lt; endl;
 if(wl_registry_add_listener(registry.get(), &amp;registryListener, nullptr))
-	throw runtime_error("wl_registry_add_listener() failed.");
+   throw runtime_error("wl_registry_add_listener() failed.");
 </pre>
 
 <p>Jak vidíme v kódu, nové globální objekty se objevují skrz funkci global a
@@ -607,24 +614,24 @@ tedy kompozitor a xdg_wm_base.</p>
 <pre>
 // get and init global objects
 if(wl_display_roundtrip(display.get()) == -1)
-	throw runtime_error("wl_display_roundtrip() failed.");
+   throw runtime_error("wl_display_roundtrip() failed.");
 if(compositor == nullptr)
-	throw runtime_error("Cannot get Wayland compositor object.");
+   throw runtime_error("Cannot get Wayland compositor object.");
 if(xdgWmBase == nullptr)
-	throw runtime_error("Cannot get Wayland xdg_wm_base object.");
+   throw runtime_error("Cannot get Wayland xdg_wm_base object.");
 xdgWmBaseListener = {
-	.ping =
-		[](void*, xdg_wm_base* xdgWmBase, uint32_t serial) {
-			xdg_wm_base_pong(xdgWmBase, serial);
-		}
+   .ping =
+      [](void*, xdg_wm_base* xdgWmBase, uint32_t serial) {
+         xdg_wm_base_pong(xdgWmBase, serial);
+      }
 };
 if(xdg_wm_base_add_listener(xdgWmBase.get(), &amp;xdgWmBaseListener, nullptr))
-	throw runtime_error("xdg_wm_base_add_listener() failed.");
+   throw runtime_error("xdg_wm_base_add_listener() failed.");
 </pre>
 
 <p>A jak vidíme v kódu, pokud máme xdgWmBase, tak si pro něj zaregistrujeme listener,
 který toho mnoho nebude dělat. Pouze na zprávu ping, odpoví pong. Tím si server ověří,
-že klient je naživu.</p>
+že je klient naživu.</p>
 
 <p>Následuje vytvoření wl_surface a xdg_surface, tedy jakéhosi "povrchu" okna:</p>
 
@@ -632,58 +639,63 @@ který toho mnoho nebude dělat. Pouze na zprávu ping, odpoví pong. Tím si se
 // create Wayland surface
 wlSurface.reset(wl_compositor_create_surface(compositor.get()));
 if(wlSurface == nullptr)
-	throw runtime_error("wl_compositor_create_surface() failed.");
+   throw runtime_error("wl_compositor_create_surface() failed.");
 xdgSurface.reset(xdg_wm_base_get_xdg_surface(xdgWmBase.get(), wlSurface.get()));
 if(xdgSurface == nullptr)
-	throw runtime_error("xdg_wm_base_get_xdg_surface() failed.");
+   throw runtime_error("xdg_wm_base_get_xdg_surface() failed.");
 xdgSurfaceListener = {
-	.configure =
-		[](void* data, xdg_surface* xdgSurface, uint32_t serial) {
-			cout &lt;&lt; "surface configure" &lt;&lt; endl;
-			xdg_surface_ack_configure(xdgSurface, serial);
-			wl_surface_commit(wlSurface.get());
-		},
+   .configure =
+      [](void* data, xdg_surface* xdgSurface, uint32_t serial) {
+         cout &lt;&lt; "surface configure" &lt;&lt; endl;
+         xdg_surface_ack_configure(xdgSurface, serial);
+         wl_surface_commit(wlSurface.get());
+      },
 };
 if(xdg_surface_add_listener(xdgSurface.get(), &amp;xdgSurfaceListener, nullptr))
-	throw runtime_error("xdg_surface_add_listener() failed.");
+   throw runtime_error("xdg_surface_add_listener() failed.");
 </pre>
 
 <p>Kód nás překvapí tím, že vytváříme surface dvakrát. Jednak jako wl_surface a jednak jako xdg_surface.
 Ve skutečnosti je to ale jedno okno wl_surface, které má i xdg_surface rozhranní.
-Jak jsem psal dříve, je core Wayland protokol, ale později vznikl i xdg-shell protokol, jehož součástí je xdg_surface.
+Jak jsem psal dříve - máme stabilní core Wayland protokol, ale později vznikl i xdg-shell protokol,
+jehož součástí je xdg_surface.
 Protokol xdg-shell doplnil, co bylo potřeba k plnohodnotnému uživatelskému rozhranní dnešního standardu.</p>
 
 <p>Nakonec zaregistrujeme listener pro xdgSurface a v něm nastavíme jedinou funkci configure.
-V této funkci pouze potvrdíme zkonfigurování metodou xdg_surface_ack_configure a provedením commit nad surface.</p>
+V této funkci pouze potvrdíme zkonfigurování metodou xdg_surface_ack_configure
+a provedeme commit nad objektem surface.</p>
 
-<p>A zůstává nám poslední krok z Waylandské části vytváření okna, a to vytvoření toplevel:</p>
+<p>A zůstává nám poslední krok z Waylandské části vytváření okna, a to vytvoření toplevel.
+Vytvoření toplevel bychom mohli vágně popsat jako přidání další role oknu, které tím, že má roli toplevel,
+se umí maximalizovat, minimalizovat, může být uživatelem přemísťováno po obrazovce
+a uživatel může táhnutím za jeho okraj měnit jeho velikost, atd.:</p>
 
 <pre>
 // init xdg toplevel
 xdgToplevel.reset(xdg_surface_get_toplevel(xdgSurface.get()));
 if(xdgToplevel == nullptr)
-	throw runtime_error("xdg_surface_get_toplevel() failed.");
+   throw runtime_error("xdg_surface_get_toplevel() failed.");
 xdg_toplevel_set_title(xdgToplevel.get(), "Hello window!");
 xdgToplevelListener = {
-	.configure =
-		[](void* data, xdg_toplevel* toplevel, int32_t width, int32_t height, wl_array*) -> void {
-			cout &lt;&lt; "toplevel configure (width=" &lt;&lt; width &lt;&lt; ", height=" &lt;&lt; height &lt;&lt; ")" &lt;&lt; endl;
-		},
-	.close =
-		[](void* data, xdg_toplevel* xdgToplevel) {
-			running = false;
-		},
+   .configure =
+      [](void* data, xdg_toplevel* toplevel, int32_t width, int32_t height, wl_array*) -> void {
+         cout &lt;&lt; "toplevel configure (width=" &lt;&lt; width &lt;&lt; ", height=" &lt;&lt; height &lt;&lt; ")" &lt;&lt; endl;
+      },
+   .close =
+      [](void* data, xdg_toplevel* xdgToplevel) {
+         running = false;
+      },
 };
 if(xdg_toplevel_add_listener(xdgToplevel.get(), &amp;xdgToplevelListener, nullptr))
-	throw runtime_error("xdg_toplevel_add_listener() failed.");
+   throw runtime_error("xdg_toplevel_add_listener() failed.");
 wl_surface_commit(wlSurface.get());
 </pre>
 
 <p>Toplevel vytvoříme z xdgSurface a nastavíme mu title, tedy text v záhlaví okna.
 Pak opět zaregistrujeme listener, tentokrát s funkcemi configure a close.
 Funkci configure budeme využívat více v následujících dílech. Teď v ní pouze vypíšeme rozměry okna.
-Při zavolání funkce close si pouze nastavíme flag running na false, který pak použijeme v hlavní smyčce aplikace.
-Na závěr provedeme commit nad wl_surfacem a provedeme flush nad spojením k serveru.</p>
+Při zavolání funkce close si nastavíme flag running na false, který pak použijeme v hlavní smyčce aplikace.
+Na závěr provedeme commit nad wl_surfacem.</p>
 
 <p>Tím jsme hotovi s Waylandím oknem. Zbývá vytvořit surface Vulkanu
 a pro jistotu vyflushovat buffery:</p>
@@ -691,15 +703,15 @@ a pro jistotu vyflushovat buffery:</p>
 <pre>
 // create surface
 surface =
-	instance->createWaylandSurfaceKHRUnique(
-		vk::WaylandSurfaceCreateInfoKHR(
-			vk::WaylandSurfaceCreateFlagsKHR(),  // flags
-			display.get(),  // display
-			wlSurface.get()  // surface
-		)
-	);
+   instance->createWaylandSurfaceKHRUnique(
+      vk::WaylandSurfaceCreateInfoKHR(
+         vk::WaylandSurfaceCreateFlagsKHR(),  // flags
+         display.get(),  // display
+         wlSurface.get()  // surface
+      )
+   );
 if(wl_display_flush(display.get()) == -1)
-	throw runtime_error("wl_display_flush() failed.");
+   throw runtime_error("wl_display_flush() failed.");
 </pre>
 
 <p>Pak se dotážeme, která fyzická zařízení jsou kompatibilní s naším Vulkanním surface.
@@ -711,27 +723,27 @@ Kód je stejný jako na dvou předchozích platformách, takže jej přeskočím
 // run event loop
 cout &lt;&lt; "Entering main loop." &lt;&lt; endl;
 if(wl_display_flush(display.get()) == -1)
-	throw runtime_error("wl_display_flush() failed.");
+   throw runtime_error("wl_display_flush() failed.");
 while(running) {
-	if(wl_display_dispatch(display.get()) == -1)
-		throw runtime_error("wl_display_dispatch() failed.");
-	if(wl_display_flush(display.get()) == -1)
-		throw runtime_error("wl_display_flush() failed.");
+   if(wl_display_dispatch(display.get()) == -1)
+      throw runtime_error("wl_display_dispatch() failed.");
+   if(wl_display_flush(display.get()) == -1)
+      throw runtime_error("wl_display_flush() failed.");
 }
 cout &lt;&lt; "Main loop left." &lt;&lt; endl;
 </pre>
 
 <p>Jádro smyčky zpráv tvoří funkce wl_display_dispatch() a wl_display_flush().
-Funkce wl_display_dispatch() obslouží všechny příchozí eventy,
-a pokud není žádný další event, tak blokuje.
+Funkce wl_display_dispatch() obslouží všechny příchozí zprávy.
+Pokud byla fronta příchozích zpráv prázdná, tak blokuje do příchodu zprávy, kterou by obsloužila.
 Následné zavolání wl_display_flush() odešle na Wayland server
-jakékoliv požadavky zatím čekající ve frontě.
+jakékoliv požadavky zatím čekající ve frontě k odeslání.
 V této smyčce tedy cyklíme, dokud není flag running nastaven na false,
 nebo dokud nedojde k chybě.</p>
 
 <p>Prvotní zavolání wl_display_flush() před vstupem do smyčky zabrání nechtěné situaci,
 že by nějaký požadavek na server nebyl odeslán a zůstal v bufferech, přičemž
-wl_display_dispatch() by marně blokovala a čekala na odpověď, protože požadavek vlastně neodešel.</p>
+wl_display_dispatch() by marně blokoval a čekal na odpověď, protože požadavek vlastně neodešel.</p>
 
 <p>Můžeme asi aplikaci spustit. Ale co to?
 Aplikace vypsala hromadu textu, nicméně žádné okno se neobjevilo.
@@ -800,6 +812,7 @@ To napravíme příště. Dnes nezbývá, než zmáčknout Ctrl-C a ukončit apl
 
 <h3>Shrnutí</h3>
 
-<p>Dnes jsme si ukázali, jak vytvořit okno na třech různých platformách - Win32, Xlib a Wayland - a jak na něm
-vytvořit surface. Příště vytvoříme swapchain, vyrendrujeme svůj historicky první obrázek tohoto tutoriálu na obrazovku
+<p>Dnes jsme si ukázali, jak vytvořit okno na třech různých
+platformách - Win32, Xlib a Wayland - a jak na něm vytvořit surface.
+Příště vytvoříme swapchain, vyrendrujeme si obrázek na obrazovku
 a začneme se ponořovat do tajů rendrování do okna.</p>

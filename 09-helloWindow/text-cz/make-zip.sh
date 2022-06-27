@@ -12,7 +12,7 @@ if test -f $NAME-text.zip; then
 fi
 
 # zip text and images
-zip $NAME-text.zip text.html
+zip $NAME-text.zip text.html window-Win32.png window-Xlib.png
 
 # create tmp environment
 mkdir tmp
@@ -29,7 +29,15 @@ mv $NAME.zip ..
 # compile and run
 cmake .
 make
-./$NAME
+if test -f ./$NAME-Win32; then
+	./$NAME-Win32
+fi
+if test -f ./$NAME-Xlib; then
+	./$NAME-Xlib
+fi
+if test -f ./$NAME-Wayland; then
+	./$NAME-Wayland
+fi
 cd ..
 
 # remove tmp
