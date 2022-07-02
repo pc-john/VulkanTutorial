@@ -4,7 +4,7 @@
 je čas se podívat na architekturu toho, co jsme zprovoznili.
 A snad nejlépe objevíme architekturu Vulkanu na ukazatelích na funkce.</p>
 
-<p>Vulkan je, dalo by se říci, multi-device, multi-vendor a multi-threaded rozhranní.
+<p>Vulkan je, dalo by se říci, multi-device, multi-vendor a multi-threaded rozhraní.
 Česky: Vulkan podporuje více zařízení od více výrobců a za použití více vláken.
 Toto je asi hlavní rozdíl od, například, OpenGL, kde jsme se museli spokojit
 s jedním zařízením od jednoho výrobce a použítí více vláken bylo poněkud problematické.
@@ -12,7 +12,7 @@ Podpora více zařízení od více výrobců teoreticky přišla s knihovnou
 <a href="https://github.com/freedesktop/glvnd">glvnd</a> (GL Vendor-Neutral Dispatch),
 ale těžko říci, jak moc je opravdu používána. Určitě se ale shodneme, že je ideální mít API
 navržené se všemi funkcemi hned od počátku tak, jak je tomu u Vulkan,
-a mít tak naději na vyšší efektivitu, konzistentnost a přehlednost rozhranní.</p>
+a mít tak naději na vyšší efektivitu, konzistentnost a přehlednost rozhraní.</p>
 
 <p>Abychom nechodili dlouho kolem, můžeme si stáhnout
 <a href="03-funcPointers.zip">zdrojové kódy</a> tohoto dílu a zkusit si je zkompilovat.
@@ -61,7 +61,7 @@ v systému.</p>
 
 <p>Instance, jednoduše řečeno, reprezentuje globální stav Vulkanu na straně aplikace.
 Téměř ke všem globálním datům přistupujeme právě přes VkInstance objekt.
-VkInstance pak patří k C-čkovému rozhranní, vk::Instance k C++.
+VkInstance pak patří k C-čkovému rozhraní, vk::Instance k C++.
 Vytvoření vk::Instance je první věc, kterou s Vulkan API provedeme.
 Kromě několika výjimek není dovoleno volat jakékoliv Vulkan funkce před vytvořením objektu VkInstance.
 Ten vytvoříme podobně jako v prvním díle tutoriálu:</p>
@@ -167,7 +167,7 @@ vk::UniqueDevice device =
 </pre>
 
 <p>Když už jsme vytvořili z fyzického zařízení logické, zbývá objasnit, co to to logické zařízení je.
-Logické zařízení (logical device) reprezentuje rozhranní k fyzickému zařízení, někdy i ke skupině zařízení.
+Logické zařízení (logical device) reprezentuje rozhraní k fyzickému zařízení, někdy i ke skupině zařízení.
 Logické zařízení budeme používat drtivou většinu času při práci s Vulkan API
 a používáme ho k vytváření většiny Vulkanních objektů, rendrování, počítání a hromadě dalších věcí.
 Vukan reprezentuje logické zařízení handlem VkDevice a v C++ pak třídou vk::Device.

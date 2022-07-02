@@ -140,7 +140,11 @@ k jednotlivým vertexům dostane daný fragment odpovídající vážený prům�
 
 <p>Jak nyní zkompilovat naše shadery do SPIR-V? K tomu slouží utilita glslangValidator.
 Je také možné použít například glslc od Googlu. My se však přidržíme utilit Khronosu.
-V projektu přibyl soubor FindVulkan.cmake, který nám kromě Vulkan knihovny a headerů
+A jak glslangValidator nainstalovat?
+Pokud používáme Vulkan SDK, máme ho již pravděpodobně na disku.
+Pokud používáme Linuxové balíčky, tak na ubuntu je utilita momentálně v glslang-tools balíčku.</p>
+
+<p>V projektu přibyl soubor FindVulkan.cmake, který nám kromě Vulkan knihovny a headerů
 najde i glslangValidator. To standardní cmake-ový FindVulkan.cmake již umí také,
 ale až od verze 3.21, čímž děkuji cmake vývojářům za pomoc s mým merge requestem.</p>
 
