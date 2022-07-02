@@ -19,8 +19,8 @@ Začneme od Win32, ať pak můžeme pokračovat knihovnou Xlib následovanou mod
 přišla na svět v roce 1985, ale až do Windows 3.11
 se nejednalo o operační systém, ale spíše o grafickou nádstavbu
 <a href="https://en.wikipedia.org/wiki/MS-DOS">MS-DOSu</a>.
-Tyto starší Windows měly pouze 16-bitové rozhranní nazývané Win16.
-Windows NT a následně Windows 95 přinesly Win32, tedy 32-bitové rozhranní.
+Tyto starší Windows měly pouze 16-bitové rozhraní nazývané Win16.
+Windows NT a následně Windows 95 přinesly Win32, tedy 32-bitové rozhraní.
 Win64 je pak varianta pro 64-bitové systémy. Nicméně pokud náš kód nepoužívá
 nějaké speciality a pointerová kouzla, měl by být přeložitelný jak pro Win32,
 tak pro Win64. Budeme-li tedy hovořit o Win32 platformě,
@@ -58,8 +58,8 @@ static struct UniqueWindowClass {
 } windowClass;
 </pre>
 
-<p>Proměnnou hInstance bude mimo jiné potřebovat při vytváření okna
-a bude obsahovat handle spustitelného exe souboru.
+<p>Proměnná hInstance bude obsahovat handle spustitelného souboru exe
+a budeme ji mimo jiné potřebovat při vytváření okna.
 Proměnná windowClass ponese třídu okna, přesněji řečeno win32 atom jednoznačně identifikující
 třídu okna. Opět používáme strukturu s destruktorem, která se postará o zlikvidování
 třídy okna ve chvíli, kdy už není potřeba.</p>
@@ -212,7 +212,7 @@ Nicméně je zde drobný problém:
 Ne každé fyzické zařízení musí nutně umět prezentovat na náš surface.
 Například počítač se dvěma grafickými kartami nemusí podporovat
 rendering na jedné kartě a prezentaci výsledků na obrazovku, která je připojena skrz druhou grafickou kartu.
-A jsou dokonce fyzická zařízení, které nazýváme výpočetní akcelerátory,
+A jsou dokonce fyzická zařízení, které nazýváme výpočetní akcelerátory
 a které neumějí prezentovat vůbec a ani nemají konektor pro připojení obrazovky.
 Potřebujeme tedy zjistit, která fyzická zařízení jsou kompatibilní s naším surface:</p>
 
@@ -295,7 +295,7 @@ a po ní moderní přístup Waylandu.</p>
 <h3>Xlib</h3>
 
 <p>Xlib knihovna přišla na svět někdy kolem roku 1985. Je tedy podobně stará, jako Windows.
-Dnes, pokud ještě musíme používat X Window System, používáme obyčejně XCB rozhranní.
+Dnes, pokud ještě musíme používat X Window System, používáme obyčejně XCB rozhraní.
 V každém případě, obojí je v čase psaní tohoto článku na ústupu a naděje se upírají k Waylandu.</p>
 
 <p>Navzdory pomalému odchodu této platformy si ukážeme, jak vytvořit okno v Xlib ze třech důvodů:
@@ -489,8 +489,8 @@ A tak po úvodním nadšení ve verzi 17.10 nebyl už dále Wayland defaultním 
 Na to jsme museli počkat tři a půl roku až na verzi 21.04, tedy pokud nepatříte k těm, kteří mají Nvidia grafickou kartu.
 Nvidia totiž připravila svým Linuxovým uživatelům další taškařici v podobě nepodpory GBM API.
 To by snad od verze driverů 495.44 mělo být již vyřešeno, nicméně není.
-Stále jsou zde problémy. Pokud je tedy detekována Nvidia grafická karta,
-není Wayland defaultní rozhranní ani ve verzi Ubuntu 22.04,
+Stále jsou zde problémy. Pokud je tedy detekována grafická karta Nvidia,
+není Wayland výchozím rozhraním ani v Ubuntu 22.04,
 alespoň ne v době psaní tohoto článku (léto 2022).</p>
 
 <p>Pojďme na samotný kód. Wayland používá pro handly pointery. Pro správu handlů tedy použijeme unique_ptr.
@@ -538,7 +538,7 @@ static xdg_toplevel_listener xdgToplevelListener;
 static vk::UniqueSurfaceKHR surface;
 </pre>
 
-<p>Vulkanní instanci vytvoříme obvyklým způsobem s výjimkou povolení VK_KHR_wayland_surface extension.
+<p>Vulkanní instanci vytvoříme obvyklým způsobem s výjimkou povolení VK_KHR_wayland_surface extension:</p>
 
 <pre>
 // Vulkan instance
@@ -602,14 +602,14 @@ if(wl_registry_add_listener(registry.get(), &amp;registryListener, nullptr))
 </pre>
 
 <p>Jak vidíme v kódu, nové globální objekty se objevují skrz funkci global a
-mizí zavoláním funkce global_remove. Mnoho rozhranní (interfaces) nikdy nemizí,
+mizí zavoláním funkce global_remove. Mnoho rozhraní (interfaces) nikdy nemizí,
 ale například ta, která reprezentují zařízení připojené k počítači,
 mohou být odpojena a pro ně uvidíme zavolání funkce global_remove.
-Všechna rozhranní si vypíšeme a uložíme si ty, které budeme potřebovat,
+Všechna rozhraní si vypíšeme a uložíme si ty, které budeme potřebovat,
 tedy kompozitor a xdg_wm_base.</p>
 
 <p>Dále provedeme roundtrip k serveru, abychom si byli jisti,
-že nám poslal všechna rozhranní. Otestujeme, zda opravdu máme kompozitor a xdgWmBase:</p>
+že nám poslal všechna rozhraní. Otestujeme, zda opravdu máme kompozitor a xdgWmBase:</p>
 
 <pre>
 // get and init global objects
@@ -656,10 +656,11 @@ if(xdg_surface_add_listener(xdgSurface.get(), &amp;xdgSurfaceListener, nullptr))
 </pre>
 
 <p>Kód nás překvapí tím, že vytváříme surface dvakrát. Jednak jako wl_surface a jednak jako xdg_surface.
-Ve skutečnosti je to ale jedno okno wl_surface, které má i xdg_surface rozhranní.
+Ve skutečnosti je to ale jedno okno wl_surface, které má i xdg_surface rozhraní.
 Jak jsem psal dříve - máme stabilní core Wayland protokol, ale později vznikl i xdg-shell protokol,
 jehož součástí je xdg_surface.
-Protokol xdg-shell doplnil, co bylo potřeba k plnohodnotnému uživatelskému rozhranní dnešního standardu.</p>
+Protokol xdg-shell doplnil, co bylo potřeba k plnohodnotnému uživatelskému rozhraní
+dnešního standardu, řečeno trochu vágně.</p>
 
 <p>Nakonec zaregistrujeme listener pro xdgSurface a v něm nastavíme jedinou funkci configure.
 V této funkci pouze potvrdíme zkonfigurování metodou xdg_surface_ack_configure
@@ -745,7 +746,7 @@ nebo dokud nedojde k chybě.</p>
 že by nějaký požadavek na server nebyl odeslán a zůstal v bufferech, přičemž
 wl_display_dispatch() by marně blokoval a čekal na odpověď, protože požadavek vlastně neodešel.</p>
 
-<p>Můžeme asi aplikaci spustit. Ale co to?
+<p>Můžeme si aplikaci spustit. Ale co to?
 Aplikace vypsala hromadu textu, nicméně žádné okno se neobjevilo.
 A zde narážíme na vlastnost Waylandu: On nemá ve zvyku zobrazovat nekompletní okna.
 Nedefinovali jsme jeho obsah - jinými slovy, zatím jsme do něj nic nevyrendrovali - takže
