@@ -61,7 +61,7 @@ static chrono::high_resolution_clock::time_point fpsStartTime;
 int main(int argc, char** argv)
 {
 	// catch exceptions
-	// (vulkan.hpp functions throws if they fail)
+	// (vulkan.hpp functions throw if they fail)
 	try {
 
 		// process command-line arguments
@@ -709,9 +709,9 @@ int main(int argc, char** argv)
 		window.mainLoop();
 
 	// catch exceptions
-	} catch(vk::Error &e) {
+	} catch(vk::Error& e) {
 		cout << "Failed because of Vulkan exception: " << e.what() << endl;
-	} catch(exception &e) {
+	} catch(exception& e) {
 		cout << "Failed because of exception: " << e.what() << endl;
 	} catch(...) {
 		cout << "Failed because of unspecified exception." << endl;
@@ -722,7 +722,7 @@ int main(int argc, char** argv)
 	try {
 		if(device)
 			device->waitIdle();
-	} catch(vk::Error &e) {
+	} catch(vk::Error& e) {
 		cout << "Failed because of Vulkan exception: " << e.what() << endl;
 	}
 
