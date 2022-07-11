@@ -75,7 +75,11 @@ int main(int, char**)
 			uint32_t presentationQueueFamily = UINT32_MAX;
 			vector<vk::QueueFamilyProperties> queueFamilyList = pd.getQueueFamilyProperties();
 			for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
+
+				// test for presentation support
 				if(pd.getSurfaceSupportKHR(i, surface)) {
+
+					// test for graphics operations support
 					if(queueFamilyList[i].queueFlags & vk::QueueFlagBits::eGraphics) {
 						// if presentation and graphics operations are supported on the same queue,
 						// we will use single queue
@@ -94,6 +98,7 @@ int main(int, char**)
 							graphicsQueueFamily = i;
 				}
 			}
+
 			if(graphicsQueueFamily != UINT32_MAX && presentationQueueFamily != UINT32_MAX)
 				// presentation and graphics operations are supported on the different queues
 				compatibleDevices.emplace_back(pd, graphicsQueueFamily, presentationQueueFamily, pd.getProperties());
@@ -119,11 +124,11 @@ int main(int, char**)
 			20, // vk::PhysicalDeviceType::eCpu           - low score
 			10, // unknown vk::PhysicalDeviceType
 		};
-		int bestScore = deviceTypeScore[min(unsigned(get<3>(*bestDevice).deviceType), 5u)];
+		int bestScore = deviceTypeScore[clamp(int(get<3>(*bestDevice).deviceType), 0, int(deviceTypeScore.size())-1)];
 		if(get<1>(*bestDevice) == get<2>(*bestDevice))
 			bestScore++;
 		for(auto it=compatibleDevices.begin()+1; it!=compatibleDevices.end(); it++) {
-			int score = deviceTypeScore[min(unsigned(get<3>(*it).deviceType), 5u)];
+			int score = deviceTypeScore[clamp(int(get<3>(*it).deviceType), 0, int(deviceTypeScore.size())-1)];
 			if(get<1>(*it) == get<2>(*it))
 				score++;
 			if(score > bestScore) {

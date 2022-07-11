@@ -6,8 +6,8 @@ a ošetříme některé záludnosti správy prostředků v kontextu možné př�
 
 <p>Tento díl bude mít dva cíle. Nejprve sjednotíme
 všechny naše zdrojáky z minulého dílu do jediné třídy VulkanWindow,
-přičemž si dáme pozor na správu zdrojů této třídy s ohledem na možné výjimky.
-Pak vytvoříme jednoduchý algoritmus pro výběr nejvhodnější grafické karty,
+přičemž si dáme pozor na správu prostředků této třídy s ohledem na možné výjimky.
+Druhý cíl pak bude jednoduchý algoritmus pro výběr nejvhodnější grafické karty,
 na které budeme chtít rendrovat. Význam tohoto algoritmu vynikne například
 na noteboocích se dvěma grafikami, kde můžeme preferovat, aby se aplikace
 nespustila na integrované grafice, ale aby běžela na dedikované grafice
@@ -119,16 +119,16 @@ Proč takováto změna?</p>
 
 <p>Argumenty pro toto řešení jsou dva: Jednak to odstraní nutnost struktur UniqueWindow
 a jí podobným z minulého dílu, na Waylandu nutnost definovat Deleter struktury pro unique_ptr a podobně.
-A druhý důvod je drobné zvýšení spotřeby paměti u některých Unique objektů.
-Toto se týká v prvé řadě knihovny Vulkan.hpp, kde Unique objekty obyčejně nesou
-kromě handlu daného resource i ukazatel na device, neboť device je potřeba pro likvidaci handlu.
+Druhý důvod je drobně vyšší spotřeba paměti u unique objektů z Vulkan.hpp.
+Ve Vulkan.hpp unique objekty obyčejně nesou kromě handlu daného resource i ukazatel na device,
+neboť device je potřeba pro likvidaci handlu.
 Navíc potřebují i allocator, který se používá vyjímečně, nicméně tam musí být.
-Místo jednoho pointeru máme tedy obyčejně tři.
+Místo jednoho pointeru (8 bajtů) máme tedy obyčejně tři (24 bajtů).
 Naše řešení je tedy zapouzdření do VulkanWindow třídy, která se postará o likvidaci
-všech zdrojů, které vlastní. Ušetříme tak trochu paměti
+všech prostředků, které vlastní. Ušetříme tak trochu paměti
 a zbavíme se škaredého kódu Deleterů, UniqueWindow a jím podobným.</p>
 
-<p>Vraťme se však ke kódu a k proměnným, které použijeme na platformě Wayland:</p>
+<p>Vraťme se však ke kódu. Následují proměnné, které použijeme na platformě Wayland:</p>
 
 <pre>
 #elif defined(USE_PLATFORM_WAYLAND)
@@ -164,7 +164,7 @@ a zbavíme se škaredého kódu Deleterů, UniqueWindow a jím podobným.</p>
 <p>V kódu vidíme, že kód je lehčí o množství Deleter objektů a že opět nepoužívá unique_ptr,
 neboť o likvidaci objektů se postará destruktor VulkanWindow.</p>
 
-<p>Následuje pár proměnných, které budeme potřebovat napříč platformami:</p>
+<p>Následuje několik proměnných, které budeme potřebovat napříč platformami:</p>
 
 <pre>
    std::function&lt;FrameCallback&gt; _frameCallback;
@@ -201,17 +201,19 @@ Takto můžeme využít destroy() i z ostatních metod.
 Například při vícenásobném zavolání init() vždy před novou inicializací VulkanWindow
 zavoláme destroy() a uvolníme tak všechny dříve alokované zdroje.</p>
 
-<p>Třetí úvaha jsou pak exceptions. Opět se potřebujeme ujistit, že při vzniku jakékoliv exception v kódu
+<p>Třetí úvaha jsou pak výjimky. Opět se potřebujeme ujistit, že při vzniku jakékoliv výjimky v kódu
 budou uvolněny všechny alokované prostředky a to i kdyby ten, kdo vyhodil výjimku, byl samotný konstruktor.
-V tom případě se totiž nevolá destruktor. Jinými slovy, destruktor je volán pouze pro objekty, pro něž doběhl
-konstruktor až do konce. Pokud tedy alokujeme něco v těle konstruktoru, měli bychom to buď uložit do proměnné,
+V případě výjimky v konstruktoru se totiž nevolá destruktor.
+Jinými slovy, destruktor je volán pouze pro objekty, pro něž doběhl konstruktor až do konce.
+Pokud tedy alokujeme něco v těle konstruktoru, měli bychom to buď uložit do proměnné,
 která má destruktor zodpovědný za případé uvolnění, např. unique_ptr,
 nebo bychom měli kód konstruktoru uzavřít do try-catch bloku
 a být připraveni uvolnit již alokované prostředky.
 Před tělem konstruktoru pak může probíhat ještě "member initialization" - inicializace členů třídy.
 Tam ale nemáme možnost žádné výjimky odchytávat.
-Proto členy třídy například inicializujeme pouze na nullptr a samotnou případnou alokaci
-provedeme až v těle konstruktoru, kde již máme možnost odchytat výjimky a případně po sobě korektně uklidit.
+Proto členy třídy, které sami nemají destruktor, například inicializujeme pouze na nullptr
+a samotnou případnou alokaci provedeme až v těle konstruktoru,
+kde již máme možnost odchytat výjimky a případně po sobě korektně uklidit.
 My zmíněné problémy obejdeme už v návrhu tím, že v konstruktoru nic nealokujeme
 a přenecháme tuto činnost až do metody init().</p>
 
@@ -228,11 +230,11 @@ které budeme pravděpodobně potřebovat po zavolání VulkanWindow::init(). Js
 
 <p>První dvojice metod nastavuje callback, který bude zavolán ve chvíli, kdy je potřeba nový swapchain.
 Co je swapchain se dozvíme v příštím díle.
-A kdy jej potřebujeme znova vytvořit je typicky při změně velikosti okna.
+A kdy jej potřebujeme znova vytvořit je typicky při změně velikosti okna nebo při startu aplikace.
 Pro callbacky budeme často používat std::function pro její velkou flexibilitu.
 Někdo by mohl namítnout, že std::function není výkonnostně efektivní.
 Nicméne dle mého měření na i7-10875@2.3GHz (boost 5.1GHz) rychlost volání není nějaký problém:
-1.9 a 2.3ns při porovnání C-čkového callbacku se std::function, pokud nepředáváme žádné parametry.
+1.9 a 2.3ns při porovnání C-čkového callbacku se std::function. Toto platí, pokud nepředáváme žádné parametry.
 S počtem parametrů pak záleží na kompilátoru, jak efektivně se porve s jejich předáváním na zásobníku.
 Nicméně i pro čtyři int parametry není zpoždění velké: 2.0ns proti 3.0ns.
 Pokud se tedy nebude jednat o výkonnostně kritické rutiny,
@@ -240,11 +242,11 @@ budeme často používat std::function pro její velkou flexibilitu.
 Doplňme ještě, že samotná std::function typicky na mnou testovaných kompilátorech zabírala 32 bajtů,
 tedy 4 pointery.</p>
 
-<p>Druhá dvojice metod nastaví frame callback. Tento callback bude obsahovat kód,
-který vždy při zavolání vyrendruje nový snímek.</p>
+<p>Druhá dvojice metod nastaví frame callback. Tento callback bude zavolán vždy, když vznikne požadavek
+na vyrendrování nového snímku.</p>
 
 <p>Pátá metoda mainLoop() pak rozjede smyčku zpráv a vrátí se teprve,
-až vznikne požadavek na ukončení aplikace.</p>
+až je zavřeno okno aplikace.</p>
 
 <p>Poslední část metod tvoří gettery a statické funkce vracející seznam vyžadovaných extensions:</p>
 
@@ -266,7 +268,7 @@ Už jsme si je uvedli v minulém díle a nyní si jejich seznam pro danou plafor
 Místo toho se podíváme do VulkanWindow.cpp. Zmíníme jen to nejzajímavější, neboť používáme mnoho z kódu
 vysvětleného v minulém díle. A první zajímavost je hned ve VulkanWindow::destroy().</p>
 
-<p>Ve VulkanWindow::destroy() máme kód, který uvolňuje všechny zdroje, které VulkanWindow vlastní.
+<p>Ve VulkanWindow::destroy() máme kód, který uvolňuje všechny prostředky, které VulkanWindow vlastní.
 Kód je pak pro všechny podporované platformy. Některé použité funkce ale mohou vrátit chybový kód.
 V takových případech jsme vyhazovali výjimky. Zde si ale podobnou věc nedovolíme.
 Metoda destroy() je volána přímo z destruktoru a v rámci běhu destruktoru se opravdu nedoporučuje vyhazovat výjimky.
@@ -293,7 +295,7 @@ Tuto volbu přepínáme ve Visual C++ v nastavení projektu.</p>
 přímo do okna. Ve wndProc si funkcí GetWindowLongPtr() tento ukazatel opět vyzvedneme.
 Vše funguje díky rezervaci 8 byte ve struktuře WNDCLASSEX v položce cbWndExtra.</p>
 
-<p>Kód pro platformu Xlib je prakticky stejný a pro Wayland je jediný rozdíl přidání
+<p>Kód pro platformu Xlib je prakticky stejný. Pro Wayland je jediný větší rozdíl v přidání
 podpory pro zxdg_decoration_manager_v1 Wayland interface, který vytvoří kolem okna dekorace.
 Bez dekorací by nám chybělo i tlačítko "x" pro uzavření okna.
 Název zxdg_decoration_manager_v1 může vypadat zvláštně. Jedná se totiž ještě o nestabilní protokol
@@ -307,7 +309,8 @@ Tato změna pak bude pravděpodobně promítnuta na zdrojáky tohoto tutoriálu 
 
 <p>Při pohledu do souboru main.cpp si již nebudeme uvádět seznam globálních proměnných.
 Pouze připomínám, že jejich pořadí není náhodné, ale uvádí pořadí jejich destrukce při ukončování aplikace,
-tedy od poslední proměnné k první. Zvláště vk::Instance a pak okno a jeho alokované zdroje musí být uvolněny jako poslední.
+tedy od poslední proměnné k první.
+Zvláště vk::Instance a okno a jeho alokované zdroje musí být uvolněny jako poslední.
 V případě nedodržení těchto pravidel může sice občas aplikace fungovat zdánlivě správně,
 nicméně může havarovat na driveru jiného výrobce.
 Proto existují validační vrstvy. Ty mohou pomoci s odhalením špatného použití API Vulkan.
@@ -335,7 +338,7 @@ instance =
    );
 </pre>
 
-<p>Jediný větší rozdíl je ve specifikování vyžadovaných extensions.
+<p>Jediný větší rozdíl je ve specifikování vyžadovaných instance-level extensions.
 Na ty se nyní budeme dotazovat VulkanWindow tak, jak vidíme v tučně zvýrazněném kódu.
 VulkanWindow nám podle použité platformy vrátí vyžadované extensions.</p>
 
@@ -350,12 +353,12 @@ vk::SurfaceKHR surface =
 <p>VulkanWindow::init() nám zapouzdřilo celou konstrukci okna a vytvoření surface.
 Jako první parametr předáváme objekt vk::Instance, jako druhý rozměry okna a jako třetí titulek okna.
 Surface je nám vrácen, ale jeho vlastníkem je VulkanWindow, které se postará i o jeho uvolnění
-při ukončení aplikace. Proto si vracíme pouze vk::SurfaceKHR a ne unique objekt vk::UniqueSurfaceKHR.</p>
+při ukončení aplikace. Proto si vracíme pouze vk::SurfaceKHR a nikoliv vk::UniqueSurfaceKHR.</p>
 
 <p>Dalším úkolem je výběr kompatibilního fyzického zařízení.
 Výběr je však složitější, než v minulém díle.
 Zařízení musí podporovat VK_KHR_swapchain extension, musí mít grafickou frontu
-a podporovat prezentaci.
+a musí podporovat prezentaci.
 Zařízení, která toto splňují, si uložíme do compatibleDevices:</p>
 
 <pre>
@@ -377,7 +380,11 @@ for(vk::PhysicalDevice pd : deviceList) {
    uint32_t presentationQueueFamily = UINT32_MAX;
    vector&lt;vk::QueueFamilyProperties&gt; queueFamilyList = pd.getQueueFamilyProperties();
    for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i&lt;c; i++) {
+
+      // test for presentation support
       if(pd.getSurfaceSupportKHR(i, surface)) {
+
+         // test for graphics operations support
          if(queueFamilyList[i].queueFlags &amp; vk::QueueFlagBits::eGraphics) {
             // if presentation and graphics operations are supported on the same queue,
             // we will use single queue
@@ -396,6 +403,7 @@ for(vk::PhysicalDevice pd : deviceList) {
                graphicsQueueFamily = i;
       }
    }
+
    if(graphicsQueueFamily != UINT32_MAX &amp;&amp; presentationQueueFamily != UINT32_MAX)
       // presentation and graphics operations are supported on the different queues
       compatibleDevices.emplace_back(pd, graphicsQueueFamily, presentationQueueFamily, pd.getProperties());
@@ -403,7 +411,8 @@ for(vk::PhysicalDevice pd : deviceList) {
 }
 </pre>
 
-<p>Procházíme tedy všechna fyzická zařízení a přeskočíme ty, které nepodporují VK_KHR_swapchain extension.
+<p>Procházíme tedy všechna fyzická zařízení a přeskočíme ty, které nepodporují VK_KHR_swapchain,
+což je device-level extension.
 Pro ty, které podporují tuto extension, procházíme seznam tříd front.
 U každé se zeptáme, zda podporuje prezentaci na náš surface a zda podporuje grafické operace.
 Pokud podporuje některá třída front obojí naráz, což bude naše preferenční volba,
@@ -443,7 +452,7 @@ V dalším sledu by to pak byla virtuální grafika typicky využívající virt
 pak cpu implementace, a pak vše ostatní. Vše implementuje následující kód hledající bestDevice
 v našem seznamu compatibleDevices. Klíčovou roli zde hraje pole deviceTypeScore,
 které každému typu grafiky přiřazuje skóre. Toto skóre je ještě zvětšeno o jedničku,
-pokud zařízení používá stejnou frontu pro grafické operace i pro prezentaci.</p>
+pokud zařízení používá stejnou frontu pro grafické operace i pro prezentaci:</p>
 
 <pre>
 // choose the best device
@@ -458,11 +467,11 @@ constexpr const array deviceTypeScore = {
    20, // vk::PhysicalDeviceType::eCpu           - low score
    10, // unknown vk::PhysicalDeviceType
 };
-int bestScore = deviceTypeScore[min(unsigned(get&lt;3>(*bestDevice).deviceType), 5u)];
+int bestScore = deviceTypeScore[clamp(int(get&lt;3&gt;(*bestDevice).deviceType), 0, int(deviceTypeScore.size())-1)];
 if(get&lt;1&gt;(*bestDevice) == get&lt;2&gt;(*bestDevice))
    bestScore++;
 for(auto it=compatibleDevices.begin()+1; it!=compatibleDevices.end(); it++) {
-   int score = deviceTypeScore[min(unsigned(get&lt;3&gt;(*it).deviceType), 5u)];
+   int score = deviceTypeScore[clamp(int(get&lt;3&gt;(*it).deviceType), 0, int(deviceTypeScore.size())-1)];
    if(get&lt;1&gt;(*it) == get&lt;2&gt;(*it))
       score++;
    if(score &gt; bestScore) {
@@ -477,8 +486,12 @@ graphicsQueueFamily = get&lt;1&gt;(*bestDevice);
 presentationQueueFamily = get&lt;2&gt;(*bestDevice);
 </pre>
 
-<p>V našem případě je vybrána první diskrétní grafika, tedy NVIDIA GeForce GTX 1050.
-Následuje vytvoření logického zařízení. V kódu jsou zvýrazněny řádky, které jsou odlišné od toho,
+<p>V našem případě máme dvě diskrétní grafiky, které získaly nejvyšší skóre.
+Dnes nebudeme vymýšlet žádné další složitosti, abychom mezi nimi rozhodli,
+a jednoduše vybereme první grafiku s nejvyšším skóre, tedy NVIDIA GeForce GTX 1050.</p>
+
+<p>Následuje vytvoření logického zařízení.
+V kódu jsou zvýrazněny řádky, které jsou odlišné od toho,
 na co jsme zvyklí z minulých dílů:</p>
 
 <pre>
@@ -510,13 +523,18 @@ device =
    );
 </pre>
 
-<p>Jak vidíme, počet front nastavujeme na jednu, pokud je grafická a prezentační fronta jedna a ta samá.
-Jinak použijeme fronty dvě. V poli informací o frontách pak předáváme dvě struktury: Jedna pro grafickou a
-druhá pro prezentační frontu. Pokud používáme jedinou frontu, bude druhá struktura ignorována.
-A poslední změna nás čeká mezi požadovanými extensions, kde budeme vyžadovat podporu VK_KHR_swapchain,
+<p>V kódu jsou tři změny. První se týká počtu front.
+Tu nastavujeme na hodnotu jedna, pokud je grafická a prezentační fronta jedna a ta samá.
+Jinak použijeme fronty dvě.
+V poli informací o frontách pak předáváme dvě struktury:
+Jedna pro grafickou a druhá pro prezentační frontu.
+Pokud používáme jedinou frontu, bude druhá struktura ignorována.
+A poslední změna nás čeká mezi požadovanými extensions,
+kde budeme vyžadovat podporu VK_KHR_swapchain,
 kterou budeme používat už v příštím díle pro zobrazování na obrazovku.</p>
 
-<p>Kód v main.cpp zakončíme získáním front, nastavením prázdných callbacků a zavoláním VulkanWindow::mainLoop():</p>
+<p>Kód v main.cpp zakončíme získáním front, nastavením prázdných callbacků
+a zavoláním VulkanWindow::mainLoop():</p>
 
 <pre>
 // get queues
