@@ -1,4 +1,4 @@
-<h1>Vulkan: Window class (10. díl)</h1>
+<h1>Vulkan: třída zapouzdřující okno (10. díl)</h1>
 
 <p>Minule jsme si ukázali, jak otevřít okno na třech plaformách.
 Dnes vytvoříme třídu zapouzdřující okno Vulkanu
@@ -13,7 +13,7 @@ na noteboocích se dvěma grafikami, kde můžeme preferovat, aby se aplikace
 nespustila na integrované grafice, ale aby běžela na dedikované grafice
 a využila tak plného grafického potenciálu, který daný notebook skrývá.</p>
 
-<p>Zdrojáky si můžeme <a href="10-windowClass.zip">stáhnout</a> a zkusit zkompilovat.</p>
+<p>Můžeme si <a href="10-windowClass.zip">stáhnout zdrojáky</a> a zkusit je zkompilovat.</p>
 
 
 <h3>Zapouzdření do VulkanWindow</h3>
@@ -52,7 +52,7 @@ a definicí typů v globálním namespace.
 Ty pak kolidují s názvy proměnných a funkcí v našem vlastním kódu.
 Navíc, includovat windows.h znamená na mém i7-10875@2.3GHz (boost 5.1GHz)
 prodloužit kompilaci o 350ms v každém souboru, kde je includován.
-To samozřejmě platí pro jednovláknovou kompilaci, ale i při paralelní kompilaci
+To samozřejmě platí pro jednovláknovou kompilaci. Ale i při paralelní kompilaci
 je každé vlákno zpožděno přibližně o tento čas.
 Definovat si typy HWND, HINSTANCE a ATOM sami nám ušetří všechny tyto problémy.
 Pro platformu Xlib provedeme totéž a definujeme typy Display, Window a Atom.
@@ -75,7 +75,7 @@ neboť ta tvoří srdce třídy, nikoliv desítky metod, která nad těmito daty
 Data budeme dávat nejčastěji jako protected. Výjiměčně se však vyskytnou typy,
 které potřebujeme definovat úplně hned na začátku třídy.
 Zde je to FrameCallback a RecreateSwapchainCallback.
-Tyto callbacky pak po zaregistrování budeme volat z této třídy.</p>
+Callbacky těchto typů pak budeme volat z této třídy.</p>
 
 <p>Následují proměnné, jak bylo avizováno, na začátku třídy.
 Začneme proměnnými pro Win32 a Xlib platformu:</p>
@@ -104,7 +104,7 @@ Začneme proměnnými pro Win32 a Xlib platformu:</p>
 
 <p>Význam jednotlivých proměnných si vysvětlíme až v kódu, nicméně z velké části
 jejich význam můžeme tušit z minulého dílu. Mnohé může zarazit použití podtržítka
-před názvem proměnné. Objevila se totiž praxe převzatá z jazyka Python začínat
+před názvy proměnných. Objevila se totiž praxe převzatá z jazyka Python začínat
 privátní (či protected) proměnné ve třídách podtržítkem. Objevily se dokonce názory,
 že je to proti standardu C++, ale není. C a C++ nedovoluje dvě podtržítka na začátku
 a nedovoluje jedno podtržítko následované velkým písmenem.
@@ -113,8 +113,8 @@ V globálním namespace jsou však jména začínající podtržítkem rezervova
 Globální proměnné tedy nikdy začínat podtržítkem nebudeme.</p>
 
 <p>Druhá věc, která nás může překvapit, je nepoužití unique objektů pro jednotlivé proměnné,
-které by velmi elegantně zajištovaly korektní uvolňování zdrojů při výjimkách.
-Místo toho budeme všechny alokované zdroje uvolňovat v destruktoru VulkanWindow.
+které by velmi elegantně zajištovaly korektní uvolňování prostředků při výjimkách.
+Místo toho budeme všechny alokované prostředky uvolňovat v destruktoru VulkanWindow.
 Proč takováto změna?</p>
 
 <p>Argumenty pro toto řešení jsou dva: Jednak to odstraní nutnost struktur UniqueWindow
@@ -123,7 +123,7 @@ Druhý důvod je drobně vyšší spotřeba paměti u unique objektů z Vulkan.h
 Ve Vulkan.hpp unique objekty obyčejně nesou kromě handlu daného resource i ukazatel na device,
 neboť device je potřeba pro likvidaci handlu.
 Navíc potřebují i allocator, který se používá vyjímečně, nicméně tam musí být.
-Místo jednoho pointeru (8 bajtů) máme tedy obyčejně tři (24 bajtů).
+Místo jednoho pointeru (8 bajtů) tedy máme obyčejně tři (24 bajtů).
 Naše řešení je tedy zapouzdření do VulkanWindow třídy, která se postará o likvidaci
 všech prostředků, které vlastní. Ušetříme tak trochu paměti
 a zbavíme se škaredého kódu Deleterů, UniqueWindow a jím podobným.</p>
@@ -161,8 +161,9 @@ a zbavíme se škaredého kódu Deleterů, UniqueWindow a jím podobným.</p>
 #endif
 </pre>
 
-<p>V kódu vidíme, že kód je lehčí o množství Deleter objektů a že opět nepoužívá unique_ptr,
-neboť o likvidaci objektů se postará destruktor VulkanWindow.</p>
+<p>V kódu vidíme, že kód je lehčí o množství Deleter objektů a že,
+tak jako na předchozích dvou platformách, opět nepoužívá unique_ptr.
+O likvidaci objektů se totiž postará destruktor VulkanWindow.</p>
 
 <p>Následuje několik proměnných, které budeme potřebovat napříč platformami:</p>
 
@@ -206,7 +207,7 @@ budou uvolněny všechny alokované prostředky a to i kdyby ten, kdo vyhodil v�
 V případě výjimky v konstruktoru se totiž nevolá destruktor.
 Jinými slovy, destruktor je volán pouze pro objekty, pro něž doběhl konstruktor až do konce.
 Pokud tedy alokujeme něco v těle konstruktoru, měli bychom to buď uložit do proměnné,
-která má destruktor zodpovědný za případé uvolnění, např. unique_ptr,
+která má destruktor zodpovědný za případné uvolnění, např. unique_ptr,
 nebo bychom měli kód konstruktoru uzavřít do try-catch bloku
 a být připraveni uvolnit již alokované prostředky.
 Před tělem konstruktoru pak může probíhat ještě "member initialization" - inicializace členů třídy.
@@ -264,7 +265,7 @@ až je zavřeno okno aplikace.</p>
 <p>Vyžadované extensions se liší podle platformy.
 Už jsme si je uvedli v minulém díle a nyní si jejich seznam pro danou plaformu snadno dohledáme v kódu.</p>
 
-<p>Implementace všech inline method je triviální a samovysvětlující, takže si je ani nebudeme uvádět.
+<p>Implementace všech inline metod je triviální a samovysvětlující, takže si je ani nebudeme uvádět.
 Místo toho se podíváme do VulkanWindow.cpp. Zmíníme jen to nejzajímavější, neboť používáme mnoho z kódu
 vysvětleného v minulém díle. A první zajímavost je hned ve VulkanWindow::destroy().</p>
 
@@ -273,7 +274,9 @@ Kód je pak pro všechny podporované platformy. Některé použité funkce ale 
 V takových případech jsme vyhazovali výjimky. Zde si ale podobnou věc nedovolíme.
 Metoda destroy() je volána přímo z destruktoru a v rámci běhu destruktoru se opravdu nedoporučuje vyhazovat výjimky.
 Metodu destroy() tedy označíme jako noexcept a případné chyby budeme v release configuraci ignorovat
-a v debug je oznámíme programátorovi assertem.</p>
+a v debug je oznámíme programátorovi assertem.
+Dobře navržené API by totiž spíše nemělo vracet chyby při uvolňování prostředků,
+kromě výjimek jako je špatné použití API a podobně.</p>
 
 <p>Do metody VulkanWindow::init() se přemístilo mnoho kódu ze všech třech platforem minulého dílu.
 Na platformě Win32 si můžeme všimnout, že jsme doplnili obsluhu dalších zpráv.
@@ -282,7 +285,7 @@ Vyčistit pozadí okna před rendrováním nepotřebujeme, takže pouze vrátím
 Nicméně WM_PAINT je zajímavější. Za prvé musíme validovat obsah okna, aby nám zpráva WM_PAINT
 nechodila stále dokola. To provedeme funkcí ValidateRect().
 Za druhé zavoláme náš frame callback, aby se vyrendroval obsah okna.
-A za třetí musíme uvážit, že v tomto kódu může vzniknout výjimka a WIN32 API nemá rádo,
+A za třetí musíme uvážit, že v tomto kódu může vzniknout výjimka a Win32 API nemá rádo,
 když se šíří výjimky ven z funkce pro obsluhu zpráv okna.
 Všechny výjimky tedy odchytíme a uložíme si je do wndProcException.
 V hlavní smyčce aplikace je pak znova vyhodíme.</p>
