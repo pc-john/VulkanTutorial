@@ -104,7 +104,7 @@ public:
 
 	// required Vulkan Instance extensions
 	static const std::vector<const char*>& requiredExtensions();
-	static void appendRequiredExtensions(std::vector<const char*>& v);
+	static std::vector<const char*>& appendRequiredExtensions(std::vector<const char*>& v);
 	static uint32_t requiredExtensionCount();
 	static const char* const* requiredExtensionNames();
 
@@ -121,6 +121,6 @@ inline vk::SurfaceKHR VulkanWindow::surface() const  { return _surface; }
 inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return _surfaceExtent; }
 inline void VulkanWindow::scheduleSwapchainResize()  { _swapchainResizePending = true; _framePending = true; }
 inline const std::vector<const char*>& VulkanWindow::requiredExtensions()  { return _requiredInstanceExtensions; }
-inline void VulkanWindow::appendRequiredExtensions(std::vector<const char*>& v)  { v.insert(v.end(), _requiredInstanceExtensions.begin(), _requiredInstanceExtensions.end()); }
+inline std::vector<const char*>& VulkanWindow::appendRequiredExtensions(std::vector<const char*>& v)  { v.insert(v.end(), _requiredInstanceExtensions.begin(), _requiredInstanceExtensions.end()); return v; }
 inline uint32_t VulkanWindow::requiredExtensionCount()  { return uint32_t(_requiredInstanceExtensions.size()); }
 inline const char* const* VulkanWindow::requiredExtensionNames()  { return _requiredInstanceExtensions.data(); }
