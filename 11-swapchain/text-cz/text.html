@@ -1,66 +1,67 @@
-<h1>Vulkan: Swapchain (11. díl)</h1>
+<h1>Vulkan: swapchain (11. díl)</h1>
 
 <p>Minule jsme vytvořili třídu VulkanWindow.
-Tématem dneška bude swapchain, tedy objekt Vulkan API
+Tématem dneška bude swapchain, tedy objekt
 pro zobrazování výsledků rendrování v okně.</p>
 
-<p>Swapchain znamená česky něco jako vyměňovací řetěz, či vyměňovací soustrojí.
-Dokumentace k Vulkan definuje swapchain jako objekt,
-který poskytuje schopnost zobrazit výsledky rendrování na surface.
+<p>Swapchain doslova znamená česky něco jako vyměňovací řetěz, či vyměňovací soustrojí.
+Pro nás tedy, vágně řečeno, soustrojí, které vyměňuje obrázky na obrazovce tak,
+jak je postupně rendrujeme.
+Samotná dokumentace k Vulkan definuje swapchain jako objekt,
+který "poskytuje schopnost zobrazit výsledky rendrování na surface".
 A protože většinou nerendrujeme jediný obrázek,
 tak jako ani film není složen z jediného obrázku,
 je potřeba je jeden za druhým vyměňovat tak,
-aby například vznikla na obrazovce vizualizace nějakého děje.</p>
+aby vznikla na obrazovce například plynulá vizualizace nějakého děje.</p>
 
-<p>V tomto dílu si nejprve vypíšeme seznam podporovaných formátů.
+<p>V tomto díle si nejprve vypíšeme seznam surface formátů,
+který náš surface podporuje.
 Z nich si vybereme jeden, který následně použijeme při vytváření swapchainu.
-Pak si mimo jiné vytvoříme objekt framebufferu a
+Pak, zkráceně řečeno, si vytvoříme objekt framebufferu, do něj vyrendrujeme trojúhelník
+a výsledek rendrování za pomoci swapchainu zobrazíme na obrazovce.</p>
 
-Tento díl bude mít několik cílů. Nejprve sjednotíme
-všechny naše zdrojáky z minulého dílu do jediného objektu
-VulkanWindow. Pak si vytvoříme swapchain a zobrazíme
-vyrendrovanou barvu pozadí na nás surface.</p>
-
-<p>Zdrojáky si můžeme <a href="">stáhnout</a> a zkusit zkompilovat.</p>
+<p>Můžeme si <a href="11-swapchain.zip">stáhnout zdrojáky</a> a zkusit je zkompilovat.</p>
 
 
 <h3>Výběr surface formátu</h3>
 
-<p>V minulém díle jsme nevybírali použité fyzické zařízení ze všech dostupných zařízení,
-ale přeskočili jsme všechna, která nepodporují VK_KHR_swapchain extension.
-Dále jsme tuto extension povolili při vytváření logického zařízení.
-A dnes tuto extension použijeme.</p>
-
-<p>Nejprve si ale vypíšeme seznam podporovaných surface formátů:</p>
+<p>V minulém díle jsme v seznamu dostupných zařízení přeskočili
+všechna, která nepodporují VK_KHR_swapchain extension.
+Pak jsme mezi zbylými zařízeními vybrali jedno,
+pro které jsme při vytváření logického zařízení povolili tuto extension.
+A dnes tuto extension použijeme. K tomu ale potřebujeme vybrat surface formát.
+Začneme tedy výpisem podporovaných surface formátů,
+což provedeme hned po vytvoření logického zařízení:</p>
 
 <pre>
 // print surface formats
 cout &lt;&lt; "Surface formats:" &lt;&lt; endl;
 vector&lt;vk::SurfaceFormatKHR&gt; availableSurfaceFormats = physicalDevice.getSurfaceFormatsKHR(surface);
 for(vk::SurfaceFormatKHR sf : availableSurfaceFormats)
-	cout &lt;&lt; "   " &lt;&lt; vk::to_string(sf.format) &lt;&lt; " " &lt;&lt; vk::to_string(sf.colorSpace) &lt;&lt; endl;
+   cout &lt;&lt; "   " &lt;&lt; vk::to_string(sf.format) &lt;&lt; ", color space: " &lt;&lt; vk::to_string(sf.colorSpace) &lt;&lt; endl;
 </pre>
 
 <p>Jejich výpis může vypadat například takto:</p>
 
 <pre>
 Surface formats:
-   B8G8R8A8Unorm SrgbNonlinear
-   B8G8R8A8Srgb SrgbNonlinear
-   A2B10G10R10UnormPack32 SrgbNonlinear
+   B8G8R8A8Unorm, color space: SrgbNonlinear
+   B8G8R8A8Srgb, color space: SrgbNonlinear
+   A2B10G10R10UnormPack32, color space: SrgbNonlinear
 </pre>
 
-<p>Vidíme podporu B8G8R8A8 formátu v podobě Unorm a Srgb.
-Druhá položka na každém řádku je SrgbNonlinear, což je barevný prostor obrazovky, anglicky color space.
-Většina obrazovek dnes používá <a href="https://en.wikipedia.org/wiki/SRGB">sRGB</a> barevný prostor.
+<p>V první položce na každém řádku vidíme podporu B8G8R8A8 formátu v podobě Unorm a Srgb.
+Druhá položka je pak SrgbNonlinear, což je barevný prostor obrazovky, anglicky color space.
+Půjdeme-li do technických detailů, tak většina obrazovek dnes používá
+<a href="https://en.wikipedia.org/wiki/SRGB">sRGB</a> barevný prostor.
 A to je přesně, co značí SrgbNonlinear.
 Barvy jsou shodné se standardem <a href="https://en.wikipedia.org/wiki/Rec._709">BT.709</a>,
 ale transférová funkce je trochu jiná. Pro nás stačí vědět, že je to přibližně
 <a href="https://en.wikipedia.org/wiki/Gamma_correction">gamma</a> s koeficientem 2.2.</p>
 
 <p>A když už jsme zmínili, že gamma není rovno jedné, znamená to,
-že 256 hodnot, kterou máme pro každou z barevných složek RGB, není rozloženo linearně.
-Rozdíl mezi 0 a 1 je mnohem menší než rozdíl mezi 254 a 255.
+že 256 hodnot, kterou typicky máme pro každou z barevných složek RGB, není rozloženo linearně.
+Rozdíl mezi hodnotami 0 a 1 nebo 1 a 2 je mnohem menší, než rozdíl mezi hodnotami 254 a 255,
 U nízkých hodnot tedy dochází ke kompresi a u vysokých k expanzi.
 Historicky toto zakódování vzniklo díky starým CRT obrazovkám, které tímto způsobem zobrazovaly.
 Nicméně i dnes v době LCD obrazovek má toto kódování smysl,
@@ -77,73 +78,95 @@ automaticky zkonvertována gamma konverzí na odpovídající sRGB hodnotu a zap
 Pokud bychom použili formát, který není Srgb, v našem případě tedy jeden ze dvou formátů Unorm,
 museli bychom si gamma konverzi počítat v shaderu sami.</p>
 
+<p>Při color space SrgbNonlinear jsou hodnoty v color bufferu interpretovány jako sRGB hodnoty
+a i na obrazovku obyčejně putují jako sRGB hodnoty. Obrazovka je pak korektně zpracuje
+a zobrazí každou hodnotu jako pixel vyzařující to správné množství fotonů
+odpovídající dané sRGB hodnotě.</p>
+
+<p>Doplňme ještě, že kromě <a href="https://en.wikipedia.org/wiki/SRGB">sRGB</a> barevného prostoru z roku 1996,
+který umožňuje zobrazit asi třetinu z viditelného barevného spektra (dle specifikace
+<a href="https://en.wikipedia.org/wiki/CIE_1931_color_space">CIE 1931</a>),
+máme i poměrně známý <a href="https://en.wikipedia.org/wiki/Adobe_RGB_color_space">Adobe RGB</a> z roku 1998,
+který umožňuje zobrazit asi polovinu viditelných barev a dále třeba moderní
+<a href="https://en.wikipedia.org/wiki/Rec._2020">Rec. 2020</a> z roku 2012,
+který umí asi tři čtvrtiny viditelných barev.
+Pro zobrazení tak velkého barevného rozsahu však potřebujeme především obrazovku,
+projektor nebo tiskárnu, která takovýto rozsah zvládá.
+My však pro tuto chvíli zůstaňme u široce rozšířeného sRGB, který je ve Vulkanu snadno použitelný.</p>
+
 <p>Následuje kód výběru formátu:</p>
 
 <pre>
 // choose surface format
 constexpr const array allowedSurfaceFormats{
-	vk::SurfaceFormatKHR{ vk::Format::eB8G8R8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear },
-	vk::SurfaceFormatKHR{ vk::Format::eR8G8B8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear },
-	vk::SurfaceFormatKHR{ vk::Format::eA8B8G8R8SrgbPack32, vk::ColorSpaceKHR::eSrgbNonlinear },
+   vk::SurfaceFormatKHR{ vk::Format::eB8G8R8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear },
+   vk::SurfaceFormatKHR{ vk::Format::eR8G8B8A8Srgb, vk::ColorSpaceKHR::eSrgbNonlinear },
+   vk::SurfaceFormatKHR{ vk::Format::eA8B8G8R8SrgbPack32, vk::ColorSpaceKHR::eSrgbNonlinear },
 };
 if(availableSurfaceFormats.size()==1 &amp;&amp; availableSurfaceFormats[0].format==vk::Format::eUndefined)
-	// Vulkan spec allowed single eUndefined value until 1.1.111 (2019-06-10)
-	// with the meaning you can use any valid vk::Format value.
-	// Now, it is forbidden, but let's handle any old driver.
-	surfaceFormat = allowedSurfaceFormats[0];
+   // Vulkan spec allowed single eUndefined value until 1.1.111 (2019-06-10)
+   // with the meaning you can use any valid vk::Format value.
+   // Now, it is forbidden, but let's handle any old driver.
+   surfaceFormat = allowedSurfaceFormats[0];
 else {
-	<b>for(vk::SurfaceFormatKHR sf : availableSurfaceFormats) {
-		auto it = std::find(allowedSurfaceFormats.begin(), allowedSurfaceFormats.end(), sf);
-		if(it != allowedSurfaceFormats.end()) {
-			surfaceFormat = *it;
-			goto surfaceFormatFound;
-		}
-	}</b>
-	if(availableSurfaceFormats.size() == 0)  // Vulkan must return at least one format (this is mandated since Vulkan 1.0.37 (2016-10-10), but was missing in the spec before probably because of omission)
-		throw std::runtime_error("Vulkan error: getSurfaceFormatsKHR() returned empty list.");
-	surfaceFormat = availableSurfaceFormats[0];
+   <b>for(vk::SurfaceFormatKHR sf : availableSurfaceFormats) {
+      auto it = std::find(allowedSurfaceFormats.begin(), allowedSurfaceFormats.end(), sf);
+      if(it != allowedSurfaceFormats.end()) {
+         surfaceFormat = *it;
+         goto surfaceFormatFound;
+      }
+   }</b>
+   if(availableSurfaceFormats.size() == 0)  // Vulkan must return at least one format (this is mandated since Vulkan 1.0.37 (2016-10-10), but was missing in the spec before probably because of omission)
+      throw std::runtime_error("Vulkan error: getSurfaceFormatsKHR() returned empty list.");
+   surfaceFormat = availableSurfaceFormats[0];
 surfaceFormatFound:;
 }
 cout &lt;&lt; "Using format:\n"
-     &lt;&lt; "   " &lt;&lt; to_string(surfaceFormat.format) &lt;&lt; " " &lt;&lt; to_string(surfaceFormat.colorSpace) &lt;&lt; endl;
+     &lt;&lt; "   " &lt;&lt; to_string(surfaceFormat.format) &lt;&lt; ", color space: " &lt;&lt; to_string(surfaceFormat.colorSpace) &lt;&lt; endl;
 </pre>
 
 <p>V naší aplikaci budeme podporovat tři formáty, které máme v poli allowedSurfaceFormats.
-Ten, který z nich nalezneme jako první mezi těmi, které nám vrátil Vulkan, ten použijeme.
+Použijeme ten, který z nich nalezneme jako první mezi těmi, které nám vrátil Vulkan.
 Kód je trochu složitější, protože ošetřuje nestandardní situace, ale jádro je jediný cyklus for,
-který je zvýrazněn tučně a který prochází všechny availableSurfaceFormats.</p>
+který je zvýrazněn tučně a který prochází všechny availableSurfaceFormats.
+Po proběhnutí celého algoritmu vypíšeme vybraný surface formát.</p>
 
-<p>Kód vytváření renderPasu můžeme přeskočit, neboť je stejný jako v minulých dílech.
+<p>Následuje vytvoření renderPasu.
+Tento kód můžeme přeskočit, neboť je stejný jako v minulých dílech.
 Můžeme se tedy vrhnout na vytvoření swapchainu
-v callbacku VulkanWindow::setRecreateSwapchainCallback().</p>
+v callbacku VulkanWindow::setRecreateSwapchainCallback(),
+který je v kódu další v pořadí a který je zároveň hlavním tématem dnešního dílu.</p>
 
 <h3>Swapchain</h3>
 
 <p>Swapchain nám umožňuje zobrazit výsledky rendrování na vk::Surface.
-Swapchain je abstrakce pro skupinu vk::Image obrázků svázaných s vk::Surface,
-které mohou být prezentovány na daném vk::Surface.</p>
+Z pohledu programátora je swapchain abstrakce pro skupinu vk::Image obrázků
+svázaných s vk::Surface, které mohou být prezentovány na tomto vk::Surface.</p>
 
-<p>Swapchain typicky vytváříme vždy znova při změně velikosti okna.
-Proto si pro jeho nové vytvoření uděláme callback.
-To v našem kódu uděláme tak, že zavoláme VulkanWindow::setRecreateSwapchainCallback()
-a jako parametr předáme lambda funkci dělající vše potřebné:</p>
+<p>Swapchain vytváříme nejen při vytváření okna,
+ale kdykoliv, když vznikne požadavek na jeho nové vytvoření.
+To se typicky děje například při změně velikosti okna.
+Našim řešením je callback, který VulkanWindow zavolá, kdykoliv potřebuje nový swapchain.
+Tento callback zaregistrujeme metodou VulkanWindow::setRecreateSwapchainCallback().
+Jako parametr předáme lambda funkci dělající vše potřebné:</p>
 
 <pre>
 window.setRecreateSwapchainCallback(
-	[](const vk::SurfaceCapabilitiesKHR&amp; surfaceCapabilities, vk::Extent2D newSurfaceExtent) {
+   [](const vk::SurfaceCapabilitiesKHR&amp; surfaceCapabilities, vk::Extent2D newSurfaceExtent) {
 
-		// clear resources
-		swapchainImageViews.clear();
-		framebuffers.clear();
+      // clear resources
+      swapchainImageViews.clear();
+      framebuffers.clear();
 
-		// print info
-		cout &lt;&lt; "Recreating swapchain (extent: " &lt;&lt; newSurfaceExtent.width &lt;&lt; "x" &lt;&lt; newSurfaceExtent.height
-		     &lt;&lt; ", extent by surfaceCapabilities: " &lt;&lt; surfaceCapabilities.currentExtent.width &lt;&lt; "x"
-		     &lt;&lt; surfaceCapabilities.currentExtent.height &lt;&lt; ", minImageCount: " &lt;&lt; surfaceCapabilities.minImageCount
-		     &lt;&lt; ", maxImageCount: " &lt;&lt; surfaceCapabilities.maxImageCount &lt;&lt; ")" &lt;&lt; endl;
+      // print info
+      cout &lt;&lt; "Recreating swapchain (extent: " &lt;&lt; newSurfaceExtent.width &lt;&lt; "x" &lt;&lt; newSurfaceExtent.height
+           &lt;&lt; ", extent by surfaceCapabilities: " &lt;&lt; surfaceCapabilities.currentExtent.width &lt;&lt; "x"
+           &lt;&lt; surfaceCapabilities.currentExtent.height &lt;&lt; ", minImageCount: " &lt;&lt; surfaceCapabilities.minImageCount
+           &lt;&lt; ", maxImageCount: " &lt;&lt; surfaceCapabilities.maxImageCount &lt;&lt; ")" &lt;&lt; endl;
 </pre>
 
-<p>Jako první uvolníme případně dříve alokované zdroje a vypíšeme si některé informace.</p>
+<p>Jako první uvolníme případně dříve alokované prostředky a vypíšeme si některé informace,
+které by nás mohly zajímat.</p>
 
 <p>Pak následuje vytvoření nového swapchainu:</p>
 
@@ -151,28 +174,28 @@ window.setRecreateSwapchainCallback(
 // create new swapchain
 constexpr const uint32_t requestedImageCount = 2;
 vk::UniqueSwapchainKHR newSwapchain =
-	device->createSwapchainKHRUnique(
-		vk::SwapchainCreateInfoKHR(
-			vk::SwapchainCreateFlagsKHR(),  // flags
-			window.surface(),               // surface
-			surfaceCapabilities.maxImageCount==0  // minImageCount
-				? max(requestedImageCount, surfaceCapabilities.minImageCount)
-				: clamp(requestedImageCount, surfaceCapabilities.minImageCount, surfaceCapabilities.maxImageCount),
-			surfaceFormat.format,           // imageFormat
-			surfaceFormat.colorSpace,       // imageColorSpace
-			newSurfaceExtent,               // imageExtent
-			1,                              // imageArrayLayers
-			vk::ImageUsageFlagBits::eColorAttachment,  // imageUsage
-			(graphicsQueueFamily==presentationQueueFamily) ? vk::SharingMode::eExclusive : vk::SharingMode::eConcurrent, // imageSharingMode
-			(graphicsQueueFamily==presentationQueueFamily) ? uint32_t(0) : uint32_t(2),  // queueFamilyIndexCount
-			(graphicsQueueFamily==presentationQueueFamily) ? nullptr : array&lt;uint32_t,2&gt;{graphicsQueueFamily,presentationQueueFamily}.data(),  // pQueueFamilyIndices
-			surfaceCapabilities.currentTransform,    // preTransform
-			vk::CompositeAlphaFlagBitsKHR::eOpaque,  // compositeAlpha
-			vk::PresentModeKHR::eFifo,  // presentMode
-			VK_TRUE,  // clipped
-			swapchain.get()  // oldSwapchain
-		)
-	);
+   device->createSwapchainKHRUnique(
+      vk::SwapchainCreateInfoKHR(
+         vk::SwapchainCreateFlagsKHR(),  // flags
+         window.surface(),               // surface
+         surfaceCapabilities.maxImageCount==0  // minImageCount
+            ? max(requestedImageCount, surfaceCapabilities.minImageCount)
+            : clamp(requestedImageCount, surfaceCapabilities.minImageCount, surfaceCapabilities.maxImageCount),
+         surfaceFormat.format,           // imageFormat
+         surfaceFormat.colorSpace,       // imageColorSpace
+         newSurfaceExtent,               // imageExtent
+         1,                              // imageArrayLayers
+         vk::ImageUsageFlagBits::eColorAttachment,  // imageUsage
+         (graphicsQueueFamily==presentationQueueFamily) ? vk::SharingMode::eExclusive : vk::SharingMode::eConcurrent, // imageSharingMode
+         (graphicsQueueFamily==presentationQueueFamily) ? uint32_t(0) : uint32_t(2),  // queueFamilyIndexCount
+         (graphicsQueueFamily==presentationQueueFamily) ? nullptr : array&lt;uint32_t, 2&gt;{graphicsQueueFamily, presentationQueueFamily}.data(),  // pQueueFamilyIndices
+         surfaceCapabilities.currentTransform,    // preTransform
+         vk::CompositeAlphaFlagBitsKHR::eOpaque,  // compositeAlpha
+         vk::PresentModeKHR::eFifo,  // presentMode
+         VK_TRUE,  // clipped
+         swapchain.get()  // oldSwapchain
+      )
+   );
 swapchain = move(newSwapchain);
 </pre>
 
@@ -183,6 +206,10 @@ Jeden pro front a druhý pro back buffer.
 Front buffer je typicky zobrazován na obrazovce a do back bufferu kreslíme.
 Až je obrázek dokončen, je dán swapchainu požadavek k prohození těchto dvou bufferů.</p>
 
+<p>Někdo může argumentovat, že při tripple bufferingu, tedy třech obrázcích, dosáhne vyššího výkonu.
+My se ale tripple bufferingu vyhneme, protože prodlužuje latenci od začátku rendrování po chvíli,
+kdy se obrázek dostane na obrazovku. Kvůli latenci tedy budeme preferovat double buffering.</p>
+
 <p>Pojďme na jednotlivé parametry, které předáváme pro vytvoření swapchainu.
 Prvním netriviálním parametrem je třetí parametr, tedy minImageCount.
 Zde potřebujeme omezit náš requestedImageCount do mezí, které podporuje surface.
@@ -190,115 +217,126 @@ Kód není obyčejný clamp(), protože maxImageCount může být nulový, což 
 Musíme tedy uzpůsobit kód, aby správně ošetřil tento případ.</p>
 
 <p>Jako další parametry předáváme formát a colorSpace, které jsme dříve vybrali.
-Parametr imageExtent nastavíme na rozměry okna, přesněji řečeno na rozměry klientské části okna, tedy okna bez dekorace.</p>
+Parametr imageExtent nastavíme na rozměry okna,
+přesněji řečeno, na rozměry klientské části okna, tedy okna bez dekorace.</p>
 
 <p>K zajímavým parametrům patří ještě imageSharingMode, který nastavíme na eConcurrent,
-pokud používáme jinou frontu tříd pro rendering a jinou pro prezentaci.
+pokud používáme jinou třídu front pro rendering a jinou pro prezentaci.
 Při eConcurrent sharing mode pak musíme nastavit i následující dva parametry, které udávají,
 které třidy front budou se swapchainem pracovat.</p>
 
-<p>Dalšími parametry říkáme, že obraz nebudeme transformovat ani nechceme provádět alpha-blending
-s okny a pozadím za naším oknem, jinými slovy, nemáme poloprůhledné okno.
+<p>Dalšími parametry říkáme, že obraz nebudeme transformovat, ani nechceme provádět alpha-blending
+s okny a pozadím, které se nacházejí za naším oknem. Jinými slovy, nemáme poloprůhledné okno.
 Parametr presentMode si vysvětlíme v budoucnu. Prozatím jej necháme na hodnotě eFifo,
 což v případě dvou bufferů odpovídá jednoduché funkci double-bufferingu.</p>
 
-<p>Parametr clipped necháme na hodnotě VK_TRUE, abychom dovolili driveru nerendrovat části okna,
+<p>Parametr clipped nastavíme na hodnotu VK_TRUE, abychom dovolili driveru nerendrovat části okna,
 které jsou například zakryty jiným oknem nebo jinak neviditelné.
 Poslední parametr oldSwapchain nastavíme na předchozí swapchain, který jsme pro okno měli vytvořen,
-a tím umožníme recyklovat mnohé objekty a zdroje. Ty pak nejsou zbytečně se starým swapchainem zlikvidovány
+a tím umožníme recyklovat mnohé objekty a prostředky.
+Ty pak nejsou zbytečně se starým swapchainem zlikvidovány
 a nejsou znova alokovány v novém swapchainu. Co Vulkan zrecykluje pak záleží na driveru.
 Pokud aplikace právě startuje a proměnná swapchain obsahuje ještě nullptr,
-není pochopitelně ještě co recyklovat a Vulkan tak musí vše vytvořit.
-Nicméně pokud při každé změně velikosti okna znovuvytváříme swapchain, je to pěkná optimalizace.
-Starý swapchain je pak uvolněn na posledním řádku ve chvíli přiřazení newSwapchain do proměnné swapchain.</p>
+není pochopitelně ještě co recyklovat a Vulkan si vše vytvoří sám.
+Nicméně pokud při každé změně velikosti okna znovu vytváříme swapchain, je to pěkná optimalizace.
+Starý swapchain je pak uvolněn na posledním řádku
+ve chvíli přiřazení newSwapchain do proměnné swapchain.
+Připoměňme, že se jedná o unique objekty.</p>
 
-<p>V dalším kroku si převezmeme seznam vk::Image, které vlastní vytvořený swapchain,
-a pro každy z nich si vytvoříme ImageView:</p>
+<p>V dalším kroku získáme ze swapchainu seznam vk::Images,
+které si swapchain vytvořil při jeho konstrukci a kterých je také vlastníkem
+a postará se o jejich uvolnění.
+Pro každý vk::Image si pak vytvoříme vk::ImageView:</p>
 
 <pre>
 // swapchain image views
 vector&lt;vk::Image&gt; swapchainImages = device->getSwapchainImagesKHR(swapchain.get());
 swapchainImageViews.reserve(swapchainImages.size());
 for(vk::Image image : swapchainImages)
-	swapchainImageViews.emplace_back(
-		device->createImageViewUnique(
-			vk::ImageViewCreateInfo(
-				vk::ImageViewCreateFlags(),  // flags
-				image,                       // image
-				vk::ImageViewType::e2D,      // viewType
-				surfaceFormat.format,        // format
-				vk::ComponentMapping(),      // components
-				vk::ImageSubresourceRange(   // subresourceRange
-					vk::ImageAspectFlagBits::eColor,  // aspectMask
-					0,  // baseMipLevel
-					1,  // levelCount
-					0,  // baseArrayLayer
-					1   // layerCount
-				)
-			)
-		)
-	);
+   swapchainImageViews.emplace_back(
+      device->createImageViewUnique(
+         vk::ImageViewCreateInfo(
+            vk::ImageViewCreateFlags(),  // flags
+            image,                       // image
+            vk::ImageViewType::e2D,      // viewType
+            surfaceFormat.format,        // format
+            vk::ComponentMapping(),      // components
+            vk::ImageSubresourceRange(   // subresourceRange
+               vk::ImageAspectFlagBits::eColor,  // aspectMask
+               0,  // baseMipLevel
+               1,  // levelCount
+               0,  // baseArrayLayer
+               1   // layerCount
+            )
+         )
+      )
+   );
 </pre>
 
-<p>ImageView jsme si už představili v <a href="">šestém díle</a> tohoto tutoriálu, kde jsme si řekli,
-že nám poskytuje něco jako "pohled do obrázku".
+<p>ImageView jsme si už představili
+v <a href="https://www.root.cz/clanky/vulkan-prvni-vyrenderovany-obrazek/">šestém díle</a>
+tohoto tutoriálu, kde jsme si řekli, že nám poskytuje něco jako "pohled do obrázku".
 Tento ImageView ihned použijeme pro vytvoření framebufferu.
 Kolik má swapchain obrázků, tolik vytvoříme objektů vk::ImageView
-a tolik také vytvoříme objektů vk::Framebuffer:</p>
+a tolik také vytvoříme framebufferů:</p>
 
 <pre>
-	// framebuffers
-	framebuffers.reserve(swapchainImages.size());
-	for(size_t i=0, c=swapchainImages.size(); i&lt;c; i++)
-		framebuffers.emplace_back(
-			device->createFramebufferUnique(
-				vk::FramebufferCreateInfo(
-					vk::FramebufferCreateFlags(),  // flags
-					renderPass.get(),  // renderPass
-					1,  // attachmentCount
-					&amp;swapchainImageViews[i].get(),  // pAttachments
-					newSurfaceExtent.width,  // width
-					newSurfaceExtent.height,  // height
-					1  // layers
-				)
-			)
-		);
+   // framebuffers
+   framebuffers.reserve(swapchainImages.size());
+   for(size_t i=0, c=swapchainImages.size(); i&lt;c; i++)
+      framebuffers.emplace_back(
+         device->createFramebufferUnique(
+            vk::FramebufferCreateInfo(
+               vk::FramebufferCreateFlags(),  // flags
+               renderPass.get(),  // renderPass
+               1,  // attachmentCount
+               &amp;swapchainImageViews[i].get(),  // pAttachments
+               newSurfaceExtent.width,  // width
+               newSurfaceExtent.height,  // height
+               1  // layers
+            )
+         )
+      );
 
 });
 </pre>
 
 <p>Tímto jsme dokončili lambda funkci, která je volána vždy, když je třeba znova vytvořit swapchain.
-Toto se obyčejně děje například při změně velikosti okna.</p>
+Toto se obyčejně děje například při změně velikosti okna nebo třeba při rotaci obrazovky tabletu.</p>
 
-<p>Pro samotné rendrování potřebujeme ještě command pool, command buffer a dva semafory. Začněme prvníma dvěma:</p>
+<p>Pro samotné rendrování potřebujeme ještě command pool, command buffer a dva semafory.
+Začněme prvníma dvěma:</p>
 
 <pre>
 // commandPool and commandBuffer
 commandPool =
-	device->createCommandPoolUnique(
-		vk::CommandPoolCreateInfo(
-			vk::CommandPoolCreateFlagBits::eTransient |  // flags
-				vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
-			graphicsQueueFamily  // queueFamilyIndex
-		)
-	);
+   device->createCommandPoolUnique(
+      vk::CommandPoolCreateInfo(
+         vk::CommandPoolCreateFlagBits::eTransient |  // flags
+            vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+         graphicsQueueFamily  // queueFamilyIndex
+      )
+   );
 commandBuffer =
-	device->allocateCommandBuffers(
-		vk::CommandBufferAllocateInfo(
-			commandPool.get(),  // commandPool
-			vk::CommandBufferLevel::ePrimary,  // level
-			1  // commandBufferCount
-		)
-	)[0];
+   device->allocateCommandBuffers(
+      vk::CommandBufferAllocateInfo(
+         commandPool.get(),  // commandPool
+         vk::CommandBufferLevel::ePrimary,  // level
+         1  // commandBufferCount
+      )
+   )[0];
 </pre>
 
-<p>Command pool a command buffer jsme již vytvářeli v <a href="">pátém díle</a> tohoto tutoriálu.
+<p>Command pool a command buffer jsme již vytvářeli
+v <a href="https://www.root.cz/clanky/vulkan-posilani-prikazu/">pátém díle</a> tohoto tutoriálu.
 Nebudeme se s nimi tedy zdržovat, kromě jedné výjimky: Command pool používá jiné flagy.
-Předchozí díly používaly default hodnotu, avšak my nyní použijeme hodnotu eTransient a eResetCommandBuffer.
+Předchozí díly používaly default hodnotu pro flagy,
+avšak my nyní použijeme hodnotu eTransient a eResetCommandBuffer.
 Flag eTransient znamená, že command buffer nebude žít dlouho.
 Tato informace může pomoci Vulkan implementaci být efektivnější.
-A druhý flag eResetCommandBuffer nám povolí vyresetovat kterýkoliv command buffer alokovaný z tohoto poolu
-a znova nahrát jeho obsah. Bez něj bychom mohli resetovat pouze celý command pool,
+A druhý flag eResetCommandBuffer nám povolí vyresetovat kterýkoliv command buffer
+alokovaný z tohoto poolu a znova nahrát jeho obsah.
+Bez něj bychom mohli resetovat pouze celý command pool,
 což resetuje naráz všechny command buffery z něj alokované.</p>
 
 <p>Semafory vytvoříme jednoduchými příkazy:</p>
@@ -306,62 +344,69 @@ což resetuje naráz všechny command buffery z něj alokované.</p>
 <pre>
 // semaphores
 imageAvailableSemaphore =
-	device->createSemaphoreUnique(
-		vk::SemaphoreCreateInfo(
-			vk::SemaphoreCreateFlags()  // flags
-		)
-	);
+   device->createSemaphoreUnique(
+      vk::SemaphoreCreateInfo(
+         vk::SemaphoreCreateFlags()  // flags
+      )
+   );
 renderingFinishedSemaphore =
-	device->createSemaphoreUnique(
-		vk::SemaphoreCreateInfo(
-			vk::SemaphoreCreateFlags()  // flags
-		)
-	);
+   device->createSemaphoreUnique(
+      vk::SemaphoreCreateInfo(
+         vk::SemaphoreCreateFlags()  // flags
+      )
+   );
 </pre>
 
 <p>Semafor je synchronizační objekt, který umožňuje vložit závislost mezi operacemi ve frontě.
 Toto platí pro klasický binární semafor. Vulkan 1.2 však přidal i timeline semafor,
 který my ale v žádném z nejbližších dílů používat nebudeme.
-Proto se další informace budou vztahovat pouze k binárním semaforům.</p>
+Proto se další informace v tomto díle budou vztahovat pouze k binárním semaforům.</p>
 
 <p>Binární semafor má dva stavy: signalizovaný (signaled) a nesignalizovaný (unsignaled).
-Po vytvoření je semafor nesignalizovaný. Na frontě může být semafor zasignalizován po dokončení nějaké práce.
-Nebo naopak fronta může čekat se započetím práce na to, až je semafor zasignalizován.
+Po vytvoření je semafor nesignalizovaný.
+Na frontě může být semafor zasignalizován po dokončení nějaké práce.
+Nebo naopak fronta může čekat se započetím nějaké práce na to, až je semafor zasignalizován.
 Praktické použití uvidíme za pár okamžiků.</p>
 
-<p>Mohli bychom se ale ptát, co dělat, kdybychom potřebovali synchronizovat práci ne mezi dvěma operacemi ve frontě,
-ale mezi frontou a procesorem. Odpověď je až překvapivě jednoduchá: Stačí použít vk::Fence,
-což je věc přesně k tomuto účelu navržená a kterou jsme si už ukázali v <a href="">pátém díle</a> tohoto tutoriálu.</p>
+<p>Mohli bychom se ale ptát, co dělat, kdybychom potřebovali synchronizovat práci
+ne mezi dvěma operacemi ve frontě, ale mezi frontou a procesorem.
+Odpověď je až překvapivě jednoduchá: Stačí použít vk::Fence,
+což je věc přesně k tomuto účelu navržená a kterou jsme si už ukázali
+v <a href="https://www.root.cz/clanky/vulkan-posilani-prikazu/">pátém díle</a> tohoto tutoriálu.</p>
 
 
 <h3>Frame callback</h3>
 
-<p>Před vstupem do hlavní smyčky aplikace ještě potřebujeme zaregistrovat frame callback,
-jehož úkolem je vyrendrovat a zobrazit snímek na obrazovce, kdykoliv je tento callback zavolán.</p>
+<p>Frame callback slouží k vyrendrování nového snímku na obrazovku.
+Tento callback je zavolán jak po vytvoření okna, tak kdykoliv je obsah okna neplatný,
+tedy například po zvětšení okna, po jeho objevení se po té,
+co bylo skryto, či proto, že uživatel zavolal funkci, kterou žádá
+o vyrenrování nového snímku, což si ukážeme v jednom z následujících dílů.</p>
 
-<p>Callback má pět částí:</p>
-<ol><li>acquire image - získání obrázku, do kterého můžeme rendrovat</li>
+<p>Náš frame callback si zaregistrujeme před vstupem do hlavní smyčky aplikace.
+Kód callbacku má čtyři částí:</p>
+<ol><li>acquire image - získání vk::Image, do kterého budeme rendrovat</li>
 <li>command buffer recording - nahrátí command bufferu</li>
 <li>command buffer submission - odeslání command bufferu k provedení</li>
-<li>present image - odeslání obrázku k prezentaci</li></ol>
+<li>present image - odeslání vk::Image k prezentaci</li></ol>
 
-<p>Obrázek získáme zavoláním metody acquireNextImageKHR():</p>
+<p>První část tvoří kód pro získání vk::Image, do kterého budeme rendrovat.
+To provedeme zavoláním metody acquireNextImageKHR():</p>
 
 <pre>
 window.setFrameCallback(
-	[]() {
+   []() {
 
-		// make sure commandBuffer is not being executed
-		graphicsQueue.waitIdle();
-
-		// acquire image
-		uint32_t imageIndex =
-			device->acquireNextImageKHR(
-				swapchain.get(),                  // swapchain
-				numeric_limits&lt;uint64_t&gt;::max(),  // timeout
-				imageAvailableSemaphore.get(),    // semaphore to signal
-				vk::Fence(nullptr)                // fence to signal
-			).value;
+      // acquire image
+      auto [result, imageIndex] =
+         device->acquireNextImageKHR(
+            swapchain.get(),                // swapchain
+            uint64_t(3e9),                  // timeout (3s)
+            imageAvailableSemaphore.get(),  // semaphore to signal
+            vk::Fence(nullptr)              // fence to signal
+         );
+      if(result == vk::Result::eTimeout)
+         throw runtime_error("Vulkan error: vk::Device::acquireNextImageKHR() timed out.");
 </pre>
 
 <p>Ovšem, jak už to bývá v super optimalizovaném prostředí, věci nejsou tak jednoduché.
@@ -369,60 +414,69 @@ Metoda acquireNextImageKHR() totiž obyčejně pracuje asynchronně.
 To, že nám vrátila index obrázku, znamená pouze, že jednou bude obrázek k dispozici.
 A kdy bude k dispozici, to nám řekne imageAvailableSemaphore, tedy třetí parametr.
 Tento semafor bude zasignalizován ve chvíli, kdy můžeme začít s obrázkem pracovat.
-Do té chvíle může být obrázek zobrazován na obrazovce, nebo jiným způsobem používán,
-a není tedy vhodné do něj předčasně začít rendrovat.
+Do té chvíle může být obrázek zobrazován na obrazovce nebo jiným způsobem používán,
+a není tedy vhodné s ním předčasně začít pracovat.
 Místo semaforu můžeme použít i fence zadanou ve čtvrtém parametru.
-Pak bychom na chvíli, kdy můžeme začít pracovat s obrázkem, mohli čekat na procesoru.
-To ale většinou není, co bychom chtěli, protože pro procesor máme v mnoha aplikacích jinou práci
-než čekat na GPU.</p>
+Pak bychom na chvíli, kdy můžeme začít s obrázkem pracovat, mohli čekat na procesoru.
+To ale většinou není to, co bychom chtěli,
+protože pro procesor máme v mnoha aplikacích hodně jiné práce
+než čekat na GPU. A navíc synchronizace mezi CPU a GPU není zdaleka tak rychlá,
+jak synchronizace na GPU za pomoci semaforů a to ještě v rámci jedné a té samé fronty.</p>
 
-<p>Z dalších parametrů předáváme swapchain a timeout. Timeout udává čas, po který se má čekat,
-pokud by obrázek nebyl k dispozici. My nechceme řádný timeout, tak nastavíme maximální hodnotu.</p>
+<p>Z dalších parametrů předáváme swapchain a timeout.
+Timeout udává čas, po který se má čekat, pokud by obrázek nebyl k dispozici.
+Pokud by se náhodou stalo, že by acquireNextImageKHR() blokovala, omezíme dobu čekání na 3 vteřiny.
+Tak dlouhé zamrznutí aplikace, aniž bychom získali validní imageIndex,
+bychom následně ošetřili vyhozením výjimky.</p>
 
-<p>Dále si nahrajeme command buffer. Do command bufferu vložíme pouze renderpass.
-Kód je téměř stejný, jako v <a href="">šestém díle</p>, takže si jej nebudeme vysvětlovat:</p>
+<p>Nyní přicházíme ke druhému bodu - nahrání command bufferu.
+V tomto díle do command bufferu vložíme pouze renderpass,
+který nám vyplní framebuffer barvou pozadí.
+Kód je téměř stejný, jako
+v <a href="https://www.root.cz/clanky/vulkan-prvni-vyrenderovany-obrazek/">šestém díle</a>,
+takže si jej nebudeme vysvětlovat:</p>
 
 <pre>
-		// record command buffer
-		commandBuffer.begin(
-			vk::CommandBufferBeginInfo(
-				vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
-				nullptr  // pInheritanceInfo
-			)
-		);
-		commandBuffer.beginRenderPass(
-			vk::RenderPassBeginInfo(
-				renderPass.get(),  // renderPass
-				framebuffers[imageIndex].get(),  // framebuffer
-				vk::Rect2D(vk::Offset2D(0,0), window.surfaceExtent()),  // renderArea
-				1,  // clearValueCount
-				&amp;(const vk::ClearValue&amp;)vk::ClearValue(  // pClearValues
-					vk::ClearColorValue(array&lt;float,4&gt;{0.56f,0.56f,0.80f,1.f})
-				)
-			),
-			vk::SubpassContents::eInline
-		);
-		commandBuffer.endRenderPass();
-		commandBuffer.end();
+      // record command buffer
+      commandBuffer.begin(
+         vk::CommandBufferBeginInfo(
+            vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
+            nullptr  // pInheritanceInfo
+         )
+      );
+      commandBuffer.beginRenderPass(
+         vk::RenderPassBeginInfo(
+            renderPass.get(),  // renderPass
+            framebuffers[imageIndex].get(),  // framebuffer
+            vk::Rect2D(vk::Offset2D(0, 0), window.surfaceExtent()),  // renderArea
+            1,  // clearValueCount
+            &amp;(const vk::ClearValue&amp;)vk::ClearValue(  // pClearValues
+               vk::ClearColorValue(array&lt;float, 4&gt;{0.56f, 0.56f, 0.80f, 1.f})
+            )
+         ),
+         vk::SubpassContents::eInline
+      );
+      commandBuffer.endRenderPass();
+      commandBuffer.end();
 </pre>
 
-<p>Dalším úkolem je odeslání nahraného command bufferu k provedení:</p>
+<p>Třetí bod je odeslání nahraného command bufferu k provedení:</p>
 
 <pre>
-		// submit frame
-		graphicsQueue.submit(
-			vk::ArrayProxy&lt;const vk::SubmitInfo&gt;(
-				1,
-				&amp;(const vk::SubmitInfo&amp;)vk::SubmitInfo(
-					1, &amp;imageAvailableSemaphore.get(),  // waitSemaphoreCount + pWaitSemaphores +
-					&amp;(const vk::PipelineStageFlags&amp;)vk::PipelineStageFlags(  // pWaitDstStageMask
-						vk::PipelineStageFlagBits::eColorAttachmentOutput),
-					1, &amp;commandBuffer,  // commandBufferCount + pCommandBuffers
-					1, &amp;renderingFinishedSemaphore.get()  // signalSemaphoreCount + pSignalSemaphores
-				)
-			),
-			vk::Fence(nullptr)
-		);
+      // submit frame
+      graphicsQueue.submit(
+         vk::ArrayProxy&lt;const vk::SubmitInfo&gt;(
+            1,
+            &amp;(const vk::SubmitInfo&amp;)vk::SubmitInfo(
+               1, &amp;imageAvailableSemaphore.get(),  // waitSemaphoreCount + pWaitSemaphores +
+               &amp;(const vk::PipelineStageFlags&amp;)vk::PipelineStageFlags(  // pWaitDstStageMask
+                  vk::PipelineStageFlagBits::eColorAttachmentOutput),
+               1, &amp;commandBuffer,  // commandBufferCount + pCommandBuffers
+               1, &amp;renderingFinishedSemaphore.get()  // signalSemaphoreCount + pSignalSemaphores
+            )
+         ),
+         vk::Fence(nullptr)
+      );
 </pre>
 
 <p>Jako parametry funkce bychom asi čekali pouze seznam command bufferů k provedení,
@@ -441,20 +495,21 @@ Tím máme pokryty závislosti do minulosti.</p>
 <p>A co závislosti do budoucnosti? K tomu slouží šestý a sedmý parametr,
 tedy seznam semaforů k zasignalizování. Tam předáme náš druhý semafor,
 tedy renderingFinishedSemaphore. Jakmile bude provádění veškeré práce
-odesílané tímto příkazem hotovo, je semafor zasignalizován.</p>
+odesílané tímto příkazem hotovo, je semafor zasignalizován.
+Signál tohoto semaforu budeme potřebovat hned v zápětí.</p>
 
 <p>Zůstává nám čtvrtý krok, tedy prezentace výsledků rendrování na obrazovku:</p>
 
 <pre>
-		// present
-		ignore =
-			presentationQueue.presentKHR(
-				vk::PresentInfoKHR(
-					1, &amp;renderingFinishedSemaphore.get(),  // waitSemaphoreCount + pWaitSemaphores
-					1, &amp;swapchain.get(), &amp;imageIndex,  // swapchainCount + pSwapchains + pImageIndices
-					nullptr  // pResults
-				)
-			);
+      // present
+      ignore =
+         presentationQueue.presentKHR(
+            vk::PresentInfoKHR(
+               1, &amp;renderingFinishedSemaphore.get(),  // waitSemaphoreCount + pWaitSemaphores
+               1, &amp;swapchain.get(), &amp;imageIndex,  // swapchainCount + pSwapchains + pImageIndices
+               nullptr  // pResults
+            )
+         );
 </pre>
 
 <p>Do prezentační fronty pošleme prezentační příkaz.
@@ -463,92 +518,101 @@ bude teď ve frontě čekat prezentační příkaz, který čeká na renderingFi
 který jsme zadali v prvním a druhém parametru.
 Jakmile je rendrování dokončeno a semafor je zasignalizován,
 může prezentační engine zobrazit tento obrázek na obrazovce.
-Podle nastavení Vulkanu to může provést hned nebo počkat na vertikální synchronizaci displeje.
-O tomto si více povíme příště.</p>
+Podle nastavení swapchainu se to může provést hned
+nebo počkat na vertikální synchronizaci displeje, o čemž si více povíme někdy v budoucnu.</p>
 
 <p>Který snímek se má na obrazovce zobrazit, zadáváme kombinací swapchainu a indexu obrázku,
 tedy parametry tři, čtyři a pět.</p>
 
 <p>Na závěr už jen počkáme na procesoru, až bude práce dokončena a snímek bezpečně na obrazovce.
-Je to jednoduché řešení synchronizace. Nicméně příště věc vylepšíme, abychom procesor neblokovali:</p>
+Je to jednoduché řešení synchronizace.
+Nicméně příště věc vylepšíme, abychom procesor zbytečně neblokovali.</p>
 
 <pre>
-		// wait for work completion
-		presentationQueue.waitIdle();
+      // wait for work completion
+      presentationQueue.waitIdle();
 
-	},
-	physicalDevice,
-	device.get()
+   },
+   physicalDevice,
+   device.get()
 );
 
 // run main loop
 window.mainLoop();
 </pre>
 
-<p>Na závěr ještě předáme physicalDevice a device jako parametry metody VulkanWindow::setFrameCallback(),
-aby VulkanWindow věděla, které zařízení používáme. Pak už jen zavoláme VulkanWindow::mainLoop().</p>
+<p>Na závěr ještě předáme physicalDevice a device jako parametry metody
+VulkanWindow::setFrameCallback(), aby třída VulkanWindow věděla, které zařízení používáme.
+Pak už jen zavoláme VulkanWindow::mainLoop().</p>
 
-<p>Kód VulkanWindow::mainLoop je podobný tomu, co jsme si ukázali v <a href="">devátém díle</a>
-kromě toho, že jsme nepoužívali ani swapchain ani frame callback, ale nechali jsme okno prázdné.
-V tomto díle máme pro obě věci již vytvořen callback. Zůstává jej tedy zavolat.
+<p>Kód VulkanWindow::mainLoop() je podobný tomu, který jsme si ukázali
+v <a href="https://www.root.cz/clanky/vulkan-vytvoreni-okna/">devátém díle</a>
+kromě toho, že jsme nepoužívali ani swapchain callback ani frame callback,
+ale nechali jsme okno prázdné.
+V tomto díle nezbývá, než oba callbacky na odpovídajících místech zavolat.
 Toto provedeme různě na různých platformách.</p>
+
 
 <h3>Win32</h3>
 
-<p>Pro zavolání _recreateSwapchainCallback použijeme na Win32 následující kód,
-který umístíme hned na začátek VulkanWindow::mainLoop():</p>
+<p>Zavolání _recreateSwapchainCallback provedeme na platformě Win32
+na začátku VulkanWindow::mainLoop():</p>
 
 <pre>
-	// update surface extent by the real window size
-	vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
-	_surfaceExtent = surfaceCapabilities.currentExtent;
+   // update surface extent by the real window size
+   vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
+   _surfaceExtent = surfaceCapabilities.currentExtent;
 
-	// create swapchain
-	_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
+   // create swapchain
+   _recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
 </pre>
 
 <p>Nejprve si vrátíme surface capabilities z Vulkan, pak aktualizujeme rozměr okna,
-a pak teprve provedeme zavolání callbacku s oběma věcma jako parametr.
+a pak teprve provedeme zavolání callbacku.
 Windows z rozměrů našeho okna ukously kus na jeho dekorace, tedy záhlaví a okraje.
-Není to příjemný zvyk, nicméně takto funguje Win32 API.
+Není to příjemná vlastnost, nicméně takto funguje Win32 API.
+Naše okno na Win32 bude tedy o něco menší než na Xlib či na Waylandu.
 A protože na Windows musí rozměr swapchainu přesně sedět na rozměry okna,
-musíme aktualizovat _surfaceExtent, podle které pak vytváříme swapchain požadovaných rozměrů.</p>
+musíme aktualizovat _surfaceExtent na tuto zmenšenou hodnotu,
+která nám byla vrácena v surfaceCapabilities.
+Podle ní pak již korektně vytvoříme swapchain v našem callbacku.</p>
 
-<p>Zavolání _frameCallbacku neprovedeme na Win32 z hlavní smyčky zpráv, ale ve funkci zpráv okna,
-kterou jsme v kódu nazvali wndProc. Provedeme to obsluhou zprávy WM_PAINT, přičemž doplníme i WM_ERASEBKGND:</p>
+<p>Zavolání _frameCallbacku neprovedeme na Win32 z hlavní smyčky zpráv,
+ale ve funkci zpráv okna wndProc.
+Provedeme to obsluhou zprávy WM_PAINT, přičemž doplníme i WM_ERASEBKGND:</p>
 
 <pre>
 case WM_ERASEBKGND:
-	cout &lt;&lt; "WM_ERASEBKGND message" &lt;&lt; endl;
-	return 1;  // returning non-zero means that background should be considered erased
+   cout &lt;&lt; "WM_ERASEBKGND message" &lt;&lt; endl;
+   return 1;  // returning non-zero means that background should be considered erased
 
 case WM_PAINT: {
-	VulkanWindow* w = reinterpret_cast&lt;VulkanWindow*&gt;(GetWindowLongPtr(hwnd, 0));
-	try {
-		cout &lt;&lt; "WM_PAINT message" &lt;&lt; endl;
+   VulkanWindow* w = reinterpret_cast&lt;VulkanWindow*&gt;(GetWindowLongPtr(hwnd, 0));
+   try {
+      cout &lt;&lt; "WM_PAINT message" &lt;&lt; endl;
 
-		// validate window area
-		if(!ValidateRect(hwnd, NULL))
-			throw runtime_error("ValidateRect(): The function failed.");
+      // validate window area
+      if(!ValidateRect(hwnd, NULL))
+         throw runtime_error("ValidateRect(): The function failed.");
 
-		// render frame
-		w-&gt;_frameCallback();
+      <b>// render frame
+      w-&gt;_frameCallback();</b>
 
-	} catch(...) {
-		w-&gt;_wndProcException = std::current_exception();
-	}
-	return 0;
+   } catch(...) {
+      w-&gt;_wndProcException = std::current_exception();
+   }
+   return 0;
 }
 </pre>
 
-<p>Detaily k WM_ERASEBKGND, WM_PAINT, GetWindowLongPtr() i ValidateRect() jsme
-si uvedli v <a href="">desátém díle</p> tohoto tutoriálu.
-Můžeme tedy pouze připojit, že zde zavoláme i _frameCallback().</p>
+<p>Detaily k WM_ERASEBKGND, WM_PAINT, GetWindowLongPtr() i ValidateRect() jsme si uvedli
+v <a href="https://www.root.cz/clanky/vulkan-trida-zapouzdrujici-okno/">minulém (desátém) díle</a>
+tohoto tutoriálu. Zde navíc ve WM_PAINT pouze zavoláme _frameCallback().</p>
 
 
 <h3>Xlib</h3>
 
-<p>Na Xlib pouze doplníme zavolání obou _recreateSwapchainCallback() a _frameCallback()
+<p>Na Xlib pouze doplníme zavolání _recreateSwapchainCallback() a _frameCallback()
 z VulkanWindow::mainLoop():
 
 <pre>
@@ -559,24 +623,26 @@ _recreateSwapchainCallback(_physicalDevice.getSurfaceCapabilitiesKHR(_surface), 
 XEvent e;
 while(true) {
 
-	XNextEvent(_display, &amp;e);
+   XNextEvent(_display, &amp;e);
 
-	<b>// handle expose event
-	if(e.type == Expose) {
-		cout &lt;&lt; "Expose event" &lt;&lt; endl;
-		_frameCallback();
-		continue;
-	}</b>
+   <b>// handle expose event
+   if(e.type == Expose) {
+      cout &lt;&lt; "Expose event" &lt;&lt; endl;
+      _frameCallback();
+      continue;
+   }</b>
 
-	// handle window close
-	if(e.type==ClientMessage &amp;&amp; ulong(e.xclient.data.l[0])==_wmDeleteMessage)
-		break;
+   // handle window close
+   if(e.type==ClientMessage &amp;&amp; ulong(e.xclient.data.l[0])==_wmDeleteMessage)
+      break;
 
 }
 </pre>
 
-<p>Doplněný kód je zvýrazněn tučně. Oproti Windows vidíme,
-že nemusíme aktualizovat _surfaceExtent.
+<p>Doplněný kód je zvýrazněn tučně.
+Callback pro recreate swapchain je zavolán hned po vstupu do metody mainLoop()
+a _frameCallback je volán jako reakce na zprávu Expose.
+Oproti Windows vidíme, že nemusíme aktualizovat _surfaceExtent.
 Dostaneme přesně velikost okna, o kterou jsme požádali při jeho vytváření.</p>
 
 
@@ -585,38 +651,44 @@ Dostaneme přesně velikost okna, o kterou jsme požádali při jeho vytvářen�
 <p>Wayland nás může svým přístupem zaskočit:</p>
 
 <pre>
-	<b>// create swapchain
-	_recreateSwapchainCallback(_physicalDevice.getSurfaceCapabilitiesKHR(_surface), _surfaceExtent);
+   <b>// create swapchain
+   _recreateSwapchainCallback(_physicalDevice.getSurfaceCapabilitiesKHR(_surface), _surfaceExtent);
 
-	// render frame
-	_frameCallback();</b>
+   // render frame
+   _frameCallback();</b>
 
-	// main loop
-	cout &lt;&lt; "Entering main loop." &lt;&lt; endl;
-	if(wl_display_flush(_display) == -1)
-		throw runtime_error("wl_display_flush() failed.");
-	while(_running) {
+   // main loop
+   cout &lt;&lt; "Entering main loop." &lt;&lt; endl;
+   if(wl_display_flush(_display) == -1)
+      throw runtime_error("wl_display_flush() failed.");
+   while(_running) {
 
-		// dispatch events
-		if(wl_display_dispatch(_display) == -1)  // it blocks if there are no events
-			throw std::runtime_error("wl_display_dispatch() failed.");
-		if(wl_display_flush(_display) == -1)
-			throw runtime_error("wl_display_flush() failed.");
+      // dispatch events
+      if(wl_display_dispatch(_display) == -1)  // it blocks if there are no events
+         throw std::runtime_error("wl_display_dispatch() failed.");
+      if(wl_display_flush(_display) == -1)
+         throw runtime_error("wl_display_flush() failed.");
 
-	}
-	cout &lt;&lt; "Main loop left." &lt;&lt; endl;
+   }
+   cout &lt;&lt; "Main loop left." &lt;&lt; endl;
 </pre>
 
 <p>Vidíme, že jak _recreateSwapchainCallback() tak _frameCallback() voláme
 ještě před vstupem do smyčky obsluhy zpráv.
-Toto je rys Waylandu - jednou obsah okna specifikujeme a Wayland si to už pamatuje
-až do chvíle, než mu pošleme nový obsah.</p>
+Toto je rys Waylandu - jednou obsah okna specifikujeme a Wayland si ho už pamatuje
+až do chvíle, než okno zavřeme nebo než mu specifikujeme nový obsah.</p>
 
 
 <h3>Závěr</h3>
 
 <p>Aplikaci můžeme nyní spustit na všech třech platformách a vždy dostaneme
 okno s vykresleným modrošedým (anglicky: griseous) pozadím,
-které může reprezentovat barvu například oblohy.</p>
+které může reprezentovat barvu například oblohy.
+Nově nyní můžeme spatřit i okno Waylandu:</p>
 
-<p>Příště doplníme okno o možnost změny jeho velikosti....
+<img src="window-Wayland.png">
+
+<p>Příště doplníme okno o možnost změny jeho velikosti
+a doplníme kód pro vyrendrování trojúhelníku
+z <a href="https://www.root.cz/clanky/vulkan-prvni-vykresleny-trojuhelnik/">osmého dílu</a>
+tutoriálu.</p>

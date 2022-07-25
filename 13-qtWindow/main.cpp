@@ -635,11 +635,11 @@ void App::frame()
 	uint32_t imageIndex;
 	vk::Result r =
 		device.acquireNextImageKHR(
-			swapchain,                        // swapchain
-			numeric_limits<uint64_t>::max(),  // timeout
-			imageAvailableSemaphore,          // semaphore to signal
-			vk::Fence(nullptr),               // fence to signal
-			&imageIndex                       // pImageIndex
+			swapchain,                // swapchain
+			uint64_t(3e9),            // timeout (3s)
+			imageAvailableSemaphore,  // semaphore to signal
+			vk::Fence(nullptr),       // fence to signal
+			&imageIndex               // pImageIndex
 		);
 	if(r != vk::Result::eSuccess) {
 		if(r == vk::Result::eSuboptimalKHR) {
