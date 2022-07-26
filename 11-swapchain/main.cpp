@@ -298,8 +298,8 @@ int main(int, char**)
 							1,                              // imageArrayLayers
 							vk::ImageUsageFlagBits::eColorAttachment,  // imageUsage
 							(graphicsQueueFamily==presentationQueueFamily) ? vk::SharingMode::eExclusive : vk::SharingMode::eConcurrent, // imageSharingMode
-							(graphicsQueueFamily==presentationQueueFamily) ? uint32_t(0) : uint32_t(2),  // queueFamilyIndexCount
-							(graphicsQueueFamily==presentationQueueFamily) ? nullptr : array<uint32_t, 2>{graphicsQueueFamily, presentationQueueFamily}.data(),  // pQueueFamilyIndices
+							uint32_t(2),  // queueFamilyIndexCount
+							array<uint32_t, 2>{graphicsQueueFamily, presentationQueueFamily}.data(),  // pQueueFamilyIndices
 							surfaceCapabilities.currentTransform,    // preTransform
 							vk::CompositeAlphaFlagBitsKHR::eOpaque,  // compositeAlpha
 							vk::PresentModeKHR::eFifo,  // presentMode

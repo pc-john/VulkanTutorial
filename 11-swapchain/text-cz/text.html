@@ -60,8 +60,8 @@ ale transférová funkce je trochu jiná. Pro nás stačí vědět, že je to p�
 <a href="https://en.wikipedia.org/wiki/Gamma_correction">gamma</a> s koeficientem 2.2.</p>
 
 <p>A když už jsme zmínili, že gamma není rovno jedné, znamená to,
-že 256 hodnot, kterou typicky máme pro každou z barevných složek RGB, není rozloženo linearně.
-Rozdíl mezi hodnotami 0 a 1 nebo 1 a 2 je mnohem menší, než rozdíl mezi hodnotami 254 a 255,
+že 256 hodnot, které typicky máme pro každou z barevných složek RGB, není rozloženo linearně.
+Rozdíl mezi hodnotami 0 a 1 nebo 1 a 2 je mnohem menší, než rozdíl mezi hodnotami 254 a 255.
 U nízkých hodnot tedy dochází ke kompresi a u vysokých k expanzi.
 Historicky toto zakódování vzniklo díky starým CRT obrazovkám, které tímto způsobem zobrazovaly.
 Nicméně i dnes v době LCD obrazovek má toto kódování smysl,
@@ -84,7 +84,7 @@ a zobrazí každou hodnotu jako pixel vyzařující to správné množství foto
 odpovídající dané sRGB hodnotě.</p>
 
 <p>Doplňme ještě, že kromě <a href="https://en.wikipedia.org/wiki/SRGB">sRGB</a> barevného prostoru z roku 1996,
-který umožňuje zobrazit asi třetinu z viditelného barevného spektra (dle specifikace
+který umožňuje zobrazit asi třetinu z viditelného barevného spektra (měřeno podle
 <a href="https://en.wikipedia.org/wiki/CIE_1931_color_space">CIE 1931</a>),
 máme i poměrně známý <a href="https://en.wikipedia.org/wiki/Adobe_RGB_color_space">Adobe RGB</a> z roku 1998,
 který umožňuje zobrazit asi polovinu viditelných barev a dále třeba moderní
@@ -92,7 +92,7 @@ který umožňuje zobrazit asi polovinu viditelných barev a dále třeba modern
 který umí asi tři čtvrtiny viditelných barev.
 Pro zobrazení tak velkého barevného rozsahu však potřebujeme především obrazovku,
 projektor nebo tiskárnu, která takovýto rozsah zvládá.
-My však pro tuto chvíli zůstaňme u široce rozšířeného sRGB, který je ve Vulkanu snadno použitelný.</p>
+My však pro tuto chvíli zůstaneme u široce rozšířeného sRGB, který je ve Vulkanu snadno použitelný.</p>
 
 <p>Následuje kód výběru formátu:</p>
 
@@ -141,7 +141,7 @@ který je v kódu další v pořadí a který je zároveň hlavním tématem dne
 
 <p>Swapchain nám umožňuje zobrazit výsledky rendrování na vk::Surface.
 Z pohledu programátora je swapchain abstrakce pro skupinu vk::Image obrázků
-svázaných s vk::Surface, které mohou být prezentovány na tomto vk::Surface.</p>
+svázaných s vk::Surface. Tyto obrázky pak mohou být prezentovány na tomto vk::Surface.</p>
 
 <p>Swapchain vytváříme nejen při vytváření okna,
 ale kdykoliv, když vznikne požadavek na jeho nové vytvoření.
@@ -187,8 +187,8 @@ vk::UniqueSwapchainKHR newSwapchain =
          1,                              // imageArrayLayers
          vk::ImageUsageFlagBits::eColorAttachment,  // imageUsage
          (graphicsQueueFamily==presentationQueueFamily) ? vk::SharingMode::eExclusive : vk::SharingMode::eConcurrent, // imageSharingMode
-         (graphicsQueueFamily==presentationQueueFamily) ? uint32_t(0) : uint32_t(2),  // queueFamilyIndexCount
-         (graphicsQueueFamily==presentationQueueFamily) ? nullptr : array&lt;uint32_t, 2&gt;{graphicsQueueFamily, presentationQueueFamily}.data(),  // pQueueFamilyIndices
+         uint32_t(2),  // queueFamilyIndexCount
+         array&lt;uint32_t, 2&gt;{graphicsQueueFamily, presentationQueueFamily}.data(),  // pQueueFamilyIndices
          surfaceCapabilities.currentTransform,    // preTransform
          vk::CompositeAlphaFlagBitsKHR::eOpaque,  // compositeAlpha
          vk::PresentModeKHR::eFifo,  // presentMode
@@ -222,11 +222,11 @@ přesněji řečeno, na rozměry klientské části okna, tedy okna bez dekorace
 
 <p>K zajímavým parametrům patří ještě imageSharingMode, který nastavíme na eConcurrent,
 pokud používáme jinou třídu front pro rendering a jinou pro prezentaci.
-Při eConcurrent sharing mode pak musíme nastavit i následující dva parametry, které udávají,
+Při eConcurrent sharing mode se pak použijí i následující dva parametry, které udávají,
 které třidy front budou se swapchainem pracovat.</p>
 
 <p>Dalšími parametry říkáme, že obraz nebudeme transformovat, ani nechceme provádět alpha-blending
-s okny a pozadím, které se nacházejí za naším oknem. Jinými slovy, nemáme poloprůhledné okno.
+s okny a pozadím, které se nachází za naším oknem. Jinými slovy, nemáme poloprůhledné okno.
 Parametr presentMode si vysvětlíme v budoucnu. Prozatím jej necháme na hodnotě eFifo,
 což v případě dvou bufferů odpovídá jednoduché funkci double-bufferingu.</p>
 
@@ -237,7 +237,7 @@ a tím umožníme recyklovat mnohé objekty a prostředky.
 Ty pak nejsou zbytečně se starým swapchainem zlikvidovány
 a nejsou znova alokovány v novém swapchainu. Co Vulkan zrecykluje pak záleží na driveru.
 Pokud aplikace právě startuje a proměnná swapchain obsahuje ještě nullptr,
-není pochopitelně ještě co recyklovat a Vulkan si vše vytvoří sám.
+není pochopitelně co recyklovat a Vulkan si vše vytvoří sám.
 Nicméně pokud při každé změně velikosti okna znovu vytváříme swapchain, je to pěkná optimalizace.
 Starý swapchain je pak uvolněn na posledním řádku
 ve chvíli přiřazení newSwapchain do proměnné swapchain.
@@ -277,7 +277,7 @@ for(vk::Image image : swapchainImages)
 v <a href="https://www.root.cz/clanky/vulkan-prvni-vyrenderovany-obrazek/">šestém díle</a>
 tohoto tutoriálu, kde jsme si řekli, že nám poskytuje něco jako "pohled do obrázku".
 Tento ImageView ihned použijeme pro vytvoření framebufferu.
-Kolik má swapchain obrázků, tolik vytvoříme objektů vk::ImageView
+Kolik má swapchain vk::Images, tolik vytvoříme objektů vk::ImageView
 a tolik také vytvoříme framebufferů:</p>
 
 <pre>
@@ -366,6 +366,10 @@ Proto se další informace v tomto díle budou vztahovat pouze k binárním sema
 Po vytvoření je semafor nesignalizovaný.
 Na frontě může být semafor zasignalizován po dokončení nějaké práce.
 Nebo naopak fronta může čekat se započetím nějaké práce na to, až je semafor zasignalizován.
+Operace čekání na semafor a operace zasignalizování má být v párech.
+Není například možné na jedno zasignalizování čekat na dvou místech.
+Ale je možné jeden semafor jednou zasignalizovat a jednou na něj čekat a
+za chvíli jej znovu zasignalizovat a znovu na něj čekat. Případně to celé zopakovat nesčetněkrát.
 Praktické použití uvidíme za pár okamžiků.</p>
 
 <p>Mohli bychom se ale ptát, co dělat, kdybychom potřebovali synchronizovat práci
@@ -426,8 +430,10 @@ jak synchronizace na GPU za pomoci semaforů a to ještě v rámci jedné a té 
 <p>Z dalších parametrů předáváme swapchain a timeout.
 Timeout udává čas, po který se má čekat, pokud by obrázek nebyl k dispozici.
 Pokud by se náhodou stalo, že by acquireNextImageKHR() blokovala, omezíme dobu čekání na 3 vteřiny.
-Tak dlouhé zamrznutí aplikace, aniž bychom získali validní imageIndex,
-bychom následně ošetřili vyhozením výjimky.</p>
+Pak metoda vrátí eTimeout. Podíváme-li se do Vulkan dokumentace, tak eTimeout je překvapivě "success" kód.
+A na success kód vulkan.hpp nevyhazuje výjimky.
+Nicméně pro nás je to neúspěch. A protože nemůžeme pokračovat bez validního imageIndex,
+situaci ošetříme vyhozením výjimky.</p>
 
 <p>Nyní přicházíme ke druhému bodu - nahrání command bufferu.
 V tomto díle do command bufferu vložíme pouze renderpass,
@@ -485,17 +491,25 @@ kde se pracuje hodně asynchronně, jsou věci složitější.</p>
 
 <p>V prvé řadě se command buffer nesmí začít provádět dříve,
 než bude imageAvailableSemaphore zasignalizován.
-Jeho zasignalizování značí, že obrázek, který jsme získali v acquireNextImageKHR()
+Tento semafor si tedy předáme v prvním a druhém parametru.
+Jeho zasignalizování značí, že vk::Image, který jsme získali v acquireNextImageKHR()
 je již k dispozici pro čtení a pro zápis. A pokud budeme chtít být úplně přesní,
 tak třetí parametr pWaitDstStageMask říká, že na semafor musí počkat pouze
 zápisy do color attachmentu, tedy do našeho výsledného obrázku.
-Ostatní operace na tento semafor čekat nemusí a mohou se provádět už dopředu.
+Ostatní operace na tento semafor čekat nemusí a mohou se provádět už dopředu.</p>
+
+<p>Když situaci shrneme, tak v acquireNextImageKHR() jsme nejen získali vk::Image,
+do kterého budeme rendrovat, ale také jsme zde naplánovali zasignalizování
+imageAvailableSemaphore ve chvíli, kdy bude získaný vk::Image připraven pro použití.
+Metoda Queue::submit() pak naplánovanou práci opravdu odešle do fronty.
+Nicméně v této frontě tato práce čeká na zasignalizování imageAvailableSemaphore, než může být provedena.
 Tím máme pokryty závislosti do minulosti.</p>
 
 <p>A co závislosti do budoucnosti? K tomu slouží šestý a sedmý parametr,
 tedy seznam semaforů k zasignalizování. Tam předáme náš druhý semafor,
 tedy renderingFinishedSemaphore. Jakmile bude provádění veškeré práce
 odesílané tímto příkazem hotovo, je semafor zasignalizován.
+Jinými slovy, dostaneme signál, jakmile je rendering scény dokončen.
 Signál tohoto semaforu budeme potřebovat hned v zápětí.</p>
 
 <p>Zůstává nám čtvrtý krok, tedy prezentace výsledků rendrování na obrazovku:</p>
@@ -524,9 +538,8 @@ nebo počkat na vertikální synchronizaci displeje, o čemž si více povíme n
 <p>Který snímek se má na obrazovce zobrazit, zadáváme kombinací swapchainu a indexu obrázku,
 tedy parametry tři, čtyři a pět.</p>
 
-<p>Na závěr už jen počkáme na procesoru, až bude práce dokončena a snímek bezpečně na obrazovce.
-Je to jednoduché řešení synchronizace.
-Nicméně příště věc vylepšíme, abychom procesor zbytečně neblokovali.</p>
+<p>Na závěr v kódu níže už jen počkáme na procesoru,
+až bude práce dokončena a snímek bezpečně na obrazovce:</p>
 
 <pre>
       // wait for work completion
@@ -541,14 +554,17 @@ Nicméně příště věc vylepšíme, abychom procesor zbytečně neblokovali.<
 window.mainLoop();
 </pre>
 
-<p>Na závěr ještě předáme physicalDevice a device jako parametry metody
+<p>Čekání hned po odeslání veškeré práce je jednoduché řešení synchronizace.
+Nicméně příště se pokusíme věc vylepšit, abychom procesor zbytečně neblokovali.</p>
+
+<p>Také musíme předat physicalDevice a device jako parametry metody
 VulkanWindow::setFrameCallback(), aby třída VulkanWindow věděla, které zařízení používáme.
-Pak už jen zavoláme VulkanWindow::mainLoop().</p>
+V naší aplikaci pak už jen zbývá zavolat VulkanWindow::mainLoop().</p>
 
 <p>Kód VulkanWindow::mainLoop() je podobný tomu, který jsme si ukázali
 v <a href="https://www.root.cz/clanky/vulkan-vytvoreni-okna/">devátém díle</a>
-kromě toho, že jsme nepoužívali ani swapchain callback ani frame callback,
-ale nechali jsme okno prázdné.
+kromě toho, že jsme nepoužívali ani swapchain recreate callback ani frame callback,
+což mělo za efekt, že okno zůstalo prázdné.
 V tomto díle nezbývá, než oba callbacky na odpovídajících místech zavolat.
 Toto provedeme různě na různých platformách.</p>
 
@@ -569,17 +585,16 @@ na začátku VulkanWindow::mainLoop():</p>
 
 <p>Nejprve si vrátíme surface capabilities z Vulkan, pak aktualizujeme rozměr okna,
 a pak teprve provedeme zavolání callbacku.
-Windows z rozměrů našeho okna ukously kus na jeho dekorace, tedy záhlaví a okraje.
+Windows z rozměrů našeho okna ukously kus na jeho dekorace, tedy na záhlaví a na okraje.
 Není to příjemná vlastnost, nicméně takto funguje Win32 API.
-Naše okno na Win32 bude tedy o něco menší než na Xlib či na Waylandu.
+Naše okno na Win32 bude tedy v počtu pixelů o něco menší než na Xlib či na Waylandu.
 A protože na Windows musí rozměr swapchainu přesně sedět na rozměry okna,
 musíme aktualizovat _surfaceExtent na tuto zmenšenou hodnotu,
 která nám byla vrácena v surfaceCapabilities.
 Podle ní pak již korektně vytvoříme swapchain v našem callbacku.</p>
 
-<p>Zavolání _frameCallbacku neprovedeme na Win32 z hlavní smyčky zpráv,
-ale ve funkci zpráv okna wndProc.
-Provedeme to obsluhou zprávy WM_PAINT, přičemž doplníme i WM_ERASEBKGND:</p>
+<p>Zavolání _frameCallback neprovedeme na Win32 z hlavní smyčky zpráv,
+ale ve funkci zpráv okna wndProc, konkrétně v obsluze zprávy WM_PAINT:</p>
 
 <pre>
 case WM_ERASEBKGND:
@@ -643,7 +658,7 @@ while(true) {
 Callback pro recreate swapchain je zavolán hned po vstupu do metody mainLoop()
 a _frameCallback je volán jako reakce na zprávu Expose.
 Oproti Windows vidíme, že nemusíme aktualizovat _surfaceExtent.
-Dostaneme přesně velikost okna, o kterou jsme požádali při jeho vytváření.</p>
+Dostaneme přesně velikost okna, o kterou jsme požádali při jeho vytvoření.</p>
 
 
 <h3>Wayland</h3>
@@ -676,7 +691,7 @@ Dostaneme přesně velikost okna, o kterou jsme požádali při jeho vytvářen�
 <p>Vidíme, že jak _recreateSwapchainCallback() tak _frameCallback() voláme
 ještě před vstupem do smyčky obsluhy zpráv.
 Toto je rys Waylandu - jednou obsah okna specifikujeme a Wayland si ho už pamatuje
-až do chvíle, než okno zavřeme nebo než mu specifikujeme nový obsah.</p>
+až do chvíle, než okno zavřeme nebo než mu specifikujeme jiný obsah.</p>
 
 
 <h3>Závěr</h3>
