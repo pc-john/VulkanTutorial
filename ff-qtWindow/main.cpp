@@ -12,7 +12,7 @@ using namespace std;
 
 
 // constants
-constexpr const char* appName = "13-qtWindow";
+constexpr const char* appName = "ff-qtWindow";
 
 
 // shader code in SPIR-V binary

@@ -1,4 +1,4 @@
-set(APP_NAME 13-qtWindow)
+set(APP_NAME ff-qtWindow)
 
 project(${APP_NAME})
 
