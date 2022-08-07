@@ -30,7 +30,7 @@ list(REMOVE_DUPLICATES Wayland_INCLUDE_DIR)
 # Wayland protocols directory
 find_package(PkgConfig QUIET)
 pkg_check_modules(Wayland_PROTOCOLS wayland-protocols QUIET)
-if(Wayland_PROTOCOLS_FOUND)
+if(PKG_CONFIG_FOUND AND Wayland_PROTOCOLS_FOUND)
 	pkg_get_variable(Wayland_PROTOCOLS_DIR wayland-protocols pkgdatadir)
 endif()
 set(Wayland_PROTOCOLS_DIR "${Wayland_PROTOCOLS_DIR}" CACHE PATH "Wayland protocols directory.")
