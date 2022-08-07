@@ -1,27 +1,29 @@
 macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines includes)
 
-	# detect recommended GUI type
-	if(WIN32)
-		set(guiTypeDetected "Win32")
-	elseif(UNIX)
-		find_package(Wayland)
-		if(Wayland_client_FOUND AND Wayland_SCANNER AND Wayland_PROTOCOLS_DIR)
-			set(guiTypeDetected "Wayland")
-		else()
-			find_package(X11)
-			if(X11_FOUND)
-				set(guiTypeDetected "Xlib")
-			else()
-				# default to Wayland on Linux
-				set(guiTypeDetected "Wayland")
-			endif()
-		endif()
-	endif()
-
 	# set GUI_TYPE if not already set or if set to "default" string
 	string(TOLOWER "${GUI_TYPE}" guiTypeLowerCased)
 	if(NOT GUI_TYPE OR "${guiTypeLowerCased}" STREQUAL "default")
-		set(GUI_TYPE ${guiTypeDetected} CACHE STRING "Gui type. Accepted values: default, Win32, Xlib, Wayland, Qt6, Qt5 or SDL." FORCE)
+
+		# detect recommended GUI type
+		if(WIN32)
+			set(guiTypeDetected "Win32")
+		elseif(UNIX)
+			find_package(Wayland)
+			if(Wayland_client_FOUND AND Wayland_SCANNER AND Wayland_PROTOCOLS_DIR)
+				set(guiTypeDetected "Wayland")
+			else()
+				find_package(X11)
+				if(X11_FOUND)
+					set(guiTypeDetected "Xlib")
+				else()
+					# default to Wayland on Linux
+					set(guiTypeDetected "Wayland")
+				endif()
+			endif()
+		endif()
+		set(GUI_TYPE ${guiTypeDetected} CACHE STRING "Gui type. Accepted values: default, Win32, Xlib or Wayland." FORCE)
+		#set(GUI_TYPE ${guiTypeDetected} CACHE STRING "Gui type. Accepted values: default, Win32, Xlib, Wayland, Qt6, Qt5 or SDL." FORCE)
+
 	endif()
 
 	# give error on invalid GUI_TYPE

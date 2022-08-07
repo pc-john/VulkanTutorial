@@ -1,33 +1,34 @@
 macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines includes)
 
-	# detect recommended GUI type
-	if(WIN32)
-		set(guiTypeDetected "Win32")
-	elseif(UNIX)
-		find_package(Wayland)
-		if(Wayland_client_FOUND AND Wayland_SCANNER AND Wayland_PROTOCOLS_DIR)
-			set(guiTypeDetected "Wayland")
-		else()
-			find_package(X11)
-			if(X11_FOUND)
-				set(guiTypeDetected "Xlib")
-			else()
-				# default to Wayland on Linux
-				set(guiTypeDetected "Wayland")
-			endif()
-		endif()
-	endif()
-
 	# set GUI_TYPE if not already set or if set to "default" string
 	string(TOLOWER "${GUI_TYPE}" guiTypeLowerCased)
 	if(NOT GUI_TYPE OR "${guiTypeLowerCased}" STREQUAL "default")
-		set(GUI_TYPE ${guiTypeDetected} CACHE STRING "Gui type. Accepted values: default, Win32, Xlib, Wayland, Qt6, Qt5 or SDL." FORCE)
+
+		# detect recommended GUI type
+		if(WIN32)
+			set(guiTypeDetected "Win32")
+		elseif(UNIX)
+			find_package(Wayland)
+			if(Wayland_client_FOUND AND Wayland_SCANNER AND Wayland_PROTOCOLS_DIR)
+				set(guiTypeDetected "Wayland")
+			else()
+				find_package(X11)
+				if(X11_FOUND)
+					set(guiTypeDetected "Xlib")
+				else()
+					# default to Wayland on Linux
+					set(guiTypeDetected "Wayland")
+				endif()
+			endif()
+		endif()
+		set(GUI_TYPE ${guiTypeDetected} CACHE STRING "Gui type. Accepted values: default, Win32, Xlib or Wayland." FORCE)
+
 	endif()
 
 	# give error on invalid GUI_TYPE
-	set(guiList "Win32" "Xlib" "Wayland" "Qt6" "Qt5" "SDL")
+	set(guiList "Win32" "Xlib" "Wayland")
 	if(NOT "${GUI_TYPE}" IN_LIST guiList)
-		message(FATAL_ERROR "GUI_TYPE value is invalid. It must be set to default, Win32, Xlib, Wayland, Qt6, Qt5 or SDL.")
+		message(FATAL_ERROR "GUI_TYPE value is invalid. It must be set to default, Win32, Xlib or Wayland.")
 	endif()
 
 
@@ -69,29 +70,6 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines inc
 		else()
 			message(FATAL_ERROR "Not all Wayland variables were detected properly.")
 		endif()
-
-	elseif("${GUI_TYPE}" STREQUAL "Qt6")
-
-		# configure for Qt6
-		find_package(Qt6Gui REQUIRED)
-		set(${libs} ${${libs}} Qt6::Gui)
-		set(${defines} ${${defines}} USE_PLATFORM_QT)
-
-	elseif("${GUI_TYPE}" STREQUAL "Qt5")
-
-		# configure for Qt5
-		# (we need at least version 5.10 because of Vulkan support)
-		find_package(Qt5Gui 5.10 REQUIRED)
-		set(${libs} ${${libs}} Qt5::Gui)
-		set(${defines} ${${defines}} USE_PLATFORM_QT)
-
-	elseif("${GUI_TYPE}" STREQUAL "SDL")
-
-		# configure for SDL
-		find_package(SDL REQUIRED)
-		set(${libs} ${${libs}} ${SDL_LIBRARY})
-		set(${defines} ${${defines}} USE_PLATFORM_SDL)
-		set(${includes} ${${includes}} ${SDL_INCLUDE_DIR})
 
 	else()
 		message(FATAL_ERROR "Invalid GUI_TYPE value: ${GUI_TYPE}")
