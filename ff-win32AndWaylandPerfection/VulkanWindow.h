@@ -129,7 +129,7 @@ inline void VulkanWindow::setFrameCallback(std::function<FrameCallback>&& cb, vk
 inline void VulkanWindow::setFrameCallback(const std::function<FrameCallback>& cb, vk::PhysicalDevice physicalDevice, vk::Device device)  { _frameCallback = cb; _physicalDevice = physicalDevice; _device = device; }
 inline vk::SurfaceKHR VulkanWindow::surface() const  { return _surface; }
 inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return _surfaceExtent; }
-#if !defined(USE_PLATFORM_WIN32)
+#if defined(USE_PLATFORM_XLIB)
 inline void VulkanWindow::scheduleFrame()  { _framePending = true; }
 #endif
 inline void VulkanWindow::scheduleSwapchainResize()  { _swapchainResizePending = true; scheduleFrame(); }
