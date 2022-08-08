@@ -199,7 +199,7 @@ int main(int, char**)
 		cout << "Surface formats:" << endl;
 		vector<vk::SurfaceFormatKHR> availableSurfaceFormats = physicalDevice.getSurfaceFormatsKHR(surface);
 		for(vk::SurfaceFormatKHR sf : availableSurfaceFormats)
-			cout << "   " << vk::to_string(sf.format) << " " << vk::to_string(sf.colorSpace) << endl;
+			cout << "   " << vk::to_string(sf.format) << ", color space: " << vk::to_string(sf.colorSpace) << endl;
 
 		// choose surface format
 		constexpr const array allowedSurfaceFormats{
@@ -226,7 +226,7 @@ int main(int, char**)
 		surfaceFormatFound:;
 		}
 		cout << "Using format:\n"
-		     << "   " << to_string(surfaceFormat.format) << " " << to_string(surfaceFormat.colorSpace) << endl;
+		     << "   " << to_string(surfaceFormat.format) << ", color space: " << to_string(surfaceFormat.colorSpace) << endl;
 
 		// render pass
 		renderPass =
@@ -311,8 +311,8 @@ int main(int, char**)
 							1,                              // imageArrayLayers
 							vk::ImageUsageFlagBits::eColorAttachment,  // imageUsage
 							(graphicsQueueFamily==presentationQueueFamily) ? vk::SharingMode::eExclusive : vk::SharingMode::eConcurrent, // imageSharingMode
-							(graphicsQueueFamily==presentationQueueFamily) ? uint32_t(0) : uint32_t(2),  // queueFamilyIndexCount
-							(graphicsQueueFamily==presentationQueueFamily) ? nullptr : array<uint32_t,2>{graphicsQueueFamily,presentationQueueFamily}.data(),  // pQueueFamilyIndices
+							uint32_t(2),  // queueFamilyIndexCount
+							array<uint32_t, 2>{graphicsQueueFamily, presentationQueueFamily}.data(),  // pQueueFamilyIndices
 							surfaceCapabilities.currentTransform,    // preTransform
 							vk::CompositeAlphaFlagBitsKHR::eOpaque,  // compositeAlpha
 							vk::PresentModeKHR::eFifo,  // presentMode
@@ -555,16 +555,17 @@ int main(int, char**)
 				uint32_t imageIndex;
 				vk::Result r =
 					device->acquireNextImageKHR(
-						swapchain.get(),                  // swapchain
-						numeric_limits<uint64_t>::max(),  // timeout
-						imageAvailableSemaphore.get(),    // semaphore to signal
-						vk::Fence(nullptr),               // fence to signal
-						&imageIndex                       // pImageIndex
+						swapchain.get(),                // swapchain
+						uint64_t(3e9),                  // timeout (3s)
+						imageAvailableSemaphore.get(),  // semaphore to signal
+						vk::Fence(nullptr),             // fence to signal
+						&imageIndex                     // pImageIndex
 					);
 				if(r != vk::Result::eSuccess) {
 					if(r == vk::Result::eSuboptimalKHR) {
 						window.scheduleSwapchainResize();
 						cout << "acquire result: Suboptimal" << endl;
+						return;
 					} else if(r == vk::Result::eErrorOutOfDateKHR) {
 						window.scheduleSwapchainResize();
 						cout << "acquire error: OutOfDate" << endl;
@@ -584,10 +585,10 @@ int main(int, char**)
 					vk::RenderPassBeginInfo(
 						renderPass.get(),  // renderPass
 						framebuffers[imageIndex].get(),  // framebuffer
-						vk::Rect2D(vk::Offset2D(0,0), window.surfaceExtent()),  // renderArea
+						vk::Rect2D(vk::Offset2D(0, 0), window.surfaceExtent()),  // renderArea
 						1,  // clearValueCount
 						&(const vk::ClearValue&)vk::ClearValue(  // pClearValues
-							vk::ClearColorValue(array<float,4>{0.0f,0.0f,0.0f,1.f})
+							vk::ClearColorValue(array<float, 4>{0.0f, 0.0f, 0.0f, 1.f})
 						)
 					),
 					vk::SubpassContents::eInline
