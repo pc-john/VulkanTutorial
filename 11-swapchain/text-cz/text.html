@@ -539,7 +539,7 @@ nebo počkat na vertikální synchronizaci displeje, o čemž si více povíme n
 tedy parametry tři, čtyři a pět.</p>
 
 <p>Na závěr v kódu níže už jen počkáme na procesoru,
-až bude práce dokončena a snímek bezpečně na obrazovce:</p>
+až bude práce dokončena a prezentace snímku bezpečně naplánována:</p>
 
 <pre>
       // wait for work completion
@@ -557,7 +557,24 @@ window.mainLoop();
 <p>Čekání hned po odeslání veškeré práce je jednoduché řešení synchronizace.
 Nicméně příště se pokusíme věc vylepšit, abychom procesor zbytečně neblokovali.</p>
 
-<p>Také musíme předat physicalDevice a device jako parametry metody
+<p>Ohledně prezentace, mohli bychom se mylně domnívat,
+že zavoláním presentationQueue.waitIdle() čekáme až do chvíle, než se snímek objeví na obrazovce.
+Není tomu tak. Dle dokumentace Vulkan je waitIdle() ekvivaletní čekání na vk::Fence
+všech příkazů, které byly do fronty poslány a které akceptují parametr vk::Fence.
+A pokud se podíváme na Queue::presentKHR(), tak ten žádný parametr vk::Fence nemá
+a neumožňuje nám tak počkat na dokončení prezentačního příkazu.
+Trochu to i odpovídá možnému designu hardware, kde se o přepnutí snímku
+mohou starat dedikované obvody daleko od přímé kontroly software.
+Po provedení waitIdle() si tedy můžeme být jisti,
+že rendrovací práce byla dokončena a prezentace je naplánována,
+ale nad jejím proběhnutím již nemáme kontrolu.
+Nicméně ve verzi Vulkan 1.2.185 v roce 2021 byla přidána extension VK_KHR_present_wait,
+a pokud je na daném logickém zařízení podporována,
+je možné skrze ni počkat na prezentaci libovolného snímku.
+Tyhle speciality my ale v tuto chvíli nepotřebujeme a spokojíme se s jednoduchým zavoláním Queue::waitIdle().</p>
+
+<p>Tím máme uzavřeno téma prezentace a kódu frame callbacku.
+Předáme už jen physicalDevice a device jako poslední dva parametry metody
 VulkanWindow::setFrameCallback(), aby třída VulkanWindow věděla, které zařízení používáme.
 V naší aplikaci pak už jen zbývá zavolat VulkanWindow::mainLoop().</p>
 
