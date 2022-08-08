@@ -17,11 +17,11 @@ set(APP_SHADERS
    )
 
 # dependencies
+set(CMAKE_MODULE_PATH "${${APP_NAME}_SOURCE_DIR}/;${CMAKE_MODULE_PATH}")
 find_package(Vulkan REQUIRED)
 set(libs Vulkan::Vulkan)
 
 # GUI dependencies
-set(CMAKE_MODULE_PATH "${${APP_NAME}_SOURCE_DIR}/;${CMAKE_MODULE_PATH}")
 include(GuiMacros.cmake)
 GuiConfigure(APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines includes)
 
