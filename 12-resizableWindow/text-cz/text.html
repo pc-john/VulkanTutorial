@@ -1,8 +1,8 @@
 <h1>Vulkan: okno měnitelné velikosti (12. díl)</h1>
 
-<p>Pokud změníme velikost vulkaního okna v aplikaci z minulého dílu,
-může být aplikace ukončena chybovou hláškou.
-Dnes si ukážeme, jak správně ošetřit tuto situaci.</p>
+<p>Pokud se pokusíme změnit velikost vulkaního okna v aplikaci z minulého dílu,
+může to vést k ukončení aplikace chybou.
+Dnes si ukážeme, jak ošetřovat veškeré změny rozměrů vulkanního surface.</p>
 
 <p>V minulém díle jsme zobrazili první obrázek do okna.
 Avšak pokud bychom se pokusili změnit jeho velikost
@@ -15,7 +15,7 @@ Failed because of Vulkan exception: vk::Queue::presentKHR: ErrorOutOfDateKHR
 
 <p>Protože je swapchain abstrakce pro skupinu vk::Image obrázků,
 a tyto obrázky mají určité rozměry, které obyčejně přesně souhlasí s rozměry surface,
-na kterém jsou zobrazovány, znamená to, že při změně velikosti okna a následně i změně rozměrů surface
+znamená to, že při změně velikosti okna a následně i změně rozměrů surface
 potřebujeme změnit i velikost těchto vk::Image obrázků.</p>
 
 <p>V praxi změnu velikosti prezentovaných obrázků provádíme tak,
@@ -35,11 +35,11 @@ Projděme si tedy všechny změny, které jsou v ní udělány:</p>
 
 <pre>
 window.setFrameCallback(
-	[]() {
+   []() {
 
-		// wait for previous frame
-		// if still not finished
-		presentationQueue.waitIdle();
+      // wait for previous frame
+      // if still not finished
+      presentationQueue.waitIdle();
 </pre>
 
 <p>První změna je přesunutí čekání na prezentaci snímku z konce frame callbacku
@@ -51,18 +51,19 @@ ještě nebyla dokončena, tak na předchozí snímek budeme čekat.</p>
 
 <p>A proč potřebujeme čekat? Jeden praktický důvod tkví v tom,
 že nechceme rendrovat mnoho snímků paralelně.
-Zvyšuje to latenci mezi započetím rendrování snímku a jeho objevením se na obrazovce.
-Z pohledu latence je nejlepší vždy rendrovat jen jeden snímek.
+Obyčejně to zvyšuje latenci mezi započetím rendrování snímku a jeho objevením se na obrazovce.
+Z pohledu latence je tak většinou lepší vždy rendrovat jen jeden snímek.
 Opravdová katastrofa by pak nastala, pokud by frame callback přicházel častěji
-než grafická karta stíhá rendrovat a zobrazovat.
+než grafická karta stíhá rendrovat snímky a zobrazovat je.
 Mohlo by pak dojít k situaci, že máme desítky či stovky snímků, jejichž rendrování probíhá,
 až dojde k vyčerpání paměti, zahlcení grafické karty nebo něčemu podobnému.
-V lepším případě pak dojde jen k pádu aplikace a v horším případě k zahlcení celého systému.</p>
+V lepším případě pak dojde jen k vyhození výjimky,
+v horším případě k pádu aplikace či zahlcení celého systému.</p>
 
 <p>Otázce latence snímku se budeme věnovat více v příštím díle.
 Zde se spokojíme s konstatováním, že jednoduchým řešením je
 vždy před započetím rendrování nového snímku počkat
-na dorendrování toho předchozího a případně i na jeho prezentaci na obrazovku.
+na dorendrování toho předchozího.
 
 <p>Následuje kód získání obrázku:</p>
 
@@ -70,24 +71,24 @@ na dorendrování toho předchozího a případně i na jeho prezentaci na obraz
 // acquire image
 uint32_t imageIndex;
 vk::Result r =
-	device->acquireNextImageKHR(
-		swapchain.get(),                  // swapchain
-		numeric_limits&lt;uint64_t&gt;::max(),  // timeout
-		imageAvailableSemaphore.get(),    // semaphore to signal
-		vk::Fence(nullptr),               // fence to signal
-		&amp;imageIndex                       // pImageIndex
-	);
+   device->acquireNextImageKHR(
+      swapchain.get(),                  // swapchain
+      numeric_limits&lt;uint64_t&gt;::max(),  // timeout
+      imageAvailableSemaphore.get(),    // semaphore to signal
+      vk::Fence(nullptr),               // fence to signal
+      &amp;imageIndex                       // pImageIndex
+   );
 if(r != vk::Result::eSuccess) {
-	if(r == vk::Result::eSuboptimalKHR) {
-		window.scheduleSwapchainResize();
-		cout &lt;&lt; "acquire result: Suboptimal" &lt;&lt; endl;
-		return;
-	} else if(r == vk::Result::eErrorOutOfDateKHR) {
-		window.scheduleSwapchainResize();
-		cout &lt;&lt; "acquire error: OutOfDate" &lt;&lt; endl;
-		return;
-	} else
-		throw runtime_error("Vulkan error: vkAcquireNextImageKHR failed with error " + to_string(r) + ".");
+   if(r == vk::Result::eSuboptimalKHR) {
+      window.scheduleSwapchainResize();
+      cout &lt;&lt; "acquire result: Suboptimal" &lt;&lt; endl;
+      return;
+   } else if(r == vk::Result::eErrorOutOfDateKHR) {
+      window.scheduleSwapchainResize();
+      cout &lt;&lt; "acquire error: OutOfDate" &lt;&lt; endl;
+      return;
+   } else
+      throw runtime_error("Vulkan error: vkAcquireNextImageKHR failed with error " + to_string(r) + ".");
 }
 </pre>
 
@@ -107,52 +108,53 @@ To na jedné straně indikuje úspěch. Na druhé straně to indikuje neoptimál
 Například vybraný vk::Image může být sice zobrazen, ale ne v optimální kvalitě.
 To se může stát třeba, když okno změnilo své rozměry
 a obraz by musel být přetransformován (scale) do nových rozměrů okna.
+Degradace kvality je často naprosto neznatelná, přesto bychom s ní asi nechtěli žít trvale. 
 My situaci ošetříme tak, že nebudeme provádět žádné suboptimální zobrazování.
-Místo toho naplánujeme swapchain resize a provedeme return z frame callbacku.
+Místo toho naplánujeme swapchain resize s následným novým snímkem a provedeme return z frame callbacku.
 Nic tedy nevyrendrujeme, ale v zápětí nám VulkanWindow zavolá swapchain resize callback
-s novými rozměry okna. Tam tedy dojde k likvidaci současného neoptimálního swapchainu
+s novými rozměry okna. Tam dojde k likvidaci současného neoptimálního swapchainu
 a k vytvoření nového. Po té nám VulkanWindow znovu zavolá frame callback,
 který již bude mít k dispozici swapchain nových rozměrů.</p>
 
 <p>Druhá možnost je, že kód výsledku operace je eErrorOutOfDateKHR.
-Tento kód značí chybu a žádný obrázek nebyl přepnut do stavu "acquired".
-Chyba značí, že swapchain je neaktuální a již nemůže být použit k prezentaci.
+Tento kód značí chybu. Žádný obrázek nebyl přepnut do stavu "acquired"
+a swapchain je již neaktuální a nemůže být použit k prezentaci.
 My tedy opět naplánujeme swapchain resize a opět provedeme return z frame callbacku,
 aniž bychom cokoliv vyrendrovali. VulkanWindow opět provede zavolání swapchain resize callbacku
 následovaném frame callbackem, který již bude mít k dispozici nový swapchain.</p>
 
 <p>Pokud dostaneme jakýkoliv jiný kód výsledku operace, vyhodíme výjimku.</p>
 
-<p>Pak nahrajeme nový obsah command bufferu:</p>
+<p>Následuje nahrání nového obsahu command bufferu:</p>
 
 <pre>
 // record command buffer
 commandBuffer.begin(
-	vk::CommandBufferBeginInfo(
-		vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
-		nullptr  // pInheritanceInfo
-	)
+   vk::CommandBufferBeginInfo(
+      vk::CommandBufferUsageFlagBits::eOneTimeSubmit,  // flags
+      nullptr  // pInheritanceInfo
+   )
 );
 commandBuffer.beginRenderPass(
-	vk::RenderPassBeginInfo(
-		renderPass.get(),  // renderPass
-		framebuffers[imageIndex].get(),  // framebuffer
-		vk::Rect2D(vk::Offset2D(0, 0), window.surfaceExtent()),  // renderArea
-		1,  // clearValueCount
-		&amp;(const vk::ClearValue&amp;)vk::ClearValue(  // pClearValues
-			vk::ClearColorValue(array&lt;float, 4&gt;{0.0f, 0.0f, 0.0f, 1.f})
-		)
-	),
-	vk::SubpassContents::eInline
+   vk::RenderPassBeginInfo(
+      renderPass.get(),  // renderPass
+      framebuffers[imageIndex].get(),  // framebuffer
+      vk::Rect2D(vk::Offset2D(0, 0), window.surfaceExtent()),  // renderArea
+      1,  // clearValueCount
+      &amp;(const vk::ClearValue&amp;)vk::ClearValue(  // pClearValues
+         vk::ClearColorValue(array&lt;float, 4&gt;{0.0f, 0.0f, 0.0f, 1.f})
+      )
+   ),
+   vk::SubpassContents::eInline
 );
 
 // rendering commands
 commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline.get());  // bind pipeline
 commandBuffer.draw(  // draw single triangle
-	3,  // vertexCount
-	1,  // instanceCount
-	0,  // firstVertex
-	0   // firstInstance
+   3,  // vertexCount
+   1,  // instanceCount
+   0,  // firstVertex
+   0   // firstInstance
 );
 
 // end render pass and command buffer
@@ -164,42 +166,42 @@ commandBuffer.end();
 který jsme převzali z
 <a href="https://www.root.cz/clanky/vulkan-prvni-vykresleny-trojuhelnik/">osmého dílu</a>
 našeho tutoriálu.
-Tento command buffer pak odešleme k provedení a pak k prezentaci:</p>
+Tento command buffer pak odešleme k provedení, a pak k prezentaci:</p>
 
 <pre>
 // submit frame
 graphicsQueue.submit(
-	vk::ArrayProxy&lt;const vk::SubmitInfo&gt;(
-		1,
-		&amp;(const vk::SubmitInfo&amp;)vk::SubmitInfo(
-			1, &amp;imageAvailableSemaphore.get(),  // waitSemaphoreCount + pWaitSemaphores +
-			&amp;(const vk::PipelineStageFlags&amp;)vk::PipelineStageFlags(  // pWaitDstStageMask
-				vk::PipelineStageFlagBits::eColorAttachmentOutput),
-			1, &amp;commandBuffer,  // commandBufferCount + pCommandBuffers
-			1, &amp;renderingFinishedSemaphore.get()  // signalSemaphoreCount + pSignalSemaphores
-		)
-	),
-	vk::Fence(nullptr)
+   vk::ArrayProxy&lt;const vk::SubmitInfo&gt;(
+      1,
+      &amp;(const vk::SubmitInfo&amp;)vk::SubmitInfo(
+         1, &amp;imageAvailableSemaphore.get(),  // waitSemaphoreCount + pWaitSemaphores +
+         &amp;(const vk::PipelineStageFlags&amp;)vk::PipelineStageFlags(  // pWaitDstStageMask
+            vk::PipelineStageFlagBits::eColorAttachmentOutput),
+         1, &amp;commandBuffer,  // commandBufferCount + pCommandBuffers
+         1, &amp;renderingFinishedSemaphore.get()  // signalSemaphoreCount + pSignalSemaphores
+      )
+   ),
+   vk::Fence(nullptr)
 );
 
 // present
 r =
-	presentationQueue.presentKHR(
-		&amp;(const vk::PresentInfoKHR&amp;)vk::PresentInfoKHR(
-			1, &amp;renderingFinishedSemaphore.get(),  // waitSemaphoreCount + pWaitSemaphores
-			1, &amp;swapchain.get(), &amp;imageIndex,  // swapchainCount + pSwapchains + pImageIndices
-			nullptr  // pResults
-		)
-	);
+   presentationQueue.presentKHR(
+      &amp;(const vk::PresentInfoKHR&amp;)vk::PresentInfoKHR(
+         1, &amp;renderingFinishedSemaphore.get(),  // waitSemaphoreCount + pWaitSemaphores
+         1, &amp;swapchain.get(), &amp;imageIndex,  // swapchainCount + pSwapchains + pImageIndices
+         nullptr  // pResults
+      )
+   );
 if(r != vk::Result::eSuccess) {
-	if(r == vk::Result::eSuboptimalKHR) {
-		window.scheduleSwapchainResize();
-		cout &lt;&lt; "present result: Suboptimal" &lt;&lt; endl;
-	} else if(r == vk::Result::eErrorOutOfDateKHR) {
-		window.scheduleSwapchainResize();
-		cout &lt;&lt; "present error: OutOfDate" &lt;&lt; endl;
-	} else
-		throw runtime_error("Vulkan error: vkQueuePresentKHR() failed with error " + to_string(r) + ".");
+   if(r == vk::Result::eSuboptimalKHR) {
+      window.scheduleSwapchainResize();
+      cout &lt;&lt; "present result: Suboptimal" &lt;&lt; endl;
+   } else if(r == vk::Result::eErrorOutOfDateKHR) {
+      window.scheduleSwapchainResize();
+      cout &lt;&lt; "present error: OutOfDate" &lt;&lt; endl;
+   } else
+      throw runtime_error("Vulkan error: vkQueuePresentKHR() failed with error " + to_string(r) + ".");
 }
 </pre>
 
@@ -213,20 +215,21 @@ Pokud tedy výsledek není eSuccess, provedeme zase ošetření situace.</p>
 o naplánování prezentace tohoto obrázku.
 Pokud tedy dostaneme kód eSuboptimalKHR, znamená to,
 že i naplánování prezentace proběhlo úspěšně, ač v neoptimální kvalitě.
-Jinými slovy, k prezentaci dojde, nicméně my naplánujeme další snímek,
-kterému bude předcházet swapchain resize.
-Rendering a prezentace tohoto dalšího snímku by tak již měla proběhnout v optimální kvalitě.</p>
+Jinými slovy, k prezentaci dojde.
+Nicméně my naplánujeme další snímek, kterému bude předcházet swapchain resize.
+Rendering a prezentace tohoto dalšího snímku a všech následujících až do další změny velikosti okna
+by tak již měla proběhnout v optimální kvalitě.</p>
 
 <p>Pokud presentKHR() vrátí kód eErrorOutOfDateKHR,
 pokus o naplánování prezentace nebyl úspěšný.
 V tom případě rendrovací práce na tento snímek zůstane promarněna.
-My pouze naplánujeme swapchain resize s následným novým frame callbackem,
-jehož výsledky se snad již dostanou na obrazovku.
+My pouze naplánujeme swapchain resize s následným novým frame callbackem.
 Pro všechny ostatní vrácené chyby vyhodíme výjimku.</p>
 
-<p>V celém kódu dáváme zvláštní pozor, abychom každý pro každý vk::Image,
+<p>V celém kódu dáváme zvláštní pozor, abychom pro každý vk::Image,
 pro který získáme "acquired" stav, tento stav zase uvolnili.
-To provedeme buď úspěšným provedením metody presentKHR(),
+Tento "acquired" stav získáváme metodou acquireNextImageKHR()
+a uvolňujeme jej buď úspěšným provedením metody presentKHR(),
 nebo zrušením celého swapchainu.
 K rušení swapchainu dochází mimo jiné i v callbacku pro znovu vytvoření swapchainu.
 Pokud bychom pravidlo pro uvolnění "acquired" stavu vk::Images porušili
@@ -234,7 +237,7 @@ snadno vyčerpáme dostupné vk::Images. V naší aplikaci máme pouze dva preze
 tedy neradno žádný ztratit.
 Od metody acquireNextImageKHR() bychom pak mohli čekat netypický návratový kód, například eTimeout,
 a také blokování po určitou dobu, když bude metoda marně čekat, až se některý obrázek uvolní.
-Vše nakonec skončí vyhozením naší výjimky.</p>
+Vše nakonec skončí vyhozením výjimky.</p>
 
 <p>Tím jsme hotovi s main.cpp. Ostatní nový kód se vztahuje vpodstatě pouze k pipeline,
 kterou jsme si představili už v
@@ -252,25 +255,25 @@ Začneme funkcí obsluhy zpráv. Konkrétně obsluhou WM_PAINT a WM_SIZE:</p>
 <pre>
 case WM_PAINT: {
 
-	cout &lt;&lt; "WM_PAINT message" &lt;&lt; endl;
+   cout &lt;&lt; "WM_PAINT message" &lt;&lt; endl;
 
-	// set _framePending flag
-	VulkanWindow* w = reinterpret_cast&lt;VulkanWindow*&gt;(GetWindowLongPtr(hwnd, 0));
-	w-&gt;_framePending = true;
+   // set _framePending flag
+   VulkanWindow* w = reinterpret_cast&lt;VulkanWindow*&gt;(GetWindowLongPtr(hwnd, 0));
+   <b>w-&gt;_framePending = true;</b>
 
-	// validate window area
-	if(!ValidateRect(hwnd, NULL))
-		w-&gt;_wndProcException = make_exception_ptr(runtime_error("ValidateRect(): The function failed."));
+   // validate window area
+   if(!ValidateRect(hwnd, NULL))
+      w-&gt;_wndProcException = make_exception_ptr(runtime_error("ValidateRect(): The function failed."));
 
-	return 0;
+   return 0;
 }
 
 case WM_SIZE: {
-	cout &lt;&lt; "WM_SIZE message (" &lt;&lt; LOWORD(lParam) &lt;&lt; "x" &lt;&lt; HIWORD(lParam) &lt;&lt; ")" &lt;&lt; endl;
-	VulkanWindow* w = reinterpret_cast&lt;VulkanWindow*&gt;(GetWindowLongPtr(hwnd, 0));
-	w-&gt;_framePending = true;
-	w-&gt;_swapchainResizePending = true;
-	return DefWindowProc(hwnd, msg, wParam, lParam);
+   cout &lt;&lt; "WM_SIZE message (" &lt;&lt; LOWORD(lParam) &lt;&lt; "x" &lt;&lt; HIWORD(lParam) &lt;&lt; ")" &lt;&lt; endl;
+   VulkanWindow* w = reinterpret_cast&lt;VulkanWindow*&gt;(GetWindowLongPtr(hwnd, 0));
+   <b>w-&gt;_framePending = true;
+   w-&gt;_swapchainResizePending = true;</b>
+   return DefWindowProc(hwnd, msg, wParam, lParam);
 }
 </pre>
 
@@ -278,7 +281,7 @@ case WM_SIZE: {
 Na ten pak zareagujeme v hlavní smyčce aplikace.</p>
 
 <p>Obsluha zprávy WM_SIZE je zde nová. V ní nastavíme jak flag jak _swapchainResizePending,
-tak _framePending. Pak zavoláme defaultní funkci pro obsluhu zpráv.</p>
+tak _framePending. Pak zavoláme defaultní funkci pro obsluhu zprávy.</p>
 
 <p>Tím jsme hotovi s wndProc a můžeme se podívat na hlavní smyčku zpráv
 v kódu VulkanWindow::mainLoop().</p>
@@ -294,31 +297,31 @@ MSG msg;
 _wndProcException = nullptr;
 while(true) {
 
-	// handle all messages
-	while(PeekMessage(&amp;msg, NULL, 0, 0, PM_REMOVE) != 0) {
+   // handle all messages
+   while(PeekMessage(&amp;msg, NULL, 0, 0, PM_REMOVE) != 0) {
 
-		// handle WM_QUIT
-		if(msg.message == WM_QUIT)
-			return;
+      // handle WM_QUIT
+      if(msg.message == WM_QUIT)
+         return;
 
-		// handle message
-		TranslateMessage(&amp;msg);
-		DispatchMessage(&amp;msg);
+      // handle message
+      TranslateMessage(&amp;msg);
+      DispatchMessage(&amp;msg);
 
-		// handle exceptions raised in window procedure
-		if(_wndProcException)
-			rethrow_exception(_wndProcException);
-	}
+      // handle exceptions raised in window procedure
+      if(_wndProcException)
+         rethrow_exception(_wndProcException);
+   }
 
-	// no frame pending?
-	if(!_framePending) {
+   // no frame pending?
+   if(!_framePending) {
 
-		// wait messages
-		if(WaitMessage() == 0)
-			throw runtime_error("WaitMessage() failed.");
+      // wait messages
+      if(WaitMessage() == 0)
+         throw runtime_error("WaitMessage() failed.");
 
-		continue;
-	}
+      continue;
+   }
 </pre>
 
 <p>V kódu vidíme množství změn.
@@ -339,43 +342,43 @@ kde provedeme vyrendrování snímku.
 Před jeho vyrendrováním však provedeme případný resize swapchainu:</p>
 
 <pre>
-	// recreate swapchain if requested
-	if(_swapchainResizePending) {
+   // recreate swapchain if requested
+   if(_swapchainResizePending) {
 
-		// make sure that we finished all the rendering
-		// (this is necessary for swapchain re-creation)
-		_device.waitIdle();
+      // make sure that we finished all the rendering
+      // (this is necessary for swapchain re-creation)
+      _device.waitIdle();
 
-		// get surface capabilities
-		// On Win32, currentExtent, minImageExtent and maxImageExtent of returned surfaceCapabilites are all equal.
-		// It means that we can create a new swapchain only with imageExtent being equal to the window size.
-		// The currentExtent might become 0,0 on this platform, for example, when the window is minimized.
-		// If the currentExtent is not 0,0, both width and height must be greater than 0.
-		vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
+      // get surface capabilities
+      // On Win32, currentExtent, minImageExtent and maxImageExtent of returned surfaceCapabilites are all equal.
+      // It means that we can create a new swapchain only with imageExtent being equal to the window size.
+      // The currentExtent might become 0,0 on this platform, for example, when the window is minimized.
+      // If the currentExtent is not 0,0, both width and height must be greater than 0.
+      vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
 
-		// zero size swapchain is not allowed,
-		// so we will repeat the resize attempt after the next window resize
-		if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0)) {
-			_framePending = false;  // this will be rescheduled on the first window resize
-			continue;
-		}
+      // zero size swapchain is not allowed,
+      // so we will repeat the resize attempt after the next window resize
+      if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0)) {
+         _framePending = false;  // this will be rescheduled on the first window resize
+         continue;
+      }
 
-		// do not allow swapchain creation and rendering when currentExtent is 0,0
-		if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0)) {
-			_framePending = false;  // this will be rescheduled on the first window resize
-			continue;
-		}
+      // do not allow swapchain creation and rendering when currentExtent is 0,0
+      if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0)) {
+         _framePending = false;  // this will be rescheduled on the first window resize
+         continue;
+      }
 
-		// recreate swapchain
-		_swapchainResizePending = false;
-		_surfaceExtent = surfaceCapabilities.currentExtent;
-		_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
-	}
+      // recreate swapchain
+      _swapchainResizePending = false;
+      _surfaceExtent = surfaceCapabilities.currentExtent;
+      _recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
+   }
 
-	// render scene
-	cout &lt;&lt; "Frame callback (" &lt;&lt; _surfaceExtent.width &lt;&lt; "x" &lt;&lt; _surfaceExtent.height &lt;&lt; ")" &lt;&lt; endl;
-	_framePending = false;
-	_frameCallback();
+   // render scene
+   cout &lt;&lt; "Frame callback (" &lt;&lt; _surfaceExtent.width &lt;&lt; "x" &lt;&lt; _surfaceExtent.height &lt;&lt; ")" &lt;&lt; endl;
+   _framePending = false;
+   _frameCallback();
 }
 </pre>
 
@@ -399,8 +402,8 @@ protože překreslovat okno nulové velikosti nepotřebujeme.
 Jakmile však dojde ke změně velikosti okna, bude _framePending flag
 znova nastaven a dojde již jak k resize swapchainu, tak k překreslení obsahu okna.</p>
 
-<p>Pokud má v našem případě okno validní rozměry, pokračujeme dále.
-Je shozen _swapchainResizePending flag, aktualizovány rozměry okna,
+<p>Pokud má okno validní rozměry, pokračujeme dále.
+Je shozen _swapchainResizePending flag, aktualizovány rozměry okna
 a je zavolán _recreateSwapchainCallback.</p>
 
 <p>Následně již pouze shodíme _framePending flag a zavoláme _frameCallback.
@@ -419,57 +422,57 @@ a kód bude opět obsahovat vícekrát zanořenou smyčku:</p>
 XEvent e;
 while(true) {
 
-	<b>// get number of pending events
-	int numEvents = XPending(_display);</b>
+   <b>// get number of pending events
+   int numEvents = XPending(_display);</b>
 
-	// handle zero events
-	if(numEvents == 0)
-		if(_framePending)
-			goto renderFrame;  // frame request -&gt; render frame
-		else
-			numEvents = 1;  // no frame request -&gt; wait for events in XNextEvent()
+   // handle zero events
+   if(numEvents == 0)
+      if(_framePending)
+         goto renderFrame;  // frame request -&gt; render frame
+      else
+         numEvents = 1;  // no frame request -&gt; wait for events in XNextEvent()
 
-	// process events
-	do {
+   // process events
+   do {
 
-		<b>for(int i=0; i&lt;numEvents; i++) {
+      <b>for(int i=0; i&lt;numEvents; i++) {
 
-			// get event
-			XNextEvent(_display, &amp;e);</b>
+         // get event
+         XNextEvent(_display, &amp;e);</b>
 
-			// expose event
-			if(e.type == Expose) {
-				cout &lt;&lt; "Expose event" &lt;&lt; endl;
-				_framePending = true;
-				continue;
-			}
+         // expose event
+         if(e.type == Expose) {
+            cout &lt;&lt; "Expose event" &lt;&lt; endl;
+            _framePending = true;
+            continue;
+         }
 
-			// configure event
-			if(e.type == ConfigureNotify) {
-				if(e.xconfigure.width != _surfaceExtent.width || e.xconfigure.height != _surfaceExtent.height) {
-					cout &lt;&lt; "Configure event " &lt;&lt; e.xconfigure.width &lt;&lt; "x" &lt;&lt; e.xconfigure.height &lt;&lt; endl;
-					_framePending = true;
-					_swapchainResizePending = true;
-				}
-				continue;
-			}
+         // configure event
+         if(e.type == ConfigureNotify) {
+            if(e.xconfigure.width != _surfaceExtent.width || e.xconfigure.height != _surfaceExtent.height) {
+               cout &lt;&lt; "Configure event " &lt;&lt; e.xconfigure.width &lt;&lt; "x" &lt;&lt; e.xconfigure.height &lt;&lt; endl;
+               _framePending = true;
+               _swapchainResizePending = true;
+            }
+            continue;
+         }
 
-			// handle window close
-			if(e.type==ClientMessage &amp;&amp; ulong(e.xclient.data.l[0])==_wmDeleteMessage)
-				return;
-		<b>}
+         // handle window close
+         if(e.type==ClientMessage &amp;&amp; ulong(e.xclient.data.l[0])==_wmDeleteMessage)
+            return;
+      <b>}
 
-		// if more events came in the mean time, handle them as well
-		numEvents = XPending(_display);</b>
+      // if more events came in the mean time, handle them as well
+      numEvents = XPending(_display);</b>
 
-	} while(numEvents > 0);
+   } while(numEvents > 0);
 
-	// frame pending?
-	if(!_framePending)
-		continue;
+   // frame pending?
+   if(!_framePending)
+      continue;
 
-	// render frame code starts with swapchain re-creation
-	renderFrame:
+   // render frame code starts with swapchain re-creation
+   renderFrame:
 </pre>
 
 <p>Nejprve si kód představíme v hrubých obrysech a podíváme se na zvýrazněná místa tvořící jakousi kostru.
@@ -484,62 +487,62 @@ pokud je nějaký naplánován. Nicméně nejprve si proberme obsluhu zpráv.</p
 
 <p>V kódu obsluhujeme tři zprávy. První je obsluha expose zprávy,
 ve které si pouze nastavíme flag _framePending.
-Druhá zpráva je configure event. Tato zpráva přichází za mnoha okolností,
+Druhá zpráva je configure event. Tato zpráva přichází jak při změně velikosti okna, tak za dalších okolností,
 které najdeme v dokumentaci k Xlib. Proto si otestujeme, zda se rozměry okna změnily.
 Pokud ano, naplánujeme jak swapchain resize, tak nový snímek.
 Třetí zpráva obsluhuje událost uzavření okna a v ní pouze provedeme return z VulkanWindow::mainLoop().</p>
 
 <p>Zbývá nám poslední zapeklité místo tohoto kódu, a to je hned na začátku po zavolání XPending().
-Zde zkoumáme, zda XPending() vrátila nulový počet zpráv, což je speciální situace.
+Zde zkoumáme, zda XPending() vrátí nulu, tedy že ve frontě nečekají žádné zprávy.
 Pokud nečekají žádné zprávy, ale je naplánován snímek, jdeme jej hned vyrendrovat.
 Pokud ale nečekají žádné zprávy a ani není naplánován snímek, zvýšíme pouze proměnnou numEvents na jedničku.
 To způsobí, že vlezeme do smyčky for a zavolá se XNextEvent(). Protože ale žádná zpráva nečeká,
 bude tato funkce blokovat do příchodu první zprávy.
-Tím aplikaci zastavíme a zabráníme zbytečnému spotřebovávání procesorového času.</p>
+Tímto blokováním aplikaci zastavíme a zabráníme zbytečnému spotřebovávání procesorového času.</p>
 
 <p>Nyní můžeme přejít na druhou část kódu VulkanWindow::mainLoop():
 
 <pre>
-	// frame pending?
-	if(!_framePending)
-		continue;
+   // frame pending?
+   if(!_framePending)
+      continue;
 
-	// render frame code starts with swapchain re-creation
-	renderFrame:
+   // render frame code starts with swapchain re-creation
+   renderFrame:
 
-	// recreate swapchain if requested
-	if(_swapchainResizePending) {
+   // recreate swapchain if requested
+   if(_swapchainResizePending) {
 
-		// make sure that we finished all the rendering
-		// (this is necessary for swapchain re-creation)
-		_device.waitIdle();
+      // make sure that we finished all the rendering
+      // (this is necessary for swapchain re-creation)
+      _device.waitIdle();
 
-		// get surface capabilities
-		// On Xlib, currentExtent, minImageExtent and maxImageExtent of returned surfaceCapabilites are all equal.
-		// It means that we can create a new swapchain only with imageExtent being equal to the window size.
-		// The currentExtent might become 0,0 on this platform, for example, when the window is minimized.
-		// If the currentExtent is not 0,0, both width and height must be greater than 0.
-		vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
+      // get surface capabilities
+      // On Xlib, currentExtent, minImageExtent and maxImageExtent of returned surfaceCapabilites are all equal.
+      // It means that we can create a new swapchain only with imageExtent being equal to the window size.
+      // The currentExtent might become 0,0 on this platform, for example, when the window is minimized.
+      // If the currentExtent is not 0,0, both width and height must be greater than 0.
+      vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
 
-		// zero size swapchain is not allowed,
-		// so we will repeat the resize attempt after the next window resize
-		// (this never happened on my KDE 5.80.0 (Kubuntu 21.04) and KDE 5.44.0 (Kubuntu 18.04.5);
-		// window minimalizing just unmaps the window)
-		if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0)) {
-			_framePending = false;  // this will be rescheduled on the first window resize
-			continue;
-		}
+      // zero size swapchain is not allowed,
+      // so we will repeat the resize attempt after the next window resize
+      // (this never happened on my KDE 5.80.0 (Kubuntu 21.04) and KDE 5.44.0 (Kubuntu 18.04.5);
+      // window minimalizing just unmaps the window)
+      if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0)) {
+         _framePending = false;  // this will be rescheduled on the first window resize
+         continue;
+      }
 
-		// recreate swapchain
-		_swapchainResizePending = false;
-		_surfaceExtent = surfaceCapabilities.currentExtent;
-		_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
-	}
+      // recreate swapchain
+      _swapchainResizePending = false;
+      _surfaceExtent = surfaceCapabilities.currentExtent;
+      _recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
+   }
 
-	// render frame
-	cout &lt;&lt; "Frame callback (" &lt;&lt; _surfaceExtent.width &lt;&lt; "x" &lt;&lt; _surfaceExtent.height &lt;&lt; ")" &lt;&lt; endl;
-	_framePending = false;
-	_frameCallback();
+   // render frame
+   cout &lt;&lt; "Frame callback (" &lt;&lt; _surfaceExtent.width &lt;&lt; "x" &lt;&lt; _surfaceExtent.height &lt;&lt; ")" &lt;&lt; endl;
+   _framePending = false;
+   _frameCallback();
 </pre>
 
 <p>Pohled do kódu nám prozradí, že je téměř úplně stejný, jak na Win32.
@@ -554,38 +557,38 @@ a jednak upravit kód hlavní smyčky aplikace. Začněme tedy od funkce configu
 
 <pre>
 _xdgToplevelListener = {
-	.configure =
-		[](void* data, xdg_toplevel* toplevel, int32_t width, int32_t height, wl_array*) -&gt; void
-		{
-			cout &lt;&lt; "toplevel configure (width=" &lt;&lt; width &lt;&lt; ", height=" &lt;&lt; height &lt;&lt; ")" &lt;&lt; endl;
+   .configure =
+      [](void* data, xdg_toplevel* toplevel, int32_t width, int32_t height, wl_array*) -&gt; void
+      {
+         cout &lt;&lt; "toplevel configure (width=" &lt;&lt; width &lt;&lt; ", height=" &lt;&lt; height &lt;&lt; ")" &lt;&lt; endl;
 
-			// if width or height of the window changed,
-			// schedule swapchain resize and force new frame rendering
-			// (width and height of zero means that the compositor does not know the window dimension)
-			<b>VulkanWindow* w = reinterpret_cast&lt;VulkanWindow*&gt;(data);
-			if(width != w-&gt;_surfaceExtent.width &amp;&amp; width != 0) {
-				w->_surfaceExtent.width = width;
-				if(height != w-&gt;_surfaceExtent.height &amp;&amp; height != 0)
-					w-&gt;_surfaceExtent.height = height;
-				w-&gt;_framePending = true;
-				w-&gt;_swapchainResizePending = true;
-			}
-			else if(height != w-&gt;_surfaceExtent.height &amp;&amp; height != 0) {
-				w-&gt;_surfaceExtent.height = height;
-				w-&gt;_framePending = true;
-				w-&gt;_swapchainResizePending = true;
-			}</b>
-		},
-	.close =
-		[](void* data, xdg_toplevel* xdgTopLevel) {
-			VulkanWindow* w = reinterpret_cast&lt;VulkanWindow*&gt;(data);
-			w->_running = false;
-		},
+         // if width or height of the window changed,
+         // schedule swapchain resize and force new frame rendering
+         // (width and height of zero means that the compositor does not know the window dimension)
+         <b>VulkanWindow* w = reinterpret_cast&lt;VulkanWindow*&gt;(data);
+         if(width != w-&gt;_surfaceExtent.width &amp;&amp; width != 0) {
+            w->_surfaceExtent.width = width;
+            if(height != w-&gt;_surfaceExtent.height &amp;&amp; height != 0)
+               w-&gt;_surfaceExtent.height = height;
+            w-&gt;_framePending = true;
+            w-&gt;_swapchainResizePending = true;
+         }
+         else if(height != w-&gt;_surfaceExtent.height &amp;&amp; height != 0) {
+            w-&gt;_surfaceExtent.height = height;
+            w-&gt;_framePending = true;
+            w-&gt;_swapchainResizePending = true;
+         }</b>
+      },
+   .close =
+      [](void* data, xdg_toplevel* xdgTopLevel) {
+         VulkanWindow* w = reinterpret_cast&lt;VulkanWindow*&gt;(data);
+         w->_running = false;
+      },
 };
 </pre>
 
 <p>Kód, o který nám jde, je zvýrazněn tučně.
-Jestliže přijde configure zpráva, otestujeme, zda se požadavek nové výšky a šířky okna
+Jestliže přijde zpráva configure, otestujeme, zda se požadavek nové výšky a šířky okna
 liší od předchozí a zda není nová výška a šířka nulová.
 Zde je možná vhodné poznamenat, že nová výška a šířka jsou jen hint.
 My sami si rozměrem swapchainu určíme, jak velké okno bude.
@@ -596,7 +599,7 @@ Výjimku tvoří nové rozměry okna rovny nule.
 K tomuto případu může dojít například při startu aplikace, kdy Wayland neví,
 jak veliké okno chce aplikace vytvořit.
 Rozměry rovny nule tedy znamenají, že je to na aplikaci,
-aby si sama určila, jak veliké okno chce mít.</p>
+aby si sama určila, jak veliké okno chce vytvořit nebo mít.</p>
 
 <p>Nyní se můžeme podívat na hlavní smyčku aplikace:</p>
 
@@ -604,56 +607,94 @@ aby si sama určila, jak veliké okno chce mít.</p>
 // flush outgoing buffers
 cout &lt;&lt; "Entering main loop." &lt;&lt; endl;
 if(wl_display_flush(_display) == -1)
-	throw runtime_error("wl_display_flush() failed.");
+   throw runtime_error("wl_display_flush() failed.");
 
 // main loop
 while(_running) {
 
-	// dispatch events
-	if(!_framePending)
-	{
-		// dispatch events with blocking
-		if(wl_display_dispatch(_display) == -1)  // it blocks if there are no events
-			throw std::runtime_error("wl_display_dispatch() failed.");
-	}
-	else
-	{
-		// dispatch events without blocking
-		while(wl_display_prepare_read(_display) != 0)
-			if(wl_display_dispatch_pending(_display) == -1)
-				throw runtime_error("wl_display_dispatch_pending() failed.");
-		if(wl_display_flush(_display) == -1)
-			throw runtime_error("wl_display_flush() failed.");
-		if(wl_display_read_events(_display) == -1)
-			throw runtime_error("wl_display_read_events() failed.");
-		if(wl_display_dispatch_pending(_display) == -1)
-			throw runtime_error("wl_display_dispatch_pending() failed.");
-	}
+   // dispatch events
+   if(!_framePending)
+   {
+      // dispatch events with blocking
+      if(wl_display_dispatch(_display) == -1)  // it blocks if there are no events
+         throw std::runtime_error("wl_display_dispatch() failed.");
+   }
+   else
+   {
+      // dispatch events without blocking
+      while(wl_display_prepare_read(_display) != 0)
+         if(wl_display_dispatch_pending(_display) == -1)
+            throw runtime_error("wl_display_dispatch_pending() failed.");
+      if(wl_display_flush(_display) == -1)
+         throw runtime_error("wl_display_flush() failed.");
+      if(wl_display_read_events(_display) == -1)
+         throw runtime_error("wl_display_read_events() failed.");
+      if(wl_display_dispatch_pending(_display) == -1)
+         throw runtime_error("wl_display_dispatch_pending() failed.");
+   }
 
-	// flush outgoing buffers
-	if(wl_display_flush(_display) == -1)
-		throw runtime_error("wl_display_flush() failed.");
+   // flush outgoing buffers
+   if(wl_display_flush(_display) == -1)
+      throw runtime_error("wl_display_flush() failed.");
 
-	if(!_framePending)
-		continue;
+   if(!_framePending)
+      continue;
 </pre>
 
 <p>Wayland používá jediný cyklus while.
-Pokud je naplánován nový snímek, provedeme posloupnost Wayland příkazů,
+Kód cyklu může být proveden třemi způsoby.
+Větvení je hned na začátku podle flagu _framePending.
+Pokud je naplánován nový snímek, provedeme posloupnost několika Wayland příkazů,
 které obslouží čekající zprávy.
 Tato posloupnost příkazů zajistí, že i kdyby ve frontě nečekaly žádné zprávy,
-tak nedojde k blokování.
+tak nedojde k blokování, což je to, co potřebujeme.
+Kód je na první pohled složitější, ale odpovídá multithreadovému designu Waylandu.
+Detaily k jednotlivým funkcím najdeme ve Wayland dokumentaci.
 Pak vyflushujeme Wayland buffery a bude následovat rendrování snímku.</p>
 
-<p>Pokud ale nový snímek není naplánován,
-zavoláme pouze funkci wl_display_dispatch().
-Pokud čekají nějaké zprávy, tak jsou v této funkci obslouženy.
+<p>Druhý způsob, kterým může být kód proveden, nastává,
+pokud nový snímek není naplánován a ve frontě čekají nějaké zprávy.
+My pouze zavoláme funkci wl_display_dispatch()
+a všechny čekající zprávy jsou obslouženy.
 Následuje vyflushování bufferů a test, zda snímek náhodou nebyl naplánován
 při obsluze některé z přijatých zpráv.</p>
 
-<p>A pokud nový snímek nebyl naplánován a při zavolání wl_display_dispatch()
-nečekala žádná zpráva, bude tato funkce blokovat až do příchodu první zprávy.
-Tím je zajištěno, že aplikace nebude zbytečně zatěžovat procesor.</p>
+<p>Třetí způsob je podobný druhému, kdy ale ve frontě nečekají žádné zprávy.
+Je opět zavolána wl_display_dispatch(). Tato funkce bude blokovat, dokud nedojde nějaká zpráva.
+A to je přesně, co potřebujeme. Žádný snímek nečeká na vyrendrování a žádná zpráva nečeká na obsloužení.
+Je tedy nejvhodnější zbytečně nezatěžovat procesor a uspat naši aplikaci až do chvíle,
+než přijde další práce v podobě nějaké zprávy.</p>
+
+<p>Následuje zbytek smyčky:</p>
+
+<pre>
+   if(_swapchainResizePending) {
+
+      // make sure that we finished all the rendering
+      // (this is necessary for swapchain re-creation)
+      _device.waitIdle();
+
+      // get surface capabilities
+      // On Wayland, currentExtent is 0xffffffff, 0xffffffff with the meaning that the window extent
+      // will be determined by the extent of the swapchain,
+      // minImageExtent is 1,1 and maxImageExtent is the maximum supported surface size.
+      vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
+
+      // recreate swapchain
+      _swapchainResizePending = false;
+      _recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
+   }
+
+   // render frame
+   cout << "Frame callback (" << _surfaceExtent.width << "x" << _surfaceExtent.height << ")" << endl;
+   _framePending = false;
+   _frameCallback();
+
+}
+</pre>
+
+<p>Jak vidíme, kód je až na pár detailů stejný jak na ostatních platformách.
+Není tedy třeba jej znovu rozebírat. Tím jsme tedy hotovi i pro resize okna na Wayland platformě.</p>
 
 
 <h3>Závěr</h3>
@@ -665,5 +706,5 @@ minimalizovat, roztáhnout do placky a podobně, jak je ukázáno na následují
 <img src="resized-window.png">
 
 <p>Příště si ukážeme jednoduchou animaci trojúhelníku,
-kterou budeme, mimo jiné, rendrovat na frekvenci obrazovky,
-ale zkusíme si i rendrovat na maximum FPS.</p>
+kterou budeme rendrovat na frekvenci obrazovky,
+ale zkusíme si, mimo jiné, i rendrovat na co nejvyšším FPS.</p>
