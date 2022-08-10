@@ -72,11 +72,11 @@ na dorendrování toho předchozího.
 uint32_t imageIndex;
 vk::Result r =
    device->acquireNextImageKHR(
-      swapchain.get(),                  // swapchain
-      numeric_limits&lt;uint64_t&gt;::max(),  // timeout
-      imageAvailableSemaphore.get(),    // semaphore to signal
-      vk::Fence(nullptr),               // fence to signal
-      &amp;imageIndex                       // pImageIndex
+      swapchain.get(),                // swapchain
+      uint64_t(3e9),                  // timeout (3s)
+      imageAvailableSemaphore.get(),  // semaphore to signal
+      vk::Fence(nullptr),             // fence to signal
+      &amp;imageIndex                     // pImageIndex
    );
 if(r != vk::Result::eSuccess) {
    if(r == vk::Result::eSuboptimalKHR) {
@@ -662,7 +662,7 @@ při obsluze některé z přijatých zpráv.</p>
 <p>Třetí způsob je podobný druhému, kdy ale ve frontě nečekají žádné zprávy.
 Je opět zavolána wl_display_dispatch(). Tato funkce bude blokovat, dokud nedojde nějaká zpráva.
 A to je přesně, co potřebujeme. Žádný snímek nečeká na vyrendrování a žádná zpráva nečeká na obsloužení.
-Je tedy nejvhodnější zbytečně nezatěžovat procesor a uspat naši aplikaci až do chvíle,
+Je tedy nejvhodnější zbytečně nezatěžovat procesor a uspat běžící thread až do chvíle,
 než přijde další práce v podobě nějaké zprávy.</p>
 
 <p>Následuje zbytek smyčky:</p>
@@ -686,7 +686,7 @@ než přijde další práce v podobě nějaké zprávy.</p>
    }
 
    // render frame
-   cout << "Frame callback (" << _surfaceExtent.width << "x" << _surfaceExtent.height << ")" << endl;
+   cout &lt;&lt; "Frame callback (" &lt;&lt; _surfaceExtent.width &lt;&lt; "x" &lt;&lt; _surfaceExtent.height &lt;&lt; ")" &lt;&lt; endl;
    _framePending = false;
    _frameCallback();
 
@@ -706,5 +706,5 @@ minimalizovat, roztáhnout do placky a podobně, jak je ukázáno na následují
 <img src="resized-window.png">
 
 <p>Příště si ukážeme jednoduchou animaci trojúhelníku,
-kterou budeme rendrovat na frekvenci obrazovky,
-ale zkusíme si, mimo jiné, i rendrovat na co nejvyšším FPS.</p>
+kterou budeme rendrovat na frekvenci obrazovky (obyčejně 60Hz),
+ale zkusíme si, mimo jiné, i rendrovat s maximálním FPS.</p>
