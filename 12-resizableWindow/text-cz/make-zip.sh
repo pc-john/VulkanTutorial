@@ -12,7 +12,7 @@ if test -f $NAME-text.zip; then
 fi
 
 # zip text and images
-zip $NAME-text.zip text.html
+zip $NAME-text.zip text.html resized-window.png
 
 # create tmp environment
 mkdir tmp
