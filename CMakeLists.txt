@@ -18,6 +18,7 @@ set(PACKAGES
     13-spinningTriangle
     ff-win32AndWaylandPerfection
     ff-qtWindow
+    ff-perfInfo
    )
 
 foreach(pkg ${PACKAGES})
