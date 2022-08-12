@@ -22,10 +22,10 @@ int main(int, char**)
 		if(vkEnumerateInstanceVersion) {
 			uint32_t version;
 			vkEnumerateInstanceVersion(&version);
-			cout << "Vulkan instance version: " << VK_VERSION_MAJOR(version) << "."
+			cout << "Vulkan instance version:  " << VK_VERSION_MAJOR(version) << "."
 			     << VK_VERSION_MINOR(version) << "." << VK_VERSION_PATCH(version) << endl;
 		} else
-			cout << "Vulkan version: 1.0" << endl;
+			cout << "Vulkan instance version:  1.0" << endl;
 
 		// physical_device_properties2 support
 		bool physicalDeviceProperties2Supported = false;
@@ -60,7 +60,7 @@ int main(int, char**)
 
 		// print device info
 		vector<vk::PhysicalDevice> deviceList = instance->enumeratePhysicalDevices();
-		cout << "Number of Vulkan devices: " << deviceList.size() << endl;
+		cout << "Number of Vulkan devices:  " << deviceList.size() << endl;
 		for(vk::PhysicalDevice pd : deviceList) {
 
 			// variables of extension support
@@ -126,7 +126,7 @@ int main(int, char**)
 			// device info
 			cout << endl;
 			cout << p.deviceName << ":" << endl;
-			cout << "   VendorID: 0x" << hex << p.vendorID;
+			cout << "   VendorID:  0x" << hex << p.vendorID;
 			switch(p.vendorID) {
 			case 0x1002: cout << " (AMD/ATI)"; break;
 			case 0x10DE: cout << " (NVIDIA)"; break;
@@ -134,38 +134,48 @@ int main(int, char**)
 			case 0x10005: cout << " (Mesa)"; break;
 			}
 			cout << endl;
-			cout << "   DeviceID: 0x" << p.deviceID << dec << endl;
-			cout << "   Type:     " << to_string(p.deviceType) << endl;
-			cout << "   PCI info: domain=" << pciBusInfo.pciDomain << ", pciBus=" << pciBusInfo.pciBus
-			     << ", pciDevice=" << pciBusInfo.pciDevice << ", function=" << pciBusInfo.pciFunction << endl;
+			cout << "   DeviceID:  0x" << p.deviceID << dec << endl;
+			cout << "   Type:      " << to_string(p.deviceType) << endl;
+			if(pciBusInfoSupported)
+				cout << "   PCI info:  domain=" << pciBusInfo.pciDomain << ", pciBus=" << pciBusInfo.pciBus
+				     << ", pciDevice=" << pciBusInfo.pciDevice << ", function=" << pciBusInfo.pciFunction << endl;
+			else
+				cout << "   PCI info:  n/a" << endl;
 
 			// driver info
-			cout << "   Vulkan version: " << VK_VERSION_MAJOR(p.apiVersion) << "."
+			cout << "   Vulkan version:  " << VK_VERSION_MAJOR(p.apiVersion) << "."
 			     << VK_VERSION_MINOR(p.apiVersion) << "." << VK_VERSION_PATCH(p.apiVersion) << endl;
-			cout << "   Driver version: 0x" << hex << p.driverVersion << dec << endl;
-			cout << "   Driver name: " << driverProperties.driverName << endl;
-			cout << "   Driver info: " << driverProperties.driverInfo << endl;
-			cout << "   DriverID:    " << to_string(driverProperties.driverID) << endl;
-			cout << "   Driver conformance version: " << unsigned(driverProperties.conformanceVersion.major)
-			     << "." << unsigned(driverProperties.conformanceVersion.minor) 
-			     << "." << unsigned(driverProperties.conformanceVersion.subminor)
-			     << "." << unsigned(driverProperties.conformanceVersion.patch) << endl;
+			cout << "   Driver version:  0x" << hex << p.driverVersion << dec << endl;
+			if(driverPropertiesSupported) {
+				cout << "   Driver name:  " << driverProperties.driverName << endl;
+				cout << "   Driver info:  " << driverProperties.driverInfo << endl;
+				cout << "   DriverID:     " << to_string(driverProperties.driverID) << endl;
+				cout << "   Driver conformance version:  " << unsigned(driverProperties.conformanceVersion.major)
+				     << "." << unsigned(driverProperties.conformanceVersion.minor) 
+				     << "." << unsigned(driverProperties.conformanceVersion.subminor)
+				     << "." << unsigned(driverProperties.conformanceVersion.patch) << endl;
+			} else {
+				cout << "   Driver name:  n/a" << endl;
+				cout << "   Driver info:  n/a" << endl;
+				cout << "   DriverID:     n/a" << endl;
+				cout << "   Driver conformance version:  n/a" << endl;
+			}
 
 			// hardware info
 			if(amdShaderCorePropertiesSupported) {
-				cout << "   Shader Engine count: " << amdShaderInfo.shaderEngineCount << endl;
-				cout << "   Shader Arrays per Engine count: " << amdShaderInfo.shaderArraysPerEngineCount << endl;
-				cout << "   ComputeUnits per Shader Array: " << amdShaderInfo.computeUnitsPerShaderArray << endl;
-				cout << "   SIMDs per Compute Unit: " << amdShaderInfo.simdPerComputeUnit << endl;
-				cout << "   Wavefront slots in SIMD: " << amdShaderInfo.wavefrontsPerSimd << endl;
-				cout << "   Threads per wavefront: " << amdShaderInfo.wavefrontSize << endl;
+				cout << "   Shader Engine count:  " << amdShaderInfo.shaderEngineCount << endl;
+				cout << "   Shader Arrays per Engine count:  " << amdShaderInfo.shaderArraysPerEngineCount << endl;
+				cout << "   ComputeUnits per Shader Array:  " << amdShaderInfo.computeUnitsPerShaderArray << endl;
+				cout << "   SIMDs per Compute Unit:  " << amdShaderInfo.simdPerComputeUnit << endl;
+				cout << "   Wavefront slots in SIMD:  " << amdShaderInfo.wavefrontsPerSimd << endl;
+				cout << "   Threads per wavefront:  " << amdShaderInfo.wavefrontSize << endl;
 			}
 			if(amdShaderCoreProperties2Supported) {
-				cout << "   Active Compute Units: " << amdShaderInfo2.activeComputeUnitCount << endl;
+				cout << "   Active Compute Units:  " << amdShaderInfo2.activeComputeUnitCount << endl;
 			}
 			if(nvShaderSmBuiltinsSupported) {
-				cout << "   Shader SM count: " << nvShaderInfo.shaderSMCount << endl;
-				cout << "   Shader Warps per SM: " << nvShaderInfo.shaderWarpsPerSM << endl;
+				cout << "   Shader SM count:  " << nvShaderInfo.shaderSMCount << endl;
+				cout << "   Shader Warps per SM:  " << nvShaderInfo.shaderWarpsPerSM << endl;
 			}
 
 		}
