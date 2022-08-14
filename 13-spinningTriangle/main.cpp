@@ -126,7 +126,11 @@ int main(int argc, char** argv)
 			uint32_t presentationQueueFamily = UINT32_MAX;
 			vector<vk::QueueFamilyProperties> queueFamilyList = pd.getQueueFamilyProperties();
 			for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
+
+				// test for presentation support
 				if(pd.getSurfaceSupportKHR(i, surface)) {
+
+					// test for graphics operations support
 					if(queueFamilyList[i].queueFlags & vk::QueueFlagBits::eGraphics) {
 						// if presentation and graphics operations are supported on the same queue,
 						// we will use single queue
@@ -145,6 +149,7 @@ int main(int argc, char** argv)
 							graphicsQueueFamily = i;
 				}
 			}
+
 			if(graphicsQueueFamily != UINT32_MAX && presentationQueueFamily != UINT32_MAX)
 				// presentation and graphics operations are supported on the different queues
 				compatibleDevices.emplace_back(pd, graphicsQueueFamily, presentationQueueFamily, pd.getProperties());
@@ -170,11 +175,11 @@ int main(int argc, char** argv)
 			20, // vk::PhysicalDeviceType::eCpu           - low score
 			10, // unknown vk::PhysicalDeviceType
 		};
-		int bestScore = deviceTypeScore[min(unsigned(get<3>(*bestDevice).deviceType), 5u)];
+		int bestScore = deviceTypeScore[clamp(int(get<3>(*bestDevice).deviceType), 0, int(deviceTypeScore.size())-1)];
 		if(get<1>(*bestDevice) == get<2>(*bestDevice))
 			bestScore++;
 		for(auto it=compatibleDevices.begin()+1; it!=compatibleDevices.end(); it++) {
-			int score = deviceTypeScore[min(unsigned(get<3>(*it).deviceType), 5u)];
+			int score = deviceTypeScore[clamp(int(get<3>(*it).deviceType), 0, int(deviceTypeScore.size())-1)];
 			if(get<1>(*it) == get<2>(*it))
 				score++;
 			if(score > bestScore) {
@@ -223,7 +228,7 @@ int main(int argc, char** argv)
 		cout << "Surface formats:" << endl;
 		vector<vk::SurfaceFormatKHR> availableSurfaceFormats = physicalDevice.getSurfaceFormatsKHR(surface);
 		for(vk::SurfaceFormatKHR sf : availableSurfaceFormats)
-			cout << "   " << vk::to_string(sf.format) << " " << vk::to_string(sf.colorSpace) << endl;
+			cout << "   " << vk::to_string(sf.format) << ", color space: " << vk::to_string(sf.colorSpace) << endl;
 
 		// choose surface format
 		constexpr const array allowedSurfaceFormats{
@@ -250,7 +255,7 @@ int main(int argc, char** argv)
 		surfaceFormatFound:;
 		}
 		cout << "Using format:\n"
-		     << "   " << to_string(surfaceFormat.format) << " " << to_string(surfaceFormat.colorSpace) << endl;
+		     << "   " << to_string(surfaceFormat.format) << ", color space: " << to_string(surfaceFormat.colorSpace) << endl;
 
 		// render pass
 		renderPass =
@@ -335,8 +340,8 @@ int main(int argc, char** argv)
 							1,                              // imageArrayLayers
 							vk::ImageUsageFlagBits::eColorAttachment,  // imageUsage
 							(graphicsQueueFamily==presentationQueueFamily) ? vk::SharingMode::eExclusive : vk::SharingMode::eConcurrent, // imageSharingMode
-							(graphicsQueueFamily==presentationQueueFamily) ? uint32_t(0) : uint32_t(2),  // queueFamilyIndexCount
-							(graphicsQueueFamily==presentationQueueFamily) ? nullptr : array<uint32_t,2>{graphicsQueueFamily,presentationQueueFamily}.data(),  // pQueueFamilyIndices
+							uint32_t(2),  // queueFamilyIndexCount
+							array<uint32_t, 2>{graphicsQueueFamily, presentationQueueFamily}.data(),  // pQueueFamilyIndices
 							surfaceCapabilities.currentTransform,    // preTransform
 							vk::CompositeAlphaFlagBitsKHR::eOpaque,  // compositeAlpha
 							[]()  // presentMode
@@ -587,7 +592,7 @@ int main(int argc, char** argv)
 
 				// wait for previous frame
 				// if still not finished
-				presentationQueue.waitIdle();
+				graphicsQueue.waitIdle();
 
 				// increment frame counter
 				frameID++;
@@ -620,6 +625,7 @@ int main(int argc, char** argv)
 					if(r == vk::Result::eSuboptimalKHR) {
 						window.scheduleSwapchainResize();
 						cout << "acquire result: Suboptimal" << endl;
+						return;
 					} else if(r == vk::Result::eErrorOutOfDateKHR) {
 						window.scheduleSwapchainResize();
 						cout << "acquire error: OutOfDate" << endl;
@@ -639,10 +645,10 @@ int main(int argc, char** argv)
 					vk::RenderPassBeginInfo(
 						renderPass.get(),  // renderPass
 						framebuffers[imageIndex].get(),  // framebuffer
-						vk::Rect2D(vk::Offset2D(0,0), window.surfaceExtent()),  // renderArea
+						vk::Rect2D(vk::Offset2D(0, 0), window.surfaceExtent()),  // renderArea
 						1,  // clearValueCount
 						&(const vk::ClearValue&)vk::ClearValue(  // pClearValues
-							vk::ClearColorValue(array<float,4>{0.0f,0.0f,0.0f,1.f})
+							vk::ClearColorValue(array<float, 4>{0.0f, 0.0f, 0.0f, 1.f})
 						)
 					),
 					vk::SubpassContents::eInline
@@ -673,7 +679,7 @@ int main(int argc, char** argv)
 							1, &renderingFinishedSemaphore.get()  // signalSemaphoreCount + pSignalSemaphores
 						)
 					),
-					vk::Fence(nullptr)
+					nullptr  // fence
 				);
 
 				// present
@@ -696,7 +702,7 @@ int main(int argc, char** argv)
 						throw runtime_error("Vulkan error: vkQueuePresentKHR() failed with error " + to_string(r) + ".");
 				}
 
-				// wait for completion
+				// schedule next frame
 				if(frameUpdateMode != FrameUpdateMode::OnDemand)
 					window.scheduleFrame();
 

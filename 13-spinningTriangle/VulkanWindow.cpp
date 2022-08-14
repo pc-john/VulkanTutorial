@@ -143,9 +143,9 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 
 				cout << "WM_PAINT message" << endl;
 
-				// render frame
+				// set _framePending flag
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
-				w->doFrame();
+				w->_framePending = true;
 
 				// validate window area
 				if(!ValidateRect(hwnd, NULL))
@@ -155,18 +155,10 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 			}
 
 			case WM_SIZE: {
-
 				cout << "WM_SIZE message (" << LOWORD(lParam) << "x" << HIWORD(lParam) << ")" << endl;
-
-				// set flags
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				w->_framePending = true;
 				w->_swapchainResizePending = true;
-
-				// invalidate window content (this results in future WM_PAINT)
-				if(!InvalidateRect(hwnd, NULL, FALSE))
-					w->_wndProcException = make_exception_ptr(runtime_error("InvalidateRect(): The function failed."));
-
 				return DefWindowProc(hwnd, msg, wParam, lParam);
 			}
 
@@ -386,7 +378,6 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 					w->_framePending = true;
 					w->_swapchainResizePending = true;
 				}
-
 			},
 		.close =
 			[](void* data, xdg_toplevel* xdgTopLevel) {
@@ -455,43 +446,37 @@ void VulkanWindow::mainLoop()
 			continue;
 		}
 
-		doFrame();
-	}
-}
+		// recreate swapchain if requested
+		if(_swapchainResizePending) {
 
+			// make sure that we finished all the rendering
+			// (this is necessary for swapchain re-creation)
+			_device.waitIdle();
 
-void VulkanWindow::doFrame()
-{
-	// recreate swapchain if requested
-	if(_swapchainResizePending) {
+			// get surface capabilities
+			// On Win32, currentExtent, minImageExtent and maxImageExtent of returned surfaceCapabilites are all equal.
+			// It means that we can create a new swapchain only with imageExtent being equal to the window size.
+			// The currentExtent might become 0,0 on this platform, for example, when the window is minimized.
+			// If the currentExtent is not 0,0, both width and height must be greater than 0.
+			vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
 
-		// make sure that we finished all the rendering
-		// (this is necessary for swapchain re-creation)
-		_device.waitIdle();
+			// zero size swapchain is not allowed,
+			// so we will repeat the resize attempt after the next window resize
+			if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0)) {
+				_framePending = false;  // this will be rescheduled on the first window resize
+				continue;
+			}
 
-		// get surface capabilities
-		// On Win32, currentExtent, minImageExtent and maxImageExtent are all equal.
-		// It means we can create a new swapchain only with imageExtent being equal to the window size.
-		// The currentExtent of 0,0 means the window is minimized with the result
-		// we cannot create swapchain for such window. If the currentExtent is not 0,0,
-		// both width and height must be greater than 0.
-		vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
-
-		// do not allow swapchain creation and rendering when currentExtent is 0,0
-		if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0)) {
-			_framePending = false;  // this will be rescheduled on the first window resize
-			return;
+			// recreate swapchain
+			_swapchainResizePending = false;
+			_surfaceExtent = surfaceCapabilities.currentExtent;
+			_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
 		}
 
-		// recreate swapchain
-		_swapchainResizePending = false;
-		_surfaceExtent = surfaceCapabilities.currentExtent;
-		_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
+		// render scene
+		_framePending = false;
+		_frameCallback();
 	}
-
-	// render scene
-	_framePending = false;
-	_frameCallback();
 }
 
 
@@ -582,14 +567,14 @@ void VulkanWindow::mainLoop()
 			_device.waitIdle();
 
 			// get surface capabilities
-			// On Xlib, currentExtent, minImageExtent and maxImageExtent are all equal.
-			// It means we can create a new swapchain only with imageExtent being equal to the window size.
-			// The currentExtent of 0,0 means the window is minimized with the result
-			// we cannot create swapchain for such window. If the currentExtent is not 0,0,
-			// both width and height must be greater than 0.
+			// On Xlib, currentExtent, minImageExtent and maxImageExtent of returned surfaceCapabilites are all equal.
+			// It means that we can create a new swapchain only with imageExtent being equal to the window size.
+			// The currentExtent might become 0,0 on this platform, for example, when the window is minimized.
+			// If the currentExtent is not 0,0, both width and height must be greater than 0.
 			vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
 
-			// do not allow swapchain creation and rendering when currentExtent is 0,0
+			// zero size swapchain is not allowed,
+			// so we will repeat the resize attempt after the next window resize
 			// (this never happened on my KDE 5.80.0 (Kubuntu 21.04) and KDE 5.44.0 (Kubuntu 18.04.5);
 			// window minimalizing just unmaps the window)
 			if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0)) {
@@ -629,8 +614,14 @@ void VulkanWindow::mainLoop()
 	while(_running) {
 
 		// dispatch events
-		if(_framePending) {
-
+		if(!_framePending)
+		{
+			// dispatch events with blocking
+			if(wl_display_dispatch(_display) == -1)  // it blocks if there are no events
+				throw std::runtime_error("wl_display_dispatch() failed.");
+		}
+		else
+		{
 			// dispatch events without blocking
 			while(wl_display_prepare_read(_display) != 0)
 				if(wl_display_dispatch_pending(_display) == -1)
@@ -641,12 +632,7 @@ void VulkanWindow::mainLoop()
 				throw runtime_error("wl_display_read_events() failed.");
 			if(wl_display_dispatch_pending(_display) == -1)
 				throw runtime_error("wl_display_dispatch_pending() failed.");
-
 		}
-		else
-			// dispatch events with blocking
-			if(wl_display_dispatch(_display) == -1)  // it blocks if there are no events
-				throw std::runtime_error("wl_display_dispatch() failed.");
 
 		// flush outgoing buffers
 		if(wl_display_flush(_display) == -1)
