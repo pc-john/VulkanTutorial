@@ -1,0 +1,643 @@
+<h1>Vulkan: Prezentační režimy a točící se trojúhelník (13. díl)</h1>
+
+<p>Dnes rozšíříme náši prezentaci do okna o možnost
+nastavit PresentMode, tedy prezentační režim.
+Zkusíme prezentovat jak na frekvenci obrazovky,
+či pouze když vznikne potřeba, tak i na maximum FPS.</p>
+
+<p>Prezentační režim (present mode) udává,
+jak se námi vyrendrované obrázky dostanou na obrazovku.
+Doposud jsme používali režim vk::PresentModeKHR::eFifo.
+Jak již název tohoto režimu napovídá - First In, First Out -
+vyrendrované obrázky se vkládají do fronty a
+ze druhého konce fronty jsou zase vybírány a posílány na obrazovku tou rychlostí,
+jakou obrazovka zobrazuje, tedy obyčejně 60 snímků za sekundu.</p>
+
+<p>Než půjdeme k výkladu, můžeme si <a href="13-spinningTriangle.zip">stáhnout zdojáky</a>,
+zkompilovat si je a zkusit spustit.
+Nově aplikace podporuje několik command-line parametrů,
+jak zjistíme zadáním --help na příkazový řádek:</p>
+
+<pre>
+13-spinningTriangle usage:
+   --help or -h:  usage information
+   --on-demand:   on demand window content refresh,
+                  this conserves computing resources
+   --continuous:  constantly update window content using
+                  screen refresh rate, this is the default
+   --max-frame-rate:  ignore screen refresh rate, update
+                      window content as often as possible
+</pre>
+
+<p>Pokud specifikujeme --on-demand, bude se rendrovat nový trojúhelník vždy,
+když přijde nový požadavek na přerendrování okna.
+Při každém novém rendrování pak bude trojúhelník pootočen o šest stupňů.
+Tedy za šedesát snímků udělá trojúhelník jednu otáčku.
+Můžeme zkusit roztahovat a zmenšovat okno a podle toho,
+zda se trojúhelník točí nebo stojí poznáme,
+zda okenní systém provádí pouze scale současného obrázku,
+nebo zda opravdu přišel nový požadavek na přerendrování okna,
+při kterém znovu vytváříme swapchain a znovu rendrujeme scénu.</p>
+
+<p>Pokud nespecifikujeme žádný parametr nebo specifikujeme --continuous,
+spustí se aplikace s kontinuální animací trojúhelníku,
+jak můžeme vidět po kliknutí na následující obrázek:</p>
+
+<a href="triangle-animation-30.gif"><img src="triangle.png"></a>
+
+<p>V konzoli pak vidíme každé dvě vteřiny výpis aktuálního FPS (Frames Per Second),
+tedy počet vyrendrovaných snímků za vteřinu.
+Tato hodnota je na většině dnešních počítačů rovna šedesáti.
+A to je přesně obrazovková frekvence většiny dnešních zobrazovacích panelů.
+Občas se setkáme i s vyššími hodnotami, například u specializovaného nebo herního hardware.
+Pak můžeme vidět například i 120 nebo 144 snímků za vteřinu.</p>
+
+<p>Třetí možnost specifikujeme uvedením --max-frame-rate.
+Po spuštění vidíme trojúhelník, který se doslova může přetrhnout rychlostí rotace.
+Každé dvě sekundy pak v konzoli vidíme FPS se závratnými hodnotami
+podle výkonu a podle možností dané grafické karty.</p>
+
+<p>Tím jsme si vyzkoušeli naši aplikaci.
+V dnešním díle zbývá probrat základní funkční bloky systému,
+pak probrat prezentační režimy a nakonec projít zdrojáky.</p>
+
+
+<h3>Hardware a základní funkční bloky systému</h3>
+
+<p>Celý rendrovací a zobrazovací systém může
+v nejjednodušším případě vypadat jako na následujícím obrázku:</p>
+
+<img src="block-diagram.svg">
+
+<p>Žlutě jsou zobrazeny části vztahující se k zobrazování,
+načervenalou barvou části mající úzký vztah k výpočetní síle grafické karty
+a modrou barvou je zobrazeno vše ostatní.</p>
+
+<p>Začneme od obrazovky a presentation engine.
+Typická obrazovka počítače a často i notebooků má rozlišení
+<a href="https://en.wikipedia.org/wiki/1080p">FullHD</a> (1920x1080)
+a mnoho novějších počítačů i
+<a href="https://en.wikipedia.org/wiki/4K_resolution">4K UHD</a> (3840x2160).
+Různých rozlišení samozřejmě existuje
+<a href="https://en.wikipedia.org/wiki/List_of_common_resolutions">obrovské množství</a>
+a je pravděpodobné, že právě vy můžete mít jiné.
+To ale nic nemění na tom, že FullHD a 4K UHD jsou v době psaní tohoto článku (léto 2022)
+časté rozlišení obrazovek.</p>
+
+<p>Na každé obrazovce snadno spočítáme počet pixelů.
+Obrazovka FullHD (1920x1080) nám dá zhruba 2 miliony pixelů
+a 4K UHD obrazovka asi 8 milionů.
+Při 24-bitových barvách, což je jeden bajt na každou z RGB složek,
+to dává zhruba 6 a 24 megabajtů dat jednoho snímku na obrazovce.
+V nejjednodušším případě se snímek posílá na obrazovku po pixelech od levého horního rohu.
+Dál se pokračuje pixely na nejhornějším řádku až do pravého horního rohu.
+Pak se vše zopakuje postupně pro každý řádek o jedno níže až po pravý spodní roh obrazovky.
+Tím je odesílání snímku dokončeno.
+Na typický LCD panel dnes posíláme nejčastěji 60 snímků za sekundu,
+což je <a href="https://en.wikipedia.org/wiki/Refresh_rate">obnovovací frekvence obrazovky</a>,
+anglicky screen or display refresh rate.
+Použijeme-li jednotku <a href="https://en.wikipedia.org/wiki/Hertz">hertz</a>, pak říkáme,
+že obnovovací frekvence obrazovky je 60Hz.</p>
+
+<p>Při 60 snímcích za sekunkdu dostáváme datový tok 360MiB/s
+pro FullHD rozlišení a 1.4GiB/s pro 4K datový proud.
+Toto množství dat nám u klasického počítače protéká kabelem
+k obrazovce, ať už se jedná o rozhraní
+<a href="https://en.wikipedia.org/wiki/DisplayPort">DisplayPort</a> či
+<a href="https://en.wikipedia.org/wiki/HDMI">HDMI</a> či něco exotického.
+V tomto článku již budu vynechávat všechna historická rozhraní
+jako <a href="https://en.wikipedia.org/wiki/VGA_connector">VGA connector</a>,
+<a href="https://en.wikipedia.org/wiki/Digital_Visual_Interface">DVI</a> a další,
+z nichž mnohá jsou ještě analogová a budu předpokládat jedno z moderních digitálních rozhranní.</p>
+
+<p>Tento datový tok, snímek za snímkem, do obrazovky odesílá jednotka,
+kterou bychom ve Vulkan terminologii nazvali Presentation Engine,
+v mnoha diskuzích zkráceně pouze PE.
+Presentation engine čte data z bufferu a posílá je na obrazovku.
+Buffery na našem obrázku máme dva, ale obecně jich může být libovolný počet od jednoho nahoru.
+My máme dva, tedy
+<a href="https://en.wikipedia.org/wiki/Multiple_buffering#Double_buffering_in_computer_graphics">double buffering</a>,
+který jsme si už zmínili v
+<a href="https://www.root.cz/clanky/vulkan-swapchain-a-prezentace-na-obrazovku/">jedenáctém díle pojednávajícím o swapchainu</a>.
+Máme tedy dva buffery: front buffer a back buffer, česky přední a zadní buffer.
+Přední je obyčejně něco, co jde vidět, protože je to v předu, a zadní něco,
+co je často skryto či zasunuto a vidět nejde.</p>
+
+<p>Prezentační engine tedy čte z front bufferu a zobrazuje jej na obrazovce,
+zatímco rendrování je prováděno do back bufferu.
+Až je rendrování snímku dokončeno, jsou oba buffery prohozeny
+a prezentační engine začne zobrazovat obsah nového snímku.</p>
+
+<p>Samotné rendrování začíná u rozhraní Vulkan, které přes driver a následně nejčastěji přes
+<a href="https://en.wikipedia.org/wiki/PCI_Express">PCIe sběrnici</a>
+posílá práci grafické kartě. Grafická karta pak práci zpracovává za pomoci mnoha součástí,
+které bychom mohli souhrnně nazvat Graphics and Compute Array,
+česky snad grafické a výpočetní jednotky,
+či jen výpočetní jednotky, ať už se na nich počítá grafika či výpočty.
+Tyto výpočetní jednotky komunikují s grafickou pamětí, odkud čtou a zapisují data,
+a kam se do back bufferu zapisuje i výsledný obrázek.
+Na rozdíl od PCIe sběrnice, kde máme k dispozici dnes většinou asi 15-60GiB/s podle verze PCIe,
+propustnost grafické paměti se u nynějších posledních generací diskrétních grafik
+pohybuje od 100 do 1000GiB/s,
+tedy opravdu hodně, aby paměť sytila hladové výpočetní jednotky grafické karty,
+které dnes v hi-endu atakují počet deset tisíc a v low-endu diskrétních grafik
+zřídka klesají pod pětistovku.</p>
+
+<p>A právě tento výkon může budit otázku: Co když výpočetní jednotky chrlí obrovské množství
+hotových obrázků, ale prezentační engine jich chce zobrazit pouze 60 za sekundu?
+Nebo: Co když se výpočetní jednotky zadýchávají na velmi složité scéně a zvládnou
+vyrendrovat pouze 50 snímků za sekundu? Co v takovém případě udělá prezentační engine,
+když musí poslat na obrazovku snímků 60? To vše nám zodpoví prezentační režimy.
+
+
+<h3>Prezentační režimy</h3>
+
+<p>Vulkan definuje několik prezentačních režimů specifikovaných v enum class vk::PresentModeKHR.
+My si je představíme postupně. Začneme od toho nejjednoduššího:</p>
+
+<h5>PresentModeKHR::eImmediate</h5>
+
+<p>Prezentační režim eImmediate značí to, co obsahuje v názvu, tedy okamžité přepnutí.
+Tedy ve chvíli, kdy požádáme presentation engine o zobrazení daného bufferu
+dojde k okamžitému přepnutí bez zbytečného otálení na tento nový buffer.</p>
+
+<p>V našem případě bychom tedy dorendrovali obrázek do back bufferu,
+požádali o prezentaci back bufferu a okamžitě bez dalšího čekání
+by došlo k prohození back a front bufferu.</p>
+
+<p>Okamžité prohození má jednu krásnou výhodu: téměř nulovou latenci.
+Jakmile je tedy snímek dorendrovaný, ihned jej můžeme poslat na obrazovku.
+Je zde ale také jedna obrovská nevýhoda zvaná anglicky
+<a href="https://en.wikipedia.org/wiki/Screen_tearing">tearing</a>,
+česky roztržení či roztrhávání obrazu. Obrazovka již zobrazila část jednoho snímku,
+pak ale byl náhle obraz přepnut a zobrazí se druhá část, ale z následujícího snímku.
+Počet přepnutí může být více během jednoho snímku.
+Tento efekt může být okem postřehnutelný jako horizontální zlom ve snímku.
+Příklad je na následujícím obrázku:</p>
+
+<img src="tearing.png">
+
+<p>Trojúhelník je zobrazován v jedné poloze, pak je ale náhle přepnuto na snímek,
+kde je již trojúhelník trochu více pootočený. To se na tomto snímku stane dvakrát.</p>
+
+<h5>PresentModeKHR::eFifo</h5>
+
+<p>Efekt tearingu může být eliminován, pokud nepřepínáme snímky ihned uprostřed jejich přenosu,
+ale počkáme, až se vždy dokončí jeden celý snímek.
+Historicky se tento okamžik nazývá
+<a href="https://en.wikipedia.org/wiki/Vertical_blanking_interval">vertical blanking interval</a>
+nebo vertical blanking period, zkráceně vertical blank či v-blank.
+Česky pak vertikální zatemňovací interval.
+Název pramení z toho, že staré
+<a href="https://en.wikipedia.org/wiki/Cathode-ray_tube">CRT</a> televize a monitory
+potřebovaly po dokončení snímku přesunout paprsek
+z pravého dolního rohu obrazovky do levého horního rohu,
+kde se pak zase začínal vykreslovat další snímek.
+Aby nebyla na obrazovce udělána diagonální čára, byl paprsek "zatemněn".
+A proč vertikální? Protože paprsek se přesouval i po každém řádku z prava do leva
+a tam se jednalo o horizontální zatemňovací interval.
+U nás jde paprsek i vertikálně, proto vertikální zatemňovací interval.
+V čase vertikálního zatemňovacího intervalu je předchozí snímek kompletní a následující ještě nezačal.
+S trochou nadsázky se tedy jedná o dobu "temna", kdy se nic nového na obrazovku nekreslí a neposílá.
+V tuto chvíli tedy může presentation engine bezpečně přepnout front a back buffer,
+aniž by došlo k jakémukoliv vizuálnímu efektu tearingu.
+Synchronizovat věci tak, aby byly prováděny během vertical blank se pak nazývá
+<a href="https://en.wikipedia.org/wiki/Screen_tearing#Vertical_synchronization">vertikální synchronizace</a>,
+zkráceně VSync. Jinými slovy VSync brání změnám do dat prezentovaného snímku,
+dokud není celý snímek přenesen na obrazovku.</p>
+
+<p>A toto přesně dělá režim eFifo, který kompletně zabraňuje tearingu.
+Pokud je zde nový snímek, který čeká na prezentaci, tak počká na v-blank,
+a pak se prohodí front a back buffer.</p>
+
+<p>Pokud bychom měli mnoho bufferů, ne jen dva,
+tak v pořadí, v jakém je pošleme do presentation engine pro prezentaci,
+v tom pořadí budou jeden po druhém vždy v čase v-blank nastaveny jako aktuální snímek
+a následně odeslány k zobrazení na obrazovce.
+Pokud bychom jich poslali naráz šest, trvalo by skoro 100ms, než by se všechny
+na 60Hz obrazovce vystřídaly.</p>
+
+<p>A toto je nevýhoda režimu eFifo, tedy že snímky čekají ve frontě a nabírají tak zpoždění,
+nebo-li latenci, či lag. V případě double bufferingu, pokud je fronta plná,
+bude latence dalšího snímku než začne být odesílán na obrazovku 16.6 až 33.3ms na 60Hz obrazovce.
+To platí samozřejmě jen, pokud se veškerý hardware a software bude chovat přesně tak, jak očekáváme.</p>
+U tripple bufferingu ve stejném případě pak plná fronta znamená latenci 33.3 až 50.0ms.</p>
+
+<h5>PresentModeKHR::eMailbox</h5>
+
+<p>Prezentační režim eMailbox odstraňuje problém čekání, který jsme si uvedli u režimu eFifo.
+Jeden snímek může být zobrazován, druhý naplánován k prezentaci,
+ale když naplánujeme třetí snímek, druhý je zahozen a nahrazen třetím.
+Ve frontě tedy vždy čeká jen poslední naplánovaný snímek k prezentaci.
+Čeká až do v-blank, kdy bude nastaven jako aktuální snímek
+a následně bude odeslán na obrazovku.</p>
+
+<p>Režim eMailbox tedy také čeká na v-blank a nedochází k tearingu.
+Pokud bychom analyzovali maximální dobu čekání, než začne snímek být odesílán na obrazovku,
+tak v případě plné fronty jakýkoliv další snímek nebude čekat déle než 16.6ms
+a pokud snímek odešleme v ten správný okamžik, může být zpoždění rovno téměř nule.
+Opět zvažujeme jakýsi ideální modelový hardware a software.</p>
+
+<p>Výhoda mailboxového režimu je tedy velmi krátká latence a zároveň absence tearingu.
+Nevýhoda je často velká zátěž výpočetních prostředků, neboť mailboxové aplikace
+často rendrují na velmi vysokých FPS, přičemž jen 60 snímků z nich se na 60Hz obrazovce
+opravdu objeví. Na desktopech se pak trochu protočí větráky grafické karty
+a trošku více roztočí elektroměr. Na mobilech je situace závažnější.
+Horký mobil v ruce a rychleji vybitá baterie není obyčejně to, co bychom
+na mobilní aplikaci měli rádi. </p>
+
+<p>Pokud je spotřeba energie nebo vysoké využití výpočetních prostředků problém,
+buď je možné nějakým postupem snížit či korigovat počet rendrovaných snímků,
+nebo se občas jednoduše volí eFifo režim, který omezí počet rendrovaných snímků na tolik,
+kolik zvládne obrazovka, tedy nejčastěji 60 za sekundu.</p>
+
+
+<h5>PresentModeKHR::eFifoRelaxed</h5>
+
+<p>Občas se stává, že je scéna velmi rozsáhlá
+a výkon grafické karty sotva stačí na 60 vyrendrovaných snímků za sekundu,
+přičemž uvažujeme opět 60Hz obrazovku.
+Při použití režimu eFifo a double bufferingu se může objevit problém.
+Pokud grafická karta zvládne scénu vyrendrovat
+60-krát za sekundu a ještě ji zůstane drobná rezerva, bude vše vpořádku
+a na obrazovce uvidíme 60 vyrendrovaných snímků.
+Pokud ale výkon poklesne pod 60 snímků za sekundu, karta nestihne včas snímek dokončit
+a naplánovat před jeho v-blank, ale až těsně po něm.
+Tento snímek tedy bude čekat na další v-blank, aby byl zobrazen.
+A další smůla je v tom, že současný snímek se stále zobrazuje,
+takže do něj ještě nemůžeme začít rendrovat následující snímek.
+Připomeňme, že při double bufferingu máme buffery jen dva a oba jsou nyní využity.
+Tedy i s rendrováním musíme počkat až do dalšího v-blank, aby se nám jeden buffer uvolnil
+a abychom mohli záčít rendrovat další snímek.
+Jinými slovy, protože jsme to nestihli, a teď ještě musíme čekat,
+klesne počet vyrendrovaných snímků rázem z 60 na 30.</p>
+
+<p>Pokud se výkon motá těsně nad 60 vyrendrovatelných snímků a jen na pár momentů klesne lehce pod 60,
+budeme chvíli vidět 60 snímků a chvíli 30, pak zase 60.
+Vždy při propadu se nám bude zdát, že se obraz začal nějak trhat.
+Toto trhání se nazývá
+<a href="https://www.svethardware.cz/recenze-poruchy-plynulosti-pohybu-v-pocitacovych-hrach/41290-3">stuttering</a>.
+
+<p>V tuto chvíli se nám nabízejí dvě řešení: Buď použít eFifo s tripple bufferingem,
+což potenciálně přináší riziko vyšší latence, ale propad průměrného FPS nebude tak drastický,
+nebo použít eFifoRelaxed.</p>
+
+<p>Režim eFifoRelaxed se chová jako eFifo pokud máme více jak 60 FPS.
+Tedy žádný tearing a žádný stuttering.
+Pokud ale FPS klesne pod 60, tedy snímek nestihne svůj v-blank interval,
+eFifoRelaxed se bude chovat jako eImmediate, tedy dovolí snímku dostat se na obrazovku okamžitě.
+To sice může způsobit tearing, ale zabrání stutteringu.</p>
+
+
+<h5>PresentModeKHR::eSharedDemandRefresh a PresentModeKHR::eSharedContinuousRefresh</h5>
+
+<p>Poslední dva prezentační režimy, které Vulkan v době psaní tohoto článku podporuje,
+jsou poněkud speciální. Na obrazovce se zobrazuje jediný obrázek,
+do kterého se zároveň i kreslí. Tedy bez double bufferingu a s nebezpečím tearingu.
+Tyto režimy jsou ale mimo oblast našeho momentálního zájmu.</p>
+
+
+<h3>Zdrojový kód</h3>
+
+<p>Pojďme se nyní podívat na zdrojáky.
+Abychom mohli vidět, že na obrazovku opravdu rendrujeme nové snímky,
+roztočíme náš trojúhelník. K tomu potřebujeme poslat do vertex shaderu úhel natočení.
+Protože jsme si ještě neukázali, jak posílat data do shaderů,
+zjednodušíme si situaci a použijeme trik:
+Jednotlivé vyrendrované snímky si očíslujeme proměnnou frameID
+a zvýšíme ji o jedničku pro každý další rendrovaný snímek.
+A tuto proměnnou si pošleme skrz parametr firstInstance u příkazu rendrování trojúhelníku:</p>
+
+<pre>
+commandBuffer.draw(  // draw single triangle
+	3,  // vertexCount
+	1,  // instanceCount
+	0,  // firstVertex
+	<b>uint32_t(frameID)  // firstInstance</b>
+);
+</pre>
+
+<p>Protože nepoužíváme instancing, neboť instanceCount je rovno 1,
+byl parametr firstInstance nevyužit.
+My jej tedy použijeme a pošleme si jím číslo rendrovaného snímku.
+Vzhledem k jednoduchosti naší aplikace si takovýto hack můžeme dovolit.</p>
+
+<p>Ve vertex shaderu pak hodnotu parametru firstInstance dostaneme v proměnné gl_InstanceIndex:</p>
+
+<pre>
+#version 450
+
+out gl_PerVertex {
+	vec4 gl_Position;
+};
+
+layout(location = 0) out vec3 outColor;
+
+
+vec3 colors[3] = vec3[](
+	vec3(0.0, 1.0, 0.0),
+	vec3(0.0, 0.0, 1.0),
+	vec3(1.0, 0.0, 0.0)
+);
+
+
+void main()
+{
+	<b>float alpha = radians(gl_VertexIndex*120 + gl_InstanceIndex*6);
+	gl_Position = vec4(0.5*sin(alpha), -0.5*cos(alpha), 0.0, 1.0);</b>
+	outColor = colors[gl_VertexIndex];
+}
+</pre>
+
+<p>Jak vidíme, gl_InstanceIndex vynásobíme šestkou, tedy pootočením o šest stupňů
+s každým dalším snímkem, tedy za 60 snímků máme celou otáčku.
+Dále připočteme otočení o 0, 120 či 240 stupňů pro jednotlivé vrcholy trojúhelníku
+a výsledek zkonvertovaný do radiánů přiřadíme do proměnné alpha.</p>
+
+<p>Na následujícím řádku pak spočítáme za pomocí funkcí sinus a cosinus souřadnice
+výsledného vertexu. Tím jsme skončili s shadery a můžeme jít na main.cpp.</p>
+
+<p>Začneme parsováním argumentů, kde si nastavíme proměnnou frameUpdateMode
+na jednu ze třech možností: OnDemand, Continous nebo MaxFrameRate.
+
+<pre>
+// process command-line arguments
+for(int i=1; i&lt;argc; i++)
+	if(strcmp(argv[i], "--on-demand") == 0)
+		<b>frameUpdateMode = FrameUpdateMode::OnDemand;</b>
+	else if(strcmp(argv[i], "--continuous") == 0)
+		<b>frameUpdateMode = FrameUpdateMode::Continuous;</b>
+	else if(strcmp(argv[i], "--max-frame-rate") == 0)
+		<b>frameUpdateMode = FrameUpdateMode::MaxFrameRate;</b>
+	else {
+		if(strcmp(argv[i], "--help") != 0 &mp;&amp; strcmp(argv[i], "-h") != 0)
+			cout &lt;&lt; "Unrecognized option: " &lt;&lt; argv[i] &lt;&lt; endl;
+		cout &lt;&lt; appName &lt;&lt; " usage:\n"
+				"   --help or -h:  usage information\n"
+				"   --on-demand:   on demand window content refresh,\n"
+				"                  this conserves computing resources\n"
+				"   --continuous:  constantly update window content using\n"
+				"                  screen refresh rate, this is the default\n"
+				"   --max-frame-rate:  ignore screen refresh rate, update\n"
+				"                      window content as often as possible\n" &lt;&lt; endl;
+		exit(99);
+	}
+</pre>
+
+<p>Podle hodnoty frameUpdateMode pak upravíme tvorbu swapchainu:</p>
+
+<pre>
+// create new swapchain
+constexpr const uint32_t requestedImageCount = 2;
+vk::UniqueSwapchainKHR newSwapchain =
+	device-&gt;createSwapchainKHRUnique(
+		vk::SwapchainCreateInfoKHR(
+			vk::SwapchainCreateFlagsKHR(),  // flags
+			window.surface(),               // surface
+			surfaceCapabilities.maxImageCount==0  // minImageCount
+				? max(requestedImageCount, surfaceCapabilities.minImageCount)
+				: clamp(requestedImageCount, surfaceCapabilities.minImageCount, surfaceCapabilities.maxImageCount),
+			surfaceFormat.format,           // imageFormat
+			surfaceFormat.colorSpace,       // imageColorSpace
+			newSurfaceExtent,               // imageExtent
+			1,                              // imageArrayLayers
+			vk::ImageUsageFlagBits::eColorAttachment,  // imageUsage
+			(graphicsQueueFamily==presentationQueueFamily) ? vk::SharingMode::eExclusive : vk::SharingMode::eConcurrent, // imageSharingMode
+			uint32_t(2),  // queueFamilyIndexCount
+			array&lt;uint32_t, 2&gt;{graphicsQueueFamily, presentationQueueFamily}.data(),  // pQueueFamilyIndices
+			surfaceCapabilities.currentTransform,    // preTransform
+			vk::CompositeAlphaFlagBitsKHR::eOpaque,  // compositeAlpha
+			<b>[]()  // presentMode
+				{
+					// for MaxFrameRate, try Mailbox and Immediate if they are available
+					if(frameUpdateMode == FrameUpdateMode::MaxFrameRate) {
+						vector&lt;vk::PresentModeKHR&gt; modes =
+							physicalDevice.getSurfacePresentModesKHR(window.surface());
+						if(find(modes.begin(), modes.end(), vk::PresentModeKHR::eMailbox) != modes.end())
+							return vk::PresentModeKHR::eMailbox;
+						if(find(modes.begin(), modes.end(), vk::PresentModeKHR::eImmediate) != modes.end())
+							return vk::PresentModeKHR::eImmediate;
+					}
+
+					// return Fifo that is always supported
+					return vk::PresentModeKHR::eFifo;
+				}(),</b>
+			VK_TRUE,  // clipped
+			swapchain.get()  // oldSwapchain
+		)
+	);
+swapchain = move(newSwapchain);
+</pre>
+
+<p>Změněný kód týkající se parametru presentMode je zvýrazněn tučně.
+Do dneška jsme jej nastavovali na eFifo.
+Nicméně pro MaxFrameRate potřebujeme jiný prezentační mód.
+Záleží ale, které módy jsou na daném zařízení podporovány. Vytvoříme tedy lambda funkci.
+Pokud je frameUpdateMode nastaven na MaxFrameRate, zjistíme si všechny podporované prezentační módy.
+Pokud je mezi nimi eMailbox, použijeme ten.
+Pokud není k dispozici, ale je k dispozici eImmediate, je to naše druhá volba.
+Pokud ani jeden z nich není podporován, z nedostatku dalších možností použijeme eFifo,
+o kterém specifikace Vulkan garantuje, že je podporován vždy.</p>
+
+<p>Když kód shrneme, používáme vždy eFifo s double bufferingem.
+Pouze při požadavku maximálního frame rate zkoušíme použít eMailbox nebo eImmediate.</p>
+
+<p>A dostáváme se do frame callbacku. Ten již z minulých dílů má tři části:
+příprava na rendering, command buffer recording a odeslání práce k provedení.
+Začněme od třetí části:</p>
+
+<pre>
+		// submit frame
+		graphicsQueue.submit(
+			vk::ArrayProxy&lt;const vk::SubmitInfo&gt;(
+				1,
+				&amp;(const vk::SubmitInfo&amp;)vk::SubmitInfo(
+					1, &amp;imageAvailableSemaphore.get(),  // waitSemaphoreCount + pWaitSemaphores +
+					&amp;(const vk::PipelineStageFlags&amp;)vk::PipelineStageFlags(  // pWaitDstStageMask
+						vk::PipelineStageFlagBits::eColorAttachmentOutput),
+					1, &amp;commandBuffer,  // commandBufferCount + pCommandBuffers
+					1, &amp;renderingFinishedSemaphore.get()  // signalSemaphoreCount + pSignalSemaphores
+				)
+			),
+			<b>renderingFinishedFence.get()  // fence</b>
+		);
+
+		// present
+		r =
+			presentationQueue.presentKHR(
+				&amp;(const vk::PresentInfoKHR&amp;)vk::PresentInfoKHR(
+					1, &amp;renderingFinishedSemaphore.get(),  // waitSemaphoreCount + pWaitSemaphores
+					1, &amp;swapchain.get(), &amp;imageIndex,  // swapchainCount + pSwapchains + pImageIndices
+					nullptr  // pResults
+				)
+			);
+		if(r != vk::Result::eSuccess) {
+			if(r == vk::Result::eSuboptimalKHR) {
+				window.scheduleSwapchainResize();
+				cout &lt;&lt; "present result: Suboptimal" &lt;&lt; endl;
+			} else if(r == vk::Result::eErrorOutOfDateKHR) {
+				window.scheduleSwapchainResize();
+				cout &lt;&lt; "present error: OutOfDate" &lt;&lt; endl;
+			} else
+				throw runtime_error("Vulkan error: vkQueuePresentKHR() failed with error " + to_string(r) + ".");
+		}
+
+		<b>// schedule next frame
+		if(frameUpdateMode != FrameUpdateMode::OnDemand)
+			window.scheduleFrame();</b>
+
+	},
+	physicalDevice,
+	device.get()
+);
+</pre>
+
+<p>Jak vidíme, při zavolání Queue::submit() není poslední parametr nullptr jako v minulých dílech,
+ale předáváme renderingFinishedFence.
+Je to fence, která bude zasignalizována, když je veškerá submitnutá práce dokončena.
+Tuto fence použijeme místo Queue::waitIdle() z minulých dílů,
+kterou jsme použili pouze jako rychlé řešení bez ohledu na efektivitu.</p>
+
+<p>Druhá změna je na samém konci frame callbacku, kde vždy naplánujeme nový snímek,
+kromě případu, že frameUpdateMode je OnDemand.
+Takže v případě Continuous nebo MaxFrameRate update mode bude zajištěno,
+že rendrování dalších snímků bude bezprostředně následovat.</p>
+
+<p>Nyní se můžeme podívat na první část frame callbacku, která řeší přípravu na rendering:</p>
+
+<pre>
+window.setFrameCallback(
+	[]() {
+
+		// acquire image
+		uint32_t imageIndex;
+		vk::Result r =
+			device->acquireNextImageKHR(
+				swapchain.get(),                // swapchain
+				uint64_t(3e9),                  // timeout (3s)
+				imageAvailableSemaphore.get(),  // semaphore to signal
+				vk::Fence(nullptr),             // fence to signal
+				&amp;imageIndex                     // pImageIndex
+			);
+		if(r != vk::Result::eSuccess) {
+			if(r == vk::Result::eSuboptimalKHR) {
+				window.scheduleSwapchainResize();
+				cout &lt;&lt; "acquire result: Suboptimal" &lt;&lt; endl;
+				return;
+			} else if(r == vk::Result::eErrorOutOfDateKHR) {
+				window.scheduleSwapchainResize();
+				cout &lt;&lt; "acquire error: OutOfDate" &lt;&lt; endl;
+				return;
+			} else
+				throw runtime_error("Vulkan error: vkAcquireNextImageKHR failed with error " + to_string(r) + ".");
+		}
+
+		<b>// wait for previous frame rendering work
+		// if still not finished
+		r =
+			device->waitForFences(
+				renderingFinishedFence.get(),  // fences
+				VK_TRUE,  // waitAll
+				uint64_t(3e9)  // timeout
+			);
+		if(r != vk::Result::eSuccess) {
+			if(r == vk::Result::eTimeout)
+				throw runtime_error("GPU timeout. Task is probably hanging on GPU.");
+			throw runtime_error("Vulkan error: vkWaitForFences failed with error " + to_string(r) + ".");
+		}
+		device->resetFences(renderingFinishedFence.get());</b>
+</pre>
+
+<p>Na začátku callbacku zavoláme Device::acquireNextImageKHR(),
+skrze kterou získáme index vk::Image, do kterého následně budeme rendrovat.
+Připomeňme, že tato metoda může být implementována asynchronně
+a může nebo nemusí blokovat. Ohledně dokončení nebo nedokončení předchozího snímku
+se z ní nic nedovíme. Proto jsme v minulých dílech volali graphicsQueue.waitIdle().
+Nyní to nahradíme použitím renderingFinishedFence.</p>
+
+<p>Zavoláme Device::waitForFences() s naší renderingFinishedFence jako parametr.
+Zde tedy zajistíme, že program nepůjde dál, dokud grafické zařízení nedokončí rendering.
+Po ošetření potenciálních chybových návratových kódů ještě resetujeme renderingFinishedFence,
+což ji uvede do stavu unsignaled a připraví ji tím na opětovné použití.</p>
+
+<p>Pozorný čtenář by se teď mohl ptát, jak to bude při prvním snímku,
+kdy na renderingFinishedFence sice čekáme, ale žadný Queue::submit() ještě neproběhl.
+Nebude zde metoda Device::waitForFences() čekat věčně? A opravdu by čekala,
+kdybychom to neošetřili vytvořením fence už v signalizovaném stavu:</p>
+
+<pre>
+renderingFinishedFence =
+	device->createFenceUnique(
+		vk::FenceCreateInfo(
+			vk::FenceCreateFlagBits::eSignaled  // flags
+		)
+	);
+</pre>
+
+<p>Tím jsme s renderingFinishedFence hotovi.
+Zůstává nám již jen prostřední část kódu frame callbacku, která se týká rendrování,
+ve kterém nám již nezůstal žádný nový kód, který jsme si ještě neukázali.
+Nicméně části rendrování předchází kód měření a výpisu FPS.
+Než si jej uvedeme, budeme potřebovat tři globální proměnné:</p>
+
+<pre>
+static size_t frameID = ~size_t(0);
+static size_t fpsNumFrames = ~size_t(0);
+static chrono::high_resolution_clock::time_point fpsStartTime;
+</pre>
+
+<p>V proměnné frameID budeme uchovávat číslo snímku.
+Snímky budeme číslovat tak, jak jsme zvyklí indexovat v polích,
+tedy první snímek bude mít číslo nula.
+A protože frameID budeme inkrementovat hned na začátku snímku,
+inicializujeme hodnotu frameID na -1, což v případe neznaménkového typu size_t
+značí hodnotu 0xffffffffffffffff.</p>
+
+<p>Proměnná fpsNumFrames ponese počet vyrendrovaných snímků od posledního výpisu FPS
+a fpsStartTime čas posledního výpisu FPS. Zbytek nám osvětlí kód výpisu FPS
+z frame callbacku:</p>
+
+<pre>
+// increment frame counter
+frameID++;
+
+// measure FPS
+fpsNumFrames++;
+if(fpsNumFrames == 0)
+	fpsStartTime = chrono::high_resolution_clock::now();
+else {
+	auto t = chrono::high_resolution_clock::now();
+	auto dt = t - fpsStartTime;
+	if(dt &gt;= chrono::seconds(2)) {
+		cout &lt;&lt; "FPS: " &lt;&lt; fpsNumFrames/chrono::duration&lt;double&gt;(dt).count() &lt;&lt; endl;
+		fpsNumFrames = 0;
+		fpsStartTime = t;
+	}
+}
+</pre>
+
+<p>Nejprve inkrementujeme frameID, což pro nás bude symbolicky znamenat,
+že nyní nový snímek opravdu začal a že jeho číslo je uloženo v této proměnné.
+Dále inkrementujeme fpsNumFrames a pokud aplikace právě startuje
+a kód je teprve prvně prováděn, pouze inicializujeme fpsStartTime.
+Pokud již aplikace běží, provádíme již jen else klauzuli.
+Vezmeme si aktuální čas a spočítáme dt (delta time),
+tedy časový rozdíl od posledního výpisu FPS.
+Pokud je větší jak dvě sekundy, vypíšeme průměrné FPS
+a zresetujeme počítadla snímků a času.
+Tím jsme kompletně hotovi a po spuštění v konzoli vidíme výpis našich FPS:</p>
+
+<img src="max-frame-rate.png">
+
+<p>Pohledem do snímku vidíme, že i na integrované Intel grafice na Win10 dosáhneme
+s prezentačním režimem eMailbox téměř 1000 FPS.</p>
+
+
+<h3>Závěr</h3>
+
+<p>Tímto dílem ukončujeme naši letošní prázdninovou sérii.
+Vytvoření okna a prezentace do něj není triviální záležitostí.
+Nám se však věc povedla a to hned na třech platformách
+a to včetně vytvoření jednoduché animace.
+Případné chyby a návrhy na vylepšení sdílejte s autorem například v diskuzi pod článkem.
+Některé náměty se mohou stát tématem budoucích dílů.</p>
