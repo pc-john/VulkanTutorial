@@ -46,6 +46,7 @@ static vk::UniqueCommandPool commandPool;
 static vk::CommandBuffer commandBuffer;
 static vk::UniqueSemaphore imageAvailableSemaphore;
 static vk::UniqueSemaphore renderingFinishedSemaphore;
+static vk::UniqueFence renderingFinishedFence;
 static vk::UniqueShaderModule vsModule;
 static vk::UniqueShaderModule fsModule;
 static vk::UniquePipelineLayout pipelineLayout;
@@ -543,7 +544,7 @@ int main(int argc, char** argv)
 				)
 			)[0];
 
-		// semaphores
+		// rendering semaphores and fences
 		imageAvailableSemaphore =
 			device->createSemaphoreUnique(
 				vk::SemaphoreCreateInfo(
@@ -554,6 +555,12 @@ int main(int argc, char** argv)
 			device->createSemaphoreUnique(
 				vk::SemaphoreCreateInfo(
 					vk::SemaphoreCreateFlags()  // flags
+				)
+			);
+		renderingFinishedFence =
+			device->createFenceUnique(
+				vk::FenceCreateInfo(
+					vk::FenceCreateFlagBits::eSignaled  // flags
 				)
 			);
 
@@ -590,27 +597,6 @@ int main(int argc, char** argv)
 		window.setFrameCallback(
 			[]() {
 
-				// wait for previous frame
-				// if still not finished
-				graphicsQueue.waitIdle();
-
-				// increment frame counter
-				frameID++;
-
-				// measure FPS
-				fpsNumFrames++;
-				if(fpsNumFrames == 0)
-					fpsStartTime = chrono::high_resolution_clock::now();
-				else {
-					auto t = chrono::high_resolution_clock::now();
-					auto dt = t - fpsStartTime;
-					if(dt >= chrono::seconds(2)) {
-						cout << "FPS: " << fpsNumFrames/chrono::duration<double>(dt).count() << endl;
-						fpsNumFrames = 0;
-						fpsStartTime = t;
-					}
-				}
-
 				// acquire image
 				uint32_t imageIndex;
 				vk::Result r =
@@ -632,6 +618,38 @@ int main(int argc, char** argv)
 						return;
 					} else
 						throw runtime_error("Vulkan error: vkAcquireNextImageKHR failed with error " + to_string(r) + ".");
+				}
+
+				// wait for previous frame rendering work
+				// if still not finished
+				r =
+					device->waitForFences(
+						renderingFinishedFence.get(),  // fences
+						VK_TRUE,  // waitAll
+						uint64_t(3e9)  // timeout
+					);
+				if(r != vk::Result::eSuccess) {
+					if(r == vk::Result::eTimeout)
+						throw runtime_error("GPU timeout. Task is probably hanging on GPU.");
+					throw runtime_error("Vulkan error: vkWaitForFences failed with error " + to_string(r) + ".");
+				}
+				device->resetFences(renderingFinishedFence.get());
+
+				// increment frame counter
+				frameID++;
+
+				// measure FPS
+				fpsNumFrames++;
+				if(fpsNumFrames == 0)
+					fpsStartTime = chrono::high_resolution_clock::now();
+				else {
+					auto t = chrono::high_resolution_clock::now();
+					auto dt = t - fpsStartTime;
+					if(dt >= chrono::seconds(2)) {
+						cout << "FPS: " << fpsNumFrames/chrono::duration<double>(dt).count() << endl;
+						fpsNumFrames = 0;
+						fpsStartTime = t;
+					}
 				}
 
 				// record command buffer
@@ -679,7 +697,7 @@ int main(int argc, char** argv)
 							1, &renderingFinishedSemaphore.get()  // signalSemaphoreCount + pSignalSemaphores
 						)
 					),
-					nullptr  // fence
+					renderingFinishedFence.get()  // fence
 				);
 
 				// present

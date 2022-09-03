@@ -16,7 +16,7 @@ vec3 colors[3] = vec3[](
 
 void main()
 {
-	float alpha = radians(gl_VertexIndex*120 + gl_InstanceIndex*5);
+	float alpha = radians(gl_VertexIndex*120 + gl_InstanceIndex*6);
 	gl_Position = vec4(0.5*sin(alpha), -0.5*cos(alpha), 0.0, 1.0);
 	outColor = colors[gl_VertexIndex];
 }
