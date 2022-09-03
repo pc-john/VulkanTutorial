@@ -65,7 +65,7 @@ pak probrat prezentační režimy a nakonec projít zdrojáky.</p>
 <h3>Hardware a základní funkční bloky systému</h3>
 
 <p>Celý rendrovací a zobrazovací systém může
-v nejjednodušším případě vypadat jako na následujícím obrázku:</p>
+v jednoduchém případě vypadat jako na následujícím obrázku:</p>
 
 <img src="block-diagram.svg">
 
@@ -111,7 +111,7 @@ jako <a href="https://en.wikipedia.org/wiki/VGA_connector">VGA connector</a>,
 z nichž mnohá jsou ještě analogová a budu předpokládat jedno z moderních digitálních rozhranní.</p>
 
 <p>Tento datový tok, snímek za snímkem, do obrazovky odesílá jednotka,
-kterou bychom ve Vulkan terminologii nazvali Presentation Engine,
+kterou bychom ve vulkaní terminologii nazvali Presentation Engine,
 v mnoha diskuzích zkráceně pouze PE.
 Presentation engine čte data z bufferu a posílá je na obrazovku.
 Buffery na našem obrázku máme dva, ale obecně jich může být libovolný počet od jednoho nahoru.
@@ -370,7 +370,7 @@ for(int i=1; i&lt;argc; i++)
 	else if(strcmp(argv[i], "--max-frame-rate") == 0)
 		<b>frameUpdateMode = FrameUpdateMode::MaxFrameRate;</b>
 	else {
-		if(strcmp(argv[i], "--help") != 0 &mp;&amp; strcmp(argv[i], "-h") != 0)
+		if(strcmp(argv[i], "--help") != 0 &amp;&amp; strcmp(argv[i], "-h") != 0)
 			cout &lt;&lt; "Unrecognized option: " &lt;&lt; argv[i] &lt;&lt; endl;
 		cout &lt;&lt; appName &lt;&lt; " usage:\n"
 				"   --help or -h:  usage information\n"
@@ -430,7 +430,7 @@ swapchain = move(newSwapchain);
 </pre>
 
 <p>Změněný kód týkající se parametru presentMode je zvýrazněn tučně.
-Do dneška jsme jej nastavovali na eFifo.
+Do dneška jsme tento parametr nastavovali na eFifo.
 Nicméně pro MaxFrameRate potřebujeme jiný prezentační mód.
 Záleží ale, které módy jsou na daném zařízení podporovány. Vytvoříme tedy lambda funkci.
 Pokud je frameUpdateMode nastaven na MaxFrameRate, zjistíme si všechny podporované prezentační módy.
@@ -549,7 +549,7 @@ window.setFrameCallback(
 </pre>
 
 <p>Na začátku callbacku zavoláme Device::acquireNextImageKHR(),
-skrze kterou získáme index vk::Image, do kterého následně budeme rendrovat.
+skrze kterou získáme index vk::Image, do kterého budeme následně rendrovat.
 Připomeňme, že tato metoda může být implementována asynchronně
 a může nebo nemusí blokovat. Ohledně dokončení nebo nedokončení předchozího snímku
 se z ní nic nedovíme. Proto jsme v minulých dílech volali graphicsQueue.waitIdle().
@@ -619,8 +619,8 @@ else {
 <p>Nejprve inkrementujeme frameID, což pro nás bude symbolicky znamenat,
 že nyní nový snímek opravdu začal a že jeho číslo je uloženo v této proměnné.
 Dále inkrementujeme fpsNumFrames a pokud aplikace právě startuje
-a kód je teprve prvně prováděn, pouze inicializujeme fpsStartTime.
-Pokud již aplikace běží, provádíme již jen else klauzuli.
+a kód je prováděn poprvé, pouze inicializujeme fpsStartTime.
+Pokud již aplikace běží, provádíme již jen klauzuli else.
 Vezmeme si aktuální čas a spočítáme dt (delta time),
 tedy časový rozdíl od posledního výpisu FPS.
 Pokud je větší jak dvě sekundy, vypíšeme průměrné FPS

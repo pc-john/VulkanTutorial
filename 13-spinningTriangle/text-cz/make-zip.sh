@@ -12,7 +12,7 @@ if test -f $NAME-text.zip; then
 fi
 
 # zip text and images
-zip $NAME-text.zip text.html
+zip $NAME-text.zip text.html block-diagram.svg triangle.png tearing.png max-frame-rate.png triangle-animation-30.gif
 
 # create tmp environment
 mkdir tmp
