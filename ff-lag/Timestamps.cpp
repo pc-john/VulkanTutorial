@@ -143,7 +143,7 @@ uint64_t TimestampGenerator::getGpuTimestamp()
 		vk::Result r =
 			_device.getCalibratedTimestampsEXT(
 				1,  // timestampCount
-				&vk::CalibratedTimestampInfoEXT(vk::TimeDomainEXT::eDevice),  // pTimestampInfos
+				&(const vk::CalibratedTimestampInfoEXT&)vk::CalibratedTimestampInfoEXT(vk::TimeDomainEXT::eDevice),  // pTimestampInfos
 				&ts,  // pTimestamps
 				&maxDeviation,  // pMaxDeviation
 				vkFuncs  // dispatch
