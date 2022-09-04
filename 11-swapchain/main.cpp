@@ -444,8 +444,8 @@ int main(int, char**)
 						)
 					);
 
-				// wait for work completion
-				presentationQueue.waitIdle();
+				// wait for completion of rendering work
+				graphicsQueue.waitIdle();
 
 			},
 			physicalDevice,

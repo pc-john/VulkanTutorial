@@ -597,32 +597,9 @@ int main(int argc, char** argv)
 		window.setFrameCallback(
 			[]() {
 
-				// acquire image
-				uint32_t imageIndex;
-				vk::Result r =
-					device->acquireNextImageKHR(
-						swapchain.get(),                // swapchain
-						uint64_t(3e9),                  // timeout (3s)
-						imageAvailableSemaphore.get(),  // semaphore to signal
-						vk::Fence(nullptr),             // fence to signal
-						&imageIndex                     // pImageIndex
-					);
-				if(r != vk::Result::eSuccess) {
-					if(r == vk::Result::eSuboptimalKHR) {
-						window.scheduleSwapchainResize();
-						cout << "acquire result: Suboptimal" << endl;
-						return;
-					} else if(r == vk::Result::eErrorOutOfDateKHR) {
-						window.scheduleSwapchainResize();
-						cout << "acquire error: OutOfDate" << endl;
-						return;
-					} else
-						throw runtime_error("Vulkan error: vkAcquireNextImageKHR failed with error " + to_string(r) + ".");
-				}
-
 				// wait for previous frame rendering work
 				// if still not finished
-				r =
+				vk::Result r =
 					device->waitForFences(
 						renderingFinishedFence.get(),  // fences
 						VK_TRUE,  // waitAll
@@ -650,6 +627,29 @@ int main(int argc, char** argv)
 						fpsNumFrames = 0;
 						fpsStartTime = t;
 					}
+				}
+
+				// acquire image
+				uint32_t imageIndex;
+				r =
+					device->acquireNextImageKHR(
+						swapchain.get(),                // swapchain
+						uint64_t(3e9),                  // timeout (3s)
+						imageAvailableSemaphore.get(),  // semaphore to signal
+						vk::Fence(nullptr),             // fence to signal
+						&imageIndex                     // pImageIndex
+					);
+				if(r != vk::Result::eSuccess) {
+					if(r == vk::Result::eSuboptimalKHR) {
+						window.scheduleSwapchainResize();
+						cout << "acquire result: Suboptimal" << endl;
+						return;
+					} else if(r == vk::Result::eErrorOutOfDateKHR) {
+						window.scheduleSwapchainResize();
+						cout << "acquire error: OutOfDate" << endl;
+						return;
+					} else
+						throw runtime_error("Vulkan error: vkAcquireNextImageKHR failed with error " + to_string(r) + ".");
 				}
 
 				// record command buffer

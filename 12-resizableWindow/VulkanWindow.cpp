@@ -630,6 +630,7 @@ void VulkanWindow::mainLoop()
 		if(!_framePending)
 			continue;
 
+		// recreate swapchain if requested
 		if(_swapchainResizePending) {
 
 			// make sure that we finished all the rendering

@@ -547,9 +547,9 @@ int main(int, char**)
 		window.setFrameCallback(
 			[]() {
 
-				// wait for previous frame
+				// wait for previous frame rendering work
 				// if still not finished
-				presentationQueue.waitIdle();
+				graphicsQueue.waitIdle();
 
 				// acquire image
 				uint32_t imageIndex;
