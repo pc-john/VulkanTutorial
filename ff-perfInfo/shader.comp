@@ -1,0 +1,65 @@
+#version 460
+
+layout(local_size_x=32, local_size_y=2, local_size_z=1) in;
+
+layout(std430, binding=0) restrict writeonly buffer OutputBuffer {
+	float outputBuffer[];
+};
+
+#define FMA10 \
+	x = x*y+z; \
+	x = x*y+z; \
+	x = x*y+z; \
+	x = x*y+z; \
+	x = x*y+z; \
+	x = x*y+z; \
+	x = x*y+z; \
+	x = x*y+z; \
+	x = x*y+z; \
+	x = x*y+z;
+
+#define FMA100 \
+	FMA10 \
+	FMA10 \
+	FMA10 \
+	FMA10 \
+	FMA10 \
+	FMA10 \
+	FMA10 \
+	FMA10 \
+	FMA10 \
+	FMA10
+
+#define FMA1000 \
+	FMA100 \
+	FMA100 \
+	FMA100 \
+	FMA100 \
+	FMA100 \
+	FMA100 \
+	FMA100 \
+	FMA100 \
+	FMA100 \
+	FMA100
+
+#define FMA10000 \
+	FMA1000 \
+	FMA1000 \
+	FMA1000 \
+	FMA1000 \
+	FMA1000 \
+	FMA1000 \
+	FMA1000 \
+	FMA1000 \
+	FMA1000 \
+	FMA1000
+
+void main()
+{
+	float x = gl_GlobalInvocationID.x;
+	float y = gl_GlobalInvocationID.y;
+	float z = gl_GlobalInvocationID.z;
+	FMA10000
+	if(x == 0.1)
+		outputBuffer[0] = y;
+}

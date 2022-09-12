@@ -4,6 +4,16 @@
 using namespace std;
 
 
+// constants
+constexpr const char* appName = "ff-perfInfo";
+
+
+// shader code in SPIR-V binary
+static const uint32_t csSpirv[] = {
+#include "shader.comp.spv"
+};
+
+
 // vk::Instance
 // (we destroy it as the last one)
 static vk::UniqueInstance instance;
@@ -41,9 +51,9 @@ int main(int, char**)
 		instance =
 			vk::createInstanceUnique(
 				vk::InstanceCreateInfo{
-					vk::InstanceCreateFlags(),  // flags
+					{},  // flags
 					&(const vk::ApplicationInfo&)vk::ApplicationInfo{
-						"ff-perfInfo",         // application name
+						appName,                 // application name
 						VK_MAKE_VERSION(0,0,0),  // application version
 						nullptr,                 // engine name
 						VK_MAKE_VERSION(0,0,0),  // engine version
@@ -51,7 +61,7 @@ int main(int, char**)
 					},
 					0, nullptr,  // no layers
 					uint32_t(physicalDeviceProperties2Supported ? 1 : 0),  // enabledExtensionCount
-					array{"VK_KHR_get_physical_device_properties2"}.data(),        // ppEnabledExtensionNames
+					array{"VK_KHR_get_physical_device_properties2"}.data(),  // ppEnabledExtensionNames
 				});
 
 		struct InstanceFuncs : vk::DispatchLoaderBase {
@@ -178,6 +188,315 @@ int main(int, char**)
 				cout << "   Shader Warps per SM:  " << nvShaderInfo.shaderWarpsPerSM << endl;
 			}
 
+			// get compute queue family
+			uint32_t computeQueueFamily;
+			vector<vk::QueueFamilyProperties> queueFamilyList = pd.getQueueFamilyProperties();
+			for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
+
+				// test for compute support
+				if(queueFamilyList[i].queueFlags & vk::QueueFlagBits::eCompute) {
+					computeQueueFamily = i;
+					goto computeFamilyFound;
+				}
+			}
+			cout << "   GFLOPS: n/a" << endl;
+			continue;
+		computeFamilyFound:
+
+			// timestamp support
+			uint32_t timestampValidBits = queueFamilyList[computeQueueFamily].timestampValidBits;
+			float timestampPeriod_ns = p.limits.timestampPeriod;
+			if(timestampValidBits == 0) {
+				cout << "   GFLOPS: n/a (no timestamp support)" << endl;
+				continue;
+			}
+			uint64_t timestampMask = timestampValidBits>=64 ? ~uint64_t(0) : (uint64_t(1) << timestampValidBits) - 1;
+
+			// create device
+			vk::UniqueDevice device =
+				pd.createDeviceUnique(
+					vk::DeviceCreateInfo{
+						{},  // flags
+						uint32_t(1),  // queueCreateInfoCount
+						array{  // pQueueCreateInfos
+							vk::DeviceQueueCreateInfo{
+								{},  // flags
+								computeQueueFamily,  // queueFamilyIndex
+								1,  // queueCount
+								&(const float&)1.f,  // pQueuePriorities
+							},
+						}.data(),
+						0, nullptr,  // no layers
+						0,  // number of enabled extensions
+						nullptr,  // enabled extension names
+						nullptr,    // enabled features
+					}
+				);
+
+			// get queue
+			vk::Queue computeQueue = device->getQueue(computeQueueFamily, 0);
+
+			// shader module
+			vk::UniqueShaderModule shader =
+				device->createShaderModuleUnique(
+					vk::ShaderModuleCreateInfo(
+						{},  // flags
+						sizeof(csSpirv),  // code size
+						csSpirv  // pCode
+					)
+				);
+
+			// descriptor set layout
+			vk::UniqueDescriptorSetLayout descriptorSetLayout =
+				device->createDescriptorSetLayoutUnique(
+					vk::DescriptorSetLayoutCreateInfo(
+						{},  // flags
+						1,  // bindingCount
+						&vk::DescriptorSetLayoutBinding(
+							0,  // binding
+							vk::DescriptorType::eStorageBuffer,  // descriptorType
+							1,  // descriptorCount
+							vk::ShaderStageFlagBits::eCompute,  // stageFlags
+							nullptr  // pImmutableSamplers
+						)
+					)
+				);
+
+			// pipeline layout
+			vk::UniquePipelineLayout pipelineLayout =
+				device->createPipelineLayoutUnique(
+					vk::PipelineLayoutCreateInfo{
+						{},      // flags
+						1,       // setLayoutCount
+						&descriptorSetLayout.get(),  // pSetLayouts
+						0,       // pushConstantRangeCount
+						nullptr  // pPushConstantRanges
+					}
+				);
+
+			// create pipeline
+			auto [ ignore, pipeline ] =
+				device->createComputePipelineUnique(
+					nullptr,  // pipelineCache
+					vk::ComputePipelineCreateInfo(
+						{},  // flags
+						vk::PipelineShaderStageCreateInfo(  // stage
+							{},  // flags
+							vk::ShaderStageFlagBits::eCompute,  // stage
+							shader.get(),  // module
+							"main",  // pName
+							nullptr  // pSpecializationInfo
+						),
+						pipelineLayout.get()  // layout
+					)
+				);
+
+			// buffer
+			vk::UniqueBuffer buffer =
+				device->createBufferUnique(
+					vk::BufferCreateInfo(
+						{},  // flags
+						4,  // size
+						vk::BufferUsageFlagBits::eStorageBuffer,  // usage
+						vk::SharingMode::eExclusive,  // sharingMode
+						0,  // queueFamilyIndexCount
+						nullptr  // pQueueFamilyIndices
+					)
+				);
+
+			// memory for images
+			vk::UniqueDeviceMemory memory =
+				[](vk::Buffer buffer, vk::MemoryPropertyFlags requiredFlags, vk::PhysicalDevice physicalDevice, vk::Device device)
+				{
+					vk::MemoryRequirements memoryRequirements = device.getBufferMemoryRequirements(buffer);
+					vk::PhysicalDeviceMemoryProperties memoryProperties = physicalDevice.getMemoryProperties();
+					for(uint32_t i=0; i<memoryProperties.memoryTypeCount; i++)
+						if(memoryRequirements.memoryTypeBits & (1<<i))
+							if((memoryProperties.memoryTypes[i].propertyFlags & requiredFlags) == requiredFlags)
+								return
+									device.allocateMemoryUnique(
+										vk::MemoryAllocateInfo(
+											memoryRequirements.size,  // allocationSize
+											i                         // memoryTypeIndex
+										)
+									);
+					throw std::runtime_error("No suitable memory type found for the buffer.");
+				}
+				(buffer.get(), vk::MemoryPropertyFlagBits::eDeviceLocal, pd, device.get());
+
+			// bind buffer memory
+			device->bindBufferMemory(
+				buffer.get(),  // image
+				memory.get(),  // memory
+				0              // memoryOffset
+			);
+
+			// descriptor set
+			vk::UniqueDescriptorPool descriptorPool =
+				device->createDescriptorPoolUnique(
+					vk::DescriptorPoolCreateInfo(
+						{},  // flags
+						1,  // maxSets
+						1,  // poolSizeCount
+						array<vk::DescriptorPoolSize, 1>{  // pPoolSizes
+							vk::DescriptorPoolSize(
+								vk::DescriptorType::eStorageBuffer,  // type
+								1  // descriptorCount
+							),
+						}.data()
+					)
+				);
+			vk::DescriptorSet descriptorSet =
+				device->allocateDescriptorSets(
+					vk::DescriptorSetAllocateInfo(
+						descriptorPool.get(),  // descriptorPool
+						1,  // descriptorSetCount
+						&descriptorSetLayout.get()  // pSetLayouts
+					)
+				)[0];
+			device->updateDescriptorSets(
+				vk::WriteDescriptorSet(  // descriptorWrites
+					descriptorSet,  // dstSet
+					0,  // dstBinding
+					0,  // dstArrayElement
+					1,  // descriptorCount
+					vk::DescriptorType::eStorageBuffer,  // descriptorType
+					nullptr,  // pImageInfo
+					array<vk::DescriptorBufferInfo, 1>{  // pBufferInfo
+						vk::DescriptorBufferInfo(
+							buffer.get(),  // buffer
+							0,  // offset
+							4  // range
+						),
+					}.data(),
+					nullptr  // pTexelBufferView
+				),
+				nullptr  // descriptorCopies
+			);
+
+			// timestamp pool
+			vk::UniqueQueryPool timestampPool =
+				device->createQueryPoolUnique(
+					vk::QueryPoolCreateInfo(
+						{},  // flags
+						vk::QueryType::eTimestamp,  // queryType
+						2,  // queryCount
+						{}  // pipelineStatistics
+					)
+				);
+
+			// command pool
+			vk::UniqueCommandPool commandPool =
+				device->createCommandPoolUnique(
+					vk::CommandPoolCreateInfo(
+						{},  // flags
+						computeQueueFamily  // queueFamilyIndex
+					)
+				);
+
+			// allocate command buffer
+			vk::UniqueCommandBuffer commandBuffer = std::move(
+				device->allocateCommandBuffersUnique(
+					vk::CommandBufferAllocateInfo(
+						commandPool.get(),                 // commandPool
+						vk::CommandBufferLevel::ePrimary,  // level
+						1                                  // commandBufferCount
+					)
+				)[0]);
+
+			// record command buffer
+			commandBuffer->begin(
+				vk::CommandBufferBeginInfo(
+					{},  // flags
+					nullptr  // pInheritanceInfo
+				)
+			);
+			commandBuffer->resetQueryPool(timestampPool.get(), 0, 2);
+			commandBuffer->bindPipeline(
+				vk::PipelineBindPoint::eCompute,  // pipelineBindPoint
+				pipeline.get()  // pipeline
+			);
+			commandBuffer->bindDescriptorSets(
+				vk::PipelineBindPoint::eCompute,  // pipelineBindPoint
+				pipelineLayout.get(),  // layout
+				0,  // firstSet
+				descriptorSet,  // descriptorSets
+				nullptr  // dynamicOffsets
+			);
+			commandBuffer->writeTimestamp(
+				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				0  // query
+			);
+			commandBuffer->dispatch(100, 100, 1);
+			commandBuffer->writeTimestamp(
+				vk::PipelineStageFlagBits::eBottomOfPipe,  // pipelineStage
+				timestampPool.get(),  // queryPool
+				1  // query
+			);
+			commandBuffer->end();
+
+			// fence
+			vk::UniqueFence computingFinishedFence =
+				device->createFenceUnique(
+					vk::FenceCreateInfo(
+						{}  // flags
+					)
+				);
+
+			uint64_t bestTsDelta = UINT64_MAX;
+			array<uint64_t, 2> timestamps;
+			uint64_t finishTS;
+			do {
+
+				// submit work
+				computeQueue.submit(
+					vk::SubmitInfo(  // submits
+						0, nullptr, nullptr,       // waitSemaphoreCount, pWaitSemaphores, pWaitDstStageMask
+						1, &commandBuffer.get(),   // commandBufferCount, pCommandBuffers
+						0, nullptr                 // signalSemaphoreCount, pSignalSemaphores
+					),
+					computingFinishedFence.get()  // fence
+				);
+
+				// wait for the work
+				vk::Result r = device->waitForFences(
+					computingFinishedFence.get(),  // fences (vk::ArrayProxy)
+					VK_TRUE,       // waitAll
+					uint64_t(3e9)  // timeout (3s)
+				);
+				if(r == vk::Result::eTimeout)
+					throw std::runtime_error("GPU timeout. Task is probably hanging.");
+				device->resetFences(computingFinishedFence.get());
+
+				// read timestamps
+				r =
+					device->getQueryPoolResults(
+						timestampPool.get(),  // queryPool
+						0,  // firstQuery
+						2,  // queryCount
+						2*sizeof(uint64_t),  // dataSize
+						timestamps.data(),  // pData
+						sizeof(uint64_t),  // stride
+						vk::QueryResultFlagBits::e64 | vk::QueryResultFlagBits::eWait  // flags
+					);
+				if(r != vk::Result::eSuccess)
+					throw std::runtime_error("vkGetQueryPoolResults() did not finish with VK_SUCCESS result.");
+
+				// finishTS
+				// make it 1 second from start of the measurement
+				if(bestTsDelta == UINT64_MAX)
+					finishTS = uint64_t(1e9/timestampPeriod_ns) + timestamps[0];
+
+				// timestamps delta
+				uint64_t tsDelta = (timestamps[1] - timestamps[0]) & timestampMask;
+				if(tsDelta < bestTsDelta)
+					bestTsDelta = tsDelta;
+
+			} while(timestamps[1] < finishTS);
+
+			cout << "   time: " << double(bestTsDelta) * timestampPeriod_ns * 1e-6 << "ms" << endl;
+			cout << "   GFLOPS: " << (20000. * 64 * 100 * 100) / (double(bestTsDelta) * timestampPeriod_ns * 1e-9) * 1e-9 << endl;
 		}
 
 	// catch exceptions
