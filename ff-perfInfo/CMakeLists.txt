@@ -10,7 +10,9 @@ set(APP_INCLUDES
    )
 
 set(APP_SHADERS
-    shader.comp
+    singlePrecision.comp
+    doublePrecision.comp
+    halfPrecision.comp
    )
 
 # target

@@ -1,10 +1,12 @@
 #version 460
+#extension GL_AMD_gpu_shader_half_float : enable
 
-layout(local_size_x=32, local_size_y=2, local_size_z=1) in;
+layout(local_size_x=32, local_size_y=4, local_size_z=1) in;
 
 layout(std430, binding=0) restrict writeonly buffer OutputBuffer {
 	float outputBuffer[];
 };
+
 
 #define FMA10 \
 	x = x*y+z; \
@@ -54,11 +56,12 @@ layout(std430, binding=0) restrict writeonly buffer OutputBuffer {
 	FMA1000 \
 	FMA1000
 
+
 void main()
 {
-	float x = gl_GlobalInvocationID.x;
-	float y = gl_GlobalInvocationID.y;
-	float z = gl_GlobalInvocationID.z;
+	float16_t x = float16_t(gl_GlobalInvocationID.x);
+	float16_t y = float16_t(gl_GlobalInvocationID.y);
+	float16_t z = float16_t(gl_GlobalInvocationID.z);
 	FMA10000
 	if(x == 0.1)
 		outputBuffer[0] = y;

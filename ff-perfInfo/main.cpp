@@ -8,9 +8,15 @@ using namespace std;
 constexpr const char* appName = "ff-perfInfo";
 
 
-// shader code in SPIR-V binary
-static const uint32_t csSpirv[] = {
-#include "shader.comp.spv"
+// shader code in SPIR-V
+static const uint32_t singlePrecisionSpirv[] = {
+#include "singlePrecision.comp.spv"
+};
+static const uint32_t doublePrecisionSpirv[] = {
+#include "doublePrecision.comp.spv"
+};
+static const uint32_t halfPrecisionSpirv[] = {
+#include "halfPrecision.comp.spv"
 };
 
 
@@ -66,6 +72,7 @@ int main(int, char**)
 
 		struct InstanceFuncs : vk::DispatchLoaderBase {
 			PFN_vkGetPhysicalDeviceProperties2KHR vkGetPhysicalDeviceProperties2KHR = PFN_vkGetPhysicalDeviceProperties2KHR(instance->getProcAddr("vkGetPhysicalDeviceProperties2KHR"));
+			PFN_vkGetPhysicalDeviceFeatures2KHR vkGetPhysicalDeviceFeatures2KHR = PFN_vkGetPhysicalDeviceFeatures2KHR(instance->getProcAddr("vkGetPhysicalDeviceFeatures2KHR"));
 		} vkFuncs;
 
 		// print device info
@@ -79,6 +86,7 @@ int main(int, char**)
 			bool amdShaderCorePropertiesSupported = false;
 			bool amdShaderCoreProperties2Supported = false;
 			bool nvShaderSmBuiltinsSupported = false;
+			bool shaderFloat16Int8Supported = false;
 
 			// detect extension support
 			auto extensionList = pd.enumerateDeviceExtensionProperties();
@@ -93,6 +101,8 @@ int main(int, char**)
 					amdShaderCoreProperties2Supported = true;
 				if(strcmp(e.extensionName, "VK_NV_shader_sm_builtins") == 0)
 					nvShaderSmBuiltinsSupported = true;
+				if(strcmp(e.extensionName, "VK_KHR_shader_float16_int8") == 0)
+					shaderFloat16Int8Supported = true;
 			}
 
 			// device properties structures
@@ -212,10 +222,31 @@ int main(int, char**)
 			}
 			uint64_t timestampMask = timestampValidBits>=64 ? ~uint64_t(0) : (uint64_t(1) << timestampValidBits) - 1;
 
+			// device feature structures
+			vk::PhysicalDeviceFeatures2KHR features2;
+			vk::PhysicalDeviceShaderFloat16Int8FeaturesKHR shaderFloat16Int8Features;
+			vk::PhysicalDeviceFeatures& f = features2.features;
+
+			// link structures
+			lastStructure = reinterpret_cast<vk::BaseOutStructure*>(&features2);
+			if(shaderFloat16Int8Supported) {
+				lastStructure->pNext = reinterpret_cast<vk::BaseOutStructure*>(&shaderFloat16Int8Features);
+				lastStructure = reinterpret_cast<vk::BaseOutStructure*>(&shaderFloat16Int8Features);
+			}
+
+			// get features
+			if(physicalDeviceProperties2Supported)
+				pd.getFeatures2KHR(&features2, vkFuncs);
+			else
+				pd.getFeatures(&f);
+			bool doublePrecisionSupported = f.shaderFloat64;
+			bool halfPrecisionSupported = physicalDeviceProperties2Supported && shaderFloat16Int8Supported &&
+			                              shaderFloat16Int8Features.shaderFloat16;
+
 			// create device
 			vk::UniqueDevice device =
 				pd.createDeviceUnique(
-					vk::DeviceCreateInfo{
+					vk::DeviceCreateInfo(
 						{},  // flags
 						uint32_t(1),  // queueCreateInfoCount
 						array{  // pQueueCreateInfos
@@ -229,20 +260,44 @@ int main(int, char**)
 						0, nullptr,  // no layers
 						0,  // number of enabled extensions
 						nullptr,  // enabled extension names
-						nullptr,    // enabled features
-					}
+						doublePrecisionSupported  // enabled features
+							? &vk::PhysicalDeviceFeatures().setShaderFloat64(true)
+							: nullptr,
+						halfPrecisionSupported  // pNext
+							? &vk::PhysicalDeviceShaderFloat16Int8FeaturesKHR(
+									true,  // shaderFloat16
+									false  // shaderInt8
+								)
+							: nullptr
+					)
 				);
 
 			// get queue
 			vk::Queue computeQueue = device->getQueue(computeQueueFamily, 0);
 
-			// shader module
-			vk::UniqueShaderModule shader =
+			// shader modules
+			vk::UniqueShaderModule singlePrecisionShader =
 				device->createShaderModuleUnique(
 					vk::ShaderModuleCreateInfo(
 						{},  // flags
-						sizeof(csSpirv),  // code size
-						csSpirv  // pCode
+						sizeof(singlePrecisionSpirv),  // code size
+						singlePrecisionSpirv  // pCode
+					)
+				);
+			vk::UniqueShaderModule doublePrecisionShader =
+				device->createShaderModuleUnique(
+					vk::ShaderModuleCreateInfo(
+						{},  // flags
+						sizeof(doublePrecisionSpirv),  // code size
+						doublePrecisionSpirv  // pCode
+					)
+				);
+			vk::UniqueShaderModule halfPrecisionShader =
+				device->createShaderModuleUnique(
+					vk::ShaderModuleCreateInfo(
+						{},  // flags
+						sizeof(halfPrecisionSpirv),  // code size
+						halfPrecisionSpirv  // pCode
 					)
 				);
 
@@ -275,7 +330,8 @@ int main(int, char**)
 				);
 
 			// create pipeline
-			auto [ ignore, pipeline ] =
+			array<vk::UniquePipeline, 3> pipelines;
+			pipelines[0] =
 				device->createComputePipelineUnique(
 					nullptr,  // pipelineCache
 					vk::ComputePipelineCreateInfo(
@@ -283,13 +339,43 @@ int main(int, char**)
 						vk::PipelineShaderStageCreateInfo(  // stage
 							{},  // flags
 							vk::ShaderStageFlagBits::eCompute,  // stage
-							shader.get(),  // module
+							singlePrecisionShader.get(),  // module
 							"main",  // pName
 							nullptr  // pSpecializationInfo
 						),
 						pipelineLayout.get()  // layout
 					)
-				);
+				).value;
+			pipelines[1] =
+				device->createComputePipelineUnique(
+					nullptr,  // pipelineCache
+					vk::ComputePipelineCreateInfo(
+						{},  // flags
+						vk::PipelineShaderStageCreateInfo(  // stage
+							{},  // flags
+							vk::ShaderStageFlagBits::eCompute,  // stage
+							doublePrecisionShader.get(),  // module
+							"main",  // pName
+							nullptr  // pSpecializationInfo
+						),
+						pipelineLayout.get()  // layout
+					)
+				).value;
+			pipelines[2] =
+				device->createComputePipelineUnique(
+					nullptr,  // pipelineCache
+					vk::ComputePipelineCreateInfo(
+						{},  // flags
+						vk::PipelineShaderStageCreateInfo(  // stage
+							{},  // flags
+							vk::ShaderStageFlagBits::eCompute,  // stage
+							halfPrecisionShader.get(),  // module
+							"main",  // pName
+							nullptr  // pSpecializationInfo
+						),
+						pipelineLayout.get()  // layout
+					)
+				).value;
 
 			// buffer
 			vk::UniqueBuffer buffer =
@@ -394,47 +480,49 @@ int main(int, char**)
 					)
 				);
 
-			// allocate command buffer
-			vk::UniqueCommandBuffer commandBuffer = std::move(
+			// allocate command buffers
+			vector<vk::UniqueCommandBuffer> commandBuffers =
 				device->allocateCommandBuffersUnique(
 					vk::CommandBufferAllocateInfo(
 						commandPool.get(),                 // commandPool
 						vk::CommandBufferLevel::ePrimary,  // level
-						1                                  // commandBufferCount
+						3                                  // commandBufferCount
 					)
-				)[0]);
+				);
 
-			// record command buffer
-			commandBuffer->begin(
-				vk::CommandBufferBeginInfo(
-					{},  // flags
-					nullptr  // pInheritanceInfo
-				)
-			);
-			commandBuffer->resetQueryPool(timestampPool.get(), 0, 2);
-			commandBuffer->bindPipeline(
-				vk::PipelineBindPoint::eCompute,  // pipelineBindPoint
-				pipeline.get()  // pipeline
-			);
-			commandBuffer->bindDescriptorSets(
-				vk::PipelineBindPoint::eCompute,  // pipelineBindPoint
-				pipelineLayout.get(),  // layout
-				0,  // firstSet
-				descriptorSet,  // descriptorSets
-				nullptr  // dynamicOffsets
-			);
-			commandBuffer->writeTimestamp(
-				vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				0  // query
-			);
-			commandBuffer->dispatch(100, 100, 1);
-			commandBuffer->writeTimestamp(
-				vk::PipelineStageFlagBits::eBottomOfPipe,  // pipelineStage
-				timestampPool.get(),  // queryPool
-				1  // query
-			);
-			commandBuffer->end();
+			// record command buffers
+			for(size_t i=0; i<3; i++) {
+				commandBuffers[i]->begin(
+					vk::CommandBufferBeginInfo(
+						{},  // flags
+						nullptr  // pInheritanceInfo
+					)
+				);
+				commandBuffers[i]->resetQueryPool(timestampPool.get(), 0, 2);
+				commandBuffers[i]->bindPipeline(
+					vk::PipelineBindPoint::eCompute,  // pipelineBindPoint
+					pipelines[i].get()  // pipeline
+				);
+				commandBuffers[i]->bindDescriptorSets(
+					vk::PipelineBindPoint::eCompute,  // pipelineBindPoint
+					pipelineLayout.get(),  // layout
+					0,  // firstSet
+					descriptorSet,  // descriptorSets
+					nullptr  // dynamicOffsets
+				);
+				commandBuffers[i]->writeTimestamp(
+					vk::PipelineStageFlagBits::eTopOfPipe,  // pipelineStage
+					timestampPool.get(),  // queryPool
+					0  // query
+				);
+				commandBuffers[i]->dispatch(100, 100, 1);
+				commandBuffers[i]->writeTimestamp(
+					vk::PipelineStageFlagBits::eBottomOfPipe,  // pipelineStage
+					timestampPool.get(),  // queryPool
+					1  // query
+				);
+				commandBuffers[i]->end();
+			}
 
 			// fence
 			vk::UniqueFence computingFinishedFence =
@@ -444,59 +532,78 @@ int main(int, char**)
 					)
 				);
 
-			uint64_t bestTsDelta = UINT64_MAX;
+			// perform tests
 			array<uint64_t, 2> timestamps;
 			uint64_t finishTS;
-			do {
+			for(size_t i=0; i<3; i++)
+			{
+				// test supported?
+				if(i==1 && !doublePrecisionSupported) {
+					cout << "   GFLOPS double precision: not supported" << endl;
+					continue;
+				}
+				else if(i==2 && !halfPrecisionSupported) {
+					cout << "   GFLOPS half precision: not supported" << endl;
+					continue;
+				}
 
-				// submit work
-				computeQueue.submit(
-					vk::SubmitInfo(  // submits
-						0, nullptr, nullptr,       // waitSemaphoreCount, pWaitSemaphores, pWaitDstStageMask
-						1, &commandBuffer.get(),   // commandBufferCount, pCommandBuffers
-						0, nullptr                 // signalSemaphoreCount, pSignalSemaphores
-					),
-					computingFinishedFence.get()  // fence
-				);
+				// test
+				uint64_t bestTsDelta = UINT64_MAX;
+				do {
 
-				// wait for the work
-				vk::Result r = device->waitForFences(
-					computingFinishedFence.get(),  // fences (vk::ArrayProxy)
-					VK_TRUE,       // waitAll
-					uint64_t(3e9)  // timeout (3s)
-				);
-				if(r == vk::Result::eTimeout)
-					throw std::runtime_error("GPU timeout. Task is probably hanging.");
-				device->resetFences(computingFinishedFence.get());
-
-				// read timestamps
-				r =
-					device->getQueryPoolResults(
-						timestampPool.get(),  // queryPool
-						0,  // firstQuery
-						2,  // queryCount
-						2*sizeof(uint64_t),  // dataSize
-						timestamps.data(),  // pData
-						sizeof(uint64_t),  // stride
-						vk::QueryResultFlagBits::e64 | vk::QueryResultFlagBits::eWait  // flags
+					// submit work
+					computeQueue.submit(
+						vk::SubmitInfo(  // submits
+							0, nullptr, nullptr,          // waitSemaphoreCount, pWaitSemaphores, pWaitDstStageMask
+							1, &commandBuffers[i].get(),  // commandBufferCount, pCommandBuffers
+							0, nullptr                    // signalSemaphoreCount, pSignalSemaphores
+						),
+						computingFinishedFence.get()  // fence
 					);
-				if(r != vk::Result::eSuccess)
-					throw std::runtime_error("vkGetQueryPoolResults() did not finish with VK_SUCCESS result.");
 
-				// finishTS
-				// make it 1 second from start of the measurement
-				if(bestTsDelta == UINT64_MAX)
-					finishTS = uint64_t(1e9/timestampPeriod_ns) + timestamps[0];
+					// wait for the work
+					vk::Result r = device->waitForFences(
+						computingFinishedFence.get(),  // fences (vk::ArrayProxy)
+						VK_TRUE,       // waitAll
+						uint64_t(3e9)  // timeout (3s)
+					);
+					if(r == vk::Result::eTimeout)
+						throw std::runtime_error("GPU timeout. Task is probably hanging.");
+					device->resetFences(computingFinishedFence.get());
 
-				// timestamps delta
-				uint64_t tsDelta = (timestamps[1] - timestamps[0]) & timestampMask;
-				if(tsDelta < bestTsDelta)
-					bestTsDelta = tsDelta;
+					// read timestamps
+					r =
+						device->getQueryPoolResults(
+							timestampPool.get(),  // queryPool
+							0,  // firstQuery
+							2,  // queryCount
+							2*sizeof(uint64_t),  // dataSize
+							timestamps.data(),  // pData
+							sizeof(uint64_t),  // stride
+							vk::QueryResultFlagBits::e64 | vk::QueryResultFlagBits::eWait  // flags
+						);
+					if(r != vk::Result::eSuccess)
+						throw std::runtime_error("vkGetQueryPoolResults() did not finish with VK_SUCCESS result.");
 
-			} while(timestamps[1] < finishTS);
+					// finishTS
+					// make it 1 second from start of the measurement
+					if(bestTsDelta == UINT64_MAX) {
+						array<double, 3> measurementTimes = { 1e9, 3e8, 3e8 };
+						finishTS = uint64_t(measurementTimes[i]/timestampPeriod_ns) + timestamps[0];
+					}
 
-			cout << "   time: " << double(bestTsDelta) * timestampPeriod_ns * 1e-6 << "ms" << endl;
-			cout << "   GFLOPS: " << (20000. * 64 * 100 * 100) / (double(bestTsDelta) * timestampPeriod_ns * 1e-9) * 1e-9 << endl;
+					// timestamps delta
+					uint64_t tsDelta = (timestamps[1] - timestamps[0]) & timestampMask;
+					if(tsDelta < bestTsDelta)
+						bestTsDelta = tsDelta;
+
+				} while(timestamps[1] < finishTS);
+
+				cout << "   time: " << double(bestTsDelta) * timestampPeriod_ns * 1e-6 << "ms" << endl;
+				cout << array{"   GFLOPS single precision: ", "   GFLOPS double precision: ", "   GFLOPS half precision: " }[i];
+				double numInstructions = (i!=1 ? 20000. : 5000.) * 64 * 100 * 100;
+				cout << numInstructions / (double(bestTsDelta) * timestampPeriod_ns * 1e-9) * 1e-9 << endl;
+			}
 		}
 
 	// catch exceptions
