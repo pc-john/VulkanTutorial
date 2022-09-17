@@ -9,16 +9,16 @@ layout(std430, binding=0) restrict writeonly buffer OutputBuffer {
 
 
 #define FMA10 \
-	x = x*y+z; \
-	x = x*y+z; \
-	x = x*y+z; \
-	x = x*y+z; \
-	x = x*y+z; \
-	x = x*y+z; \
-	x = x*y+z; \
-	x = x*y+z; \
-	x = x*y+z; \
-	x = x*y+z;
+	x1 = x1*y1+z; \
+	x2 = x2*y2+z; \
+	x1 = x1*y1+z; \
+	x2 = x2*y2+z; \
+	x1 = x1*y1+z; \
+	x2 = x2*y2+z; \
+	x1 = x1*y1+z; \
+	x2 = x2*y2+z; \
+	x1 = x1*y1+z; \
+	x2 = x2*y2+z;
 
 #define FMA100 \
 	FMA10 \
@@ -59,10 +59,12 @@ layout(std430, binding=0) restrict writeonly buffer OutputBuffer {
 
 void main()
 {
-	float16_t x = float16_t(gl_GlobalInvocationID.x);
-	float16_t y = float16_t(gl_GlobalInvocationID.y);
+	float16_t x1 = float16_t(gl_GlobalInvocationID.x);
+	float16_t y1 = float16_t(gl_GlobalInvocationID.y);
 	float16_t z = float16_t(gl_GlobalInvocationID.z);
+	float16_t x2 = x1 + float16_t(0.5);
+	float16_t y2 = y1 + float16_t(0.5);
 	FMA10000
-	if(x == 0.1)
-		outputBuffer[0] = y;
+	if(x1 == 0.1 || x2 == 0.1)
+		outputBuffer[0] = z;
 }
