@@ -37,9 +37,9 @@ Projděme si tedy všechny změny, které jsou v ní udělány:</p>
 window.setFrameCallback(
    []() {
 
-      // wait for previous frame
+      // wait for previous frame rendering work
       // if still not finished
-      presentationQueue.waitIdle();
+      graphicsQueue.waitIdle();
 </pre>
 
 <p>První změna je přesunutí čekání na prezentaci snímku z konce frame callbacku
@@ -668,6 +668,7 @@ než přijde další práce v podobě nějaké zprávy.</p>
 <p>Následuje zbytek smyčky:</p>
 
 <pre>
+   // recreate swapchain if requested
    if(_swapchainResizePending) {
 
       // make sure that we finished all the rendering
