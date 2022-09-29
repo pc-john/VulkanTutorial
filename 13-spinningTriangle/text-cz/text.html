@@ -594,11 +594,11 @@ a kód je prováděn poprvé, pouze inicializujeme fpsStartTime.
 Pokud již aplikace běží, provádíme již jen klauzuli else.
 Vezmeme si aktuální čas a spočítáme dt (delta time),
 tedy časový rozdíl od posledního výpisu FPS.
-Pokud je větší jak dvě sekundy, vypíšeme průměrné FPS
+Pokud je větší než dvě sekundy, vypíšeme průměrné FPS
 a zresetujeme počítadla snímků a času.</p>
 
-<p>Z kódu frame callbacku nám zůstává již jen command buffer recording,
-který je stejný, jako v minulém díle, kromě změny příkazu rendrování trojúhelníku.
+<p>Z kódu frame callbacku nám zůstává již jen zavolání Device::acquireNextImageKHR() a command buffer recording,
+což je obojí stejné, jako v minulém díle, kromě změny příkazu rendrování trojúhelníku.
 Kódu rendrování trojúhelníku jsme se však již věnovali.
 Jsme tedy kompletně hotovi a po spuštění v konzoli vidíme výpis našich FPS:</p>
 

@@ -563,7 +563,7 @@ Nicméně waitIdle() čeká a blokuje procesor. To se pokusíme v příštích d
 Dle dokumentace Vulkan je totiž waitIdle() ekvivaletní čekání
 na vk::Fence všech příkazů, které byly do fronty poslány a které akceptují parametr vk::Fence.
 Jinými slovy, počkáme na všechno, co je ve frontě, co tam lze poslat s vk::Fence.
-A pokud se podíváme na Queue::presentKHR(), tak ten žádný parametr vk::Fence nemá
+Pokud se podíváme na Queue::presentKHR(), tak ten žádný parametr vk::Fence nemá
 a neumožňuje nám tak počkat na dokončení prezentačního příkazu.
 Trochu to i odpovídá možnému designu hardware, kde se o přepnutí snímku
 mohou starat dedikované obvody daleko od přímé kontroly software.
@@ -723,9 +723,9 @@ Nyní jsme jeho obsah vyrendrovali a tak se i na této platformě nyní můžeme
 <p>Avšak pokud náhodou kolem okna nevidíte dekorace a jediné, co je vidět je pouze jednobarevný čtverec,
 tak bohužel musíme konstatovat, že nejen Windows, ale někdy i Linux nám přináší těžší chvíle.
 Wayland kompozitory nejsou povinny implementovat Server Side Decorations,
-o které jsme požádali přes zxdg_decoration_manager_v1 v našem kódu.
+o které se pokoušíme žádat přes zxdg_decoration_manager_v1 v našem kódu.
 Konkrétně například Mutter, se kterým se můžeme dnes setkat v GNOME, je nepodporuje
-a ani to jeho vývojáři nemají v úmyslu v budoucnosti. Dle nich si má každá aplikace kreslit dekorace sama.
+a ani to jeho vývojáři nemají v úmyslu v budoucnosti. Podle nich si má každá aplikace kreslit dekorace sama.
 Tak alespoň v době psaní tohoto článku (léto 2022).
 Pokud by nějaký znalec zde na Rootu věděl, jak na to, například za pomoci libdecor,
 a vytvořil potřebný kód, tak je možné se ozvat autorovi tohoto tutoriálu a můžeme zvážit
@@ -740,4 +740,4 @@ které může reprezentovat barvu například oblohy.
 Příště doplníme okno o možnost změny jeho velikosti
 a doplníme kód pro vyrendrování trojúhelníku
 z <a href="https://www.root.cz/clanky/vulkan-prvni-vykresleny-trojuhelnik/">osmého dílu</a>
-tutoriálu.</p>
+našeho tutoriálu.</p>
