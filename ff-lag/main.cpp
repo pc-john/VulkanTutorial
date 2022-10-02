@@ -48,6 +48,8 @@ static vk::UniqueCommandPool commandPool;
 static vk::CommandBuffer commandBuffer;
 static vk::UniqueSemaphore imageAvailableSemaphore;
 static vk::UniqueSemaphore renderingFinishedSemaphore;
+static vk::UniqueFence acquireFence;
+static vk::UniqueFence renderingFinishedFence;
 static vk::UniqueShaderModule vsModule;
 static vk::UniqueShaderModule fsModule;
 static vk::UniquePipelineLayout pipelineLayout;
@@ -55,18 +57,21 @@ static vk::UniquePipeline pipeline;
 
 enum class FrameUpdateMode { OnDemand, Continuous, MaxFrameRate };
 static FrameUpdateMode frameUpdateMode = FrameUpdateMode::Continuous;
-static size_t frameID = 0;
+static size_t frameID = ~size_t(0);
 static size_t fpsNumFrames = ~size_t(0);
 static chrono::high_resolution_clock::time_point fpsStartTime;
+
 static TimestampGenerator tsg;
 static uint64_t frameStartTS;
-static vector<uint64_t> frameTimes;
-static vector<uint64_t> frameRenderingTimes;
-static uint64_t presentFinishedTime;
-static vector<uint64_t> presentBlockingTimes;
-static vector<uint64_t> presentationLagTimes;
-static vector<uint64_t> waitTimes;
 static vector<uint64_t> frameStartTimes;
+static vector<uint64_t> frameTimes;
+static vector<uint64_t> acquireBlockingTimes;
+static vector<uint64_t> acquireFenceBlockingTimes;
+static vector<uint64_t> frameRenderingTimes;
+static vector<uint64_t> presentBlockingTimes;
+static vector<uint64_t> fenceBlockingTimes;
+static vector<uint64_t> presentWaitTimes;
+static vector<uint64_t> presentationLagTimes;
 static float gpuTimestampPeriod;
 static uint64_t gpuTimestampMask;
 #if _WIN32
@@ -74,8 +79,12 @@ static constexpr vk::TimeDomainEXT timestampHostTimeDomain = vk::TimeDomainEXT::
 #else
 static constexpr vk::TimeDomainEXT timestampHostTimeDomain = vk::TimeDomainEXT::eClockMonotonicRaw;
 #endif
+static bool presentIdSupported = false;
+static bool presentWaitSupported = false;
+static bool fullScreenExclusiveSupported = false;
 static struct VkFuncs : vk::DispatchLoaderBase {
 	PFN_vkWaitForPresentKHR vkWaitForPresentKHR;
+	//PFN_vkAcquireFullScreenExclusiveModeEXT vkAcquireFullScreenExclusiveModeEXT;
 } vkFuncs;
 
 
@@ -109,6 +118,7 @@ int main(int argc, char** argv)
 		// instance extensions
 		vector<const char*> extensionsToEnable = VulkanWindow::requiredExtensions();
 		extensionsToEnable.push_back("VK_KHR_get_physical_device_properties2");
+		extensionsToEnable.push_back("VK_KHR_get_surface_capabilities2");
 
 		// Vulkan instance
 		instance =
@@ -226,13 +236,10 @@ int main(int argc, char** argv)
 		uint32_t gpuTimestampValidBits = get<4>(*bestDevice);
 		gpuTimestampMask = (uint64_t(1) << (gpuTimestampValidBits&0x3f)) - 1;
 		vector<vk::ExtensionProperties> extensionList = move(get<5>(*bestDevice));
-		cout << "PresentId support: " << physicalDevice.getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDevicePresentIdFeaturesKHR>().get<vk::PhysicalDevicePresentIdFeaturesKHR>().presentId << endl;
-		cout << "PresentWait support: " << physicalDevice.getFeatures2<vk::PhysicalDeviceFeatures2, vk::PhysicalDevicePresentWaitFeaturesKHR>().get<vk::PhysicalDevicePresentWaitFeaturesKHR>().presentWait << endl;
 		compatibleDevices.clear();  // release memory
 
 		// extensions to enable
 		bool useCalibratedTimestamps = false;
-		bool presentWaitSupported = false;
 		extensionsToEnable.clear();
 		extensionsToEnable.reserve(4);
 		extensionsToEnable.push_back("VK_KHR_swapchain");
@@ -241,16 +248,27 @@ int main(int argc, char** argv)
 				extensionsToEnable.push_back("VK_EXT_calibrated_timestamps");
 				useCalibratedTimestamps = true;
 			}
-			if(strcmp(e.extensionName, "VK_KHR_present_wait") == 0) {
+			else if(strcmp(e.extensionName, "VK_KHR_present_wait") == 0) {
 				extensionsToEnable.push_back("VK_KHR_present_id");
 				extensionsToEnable.push_back("VK_KHR_present_wait");
-				presentWaitSupported = true;
+				auto features = physicalDevice.getFeatures2<vk::PhysicalDeviceFeatures2,
+				                                            vk::PhysicalDevicePresentIdFeaturesKHR,
+				                                            vk::PhysicalDevicePresentWaitFeaturesKHR>();
+				presentIdSupported = features.get<vk::PhysicalDevicePresentIdFeaturesKHR>().presentId;
+				presentWaitSupported = features.get<vk::PhysicalDevicePresentWaitFeaturesKHR>().presentWait;
+			}
+			else if(strcmp(e.extensionName, "VK_EXT_full_screen_exclusive") == 0) {
+				extensionsToEnable.push_back("VK_EXT_full_screen_exclusive");
+				fullScreenExclusiveSupported = true;
 			}
 		}
+		cout << "PresentId support: " << presentIdSupported << endl;
+		cout << "PresentWait support: " << presentWaitSupported << endl;
 
 		// create device
 		device =
 			physicalDevice.createDeviceUnique(
+#if 0
 				vk::StructureChain<vk::DeviceCreateInfo,
 				                   vk::PhysicalDevicePresentIdFeaturesKHR,
 				                   vk::PhysicalDevicePresentWaitFeaturesKHR>
@@ -280,7 +298,7 @@ int main(int argc, char** argv)
 					vk::PhysicalDevicePresentIdFeaturesKHR(1),
 					vk::PhysicalDevicePresentWaitFeaturesKHR(1)
 				}.get()
-#if 0
+#else
 				vk::DeviceCreateInfo{
 					vk::DeviceCreateFlags(),  // flags
 					graphicsQueueFamily==presentationQueueFamily ? uint32_t(1) : uint32_t(2),  // queueCreateInfoCount
@@ -303,7 +321,13 @@ int main(int argc, char** argv)
 					extensionsToEnable.data(),  // enabled extension names
 					nullptr,    // enabled features
 				}.setPNext(
-					&vk::PhysicalDevicePresentIdFeaturesKHR(1)
+					presentIdSupported
+						? &vk::PhysicalDevicePresentIdFeaturesKHR(1).setPNext(
+							presentWaitSupported
+								? (vk::PhysicalDevicePresentWaitFeaturesKHR*)&(const vk::PhysicalDevicePresentWaitFeaturesKHR&)vk::PhysicalDevicePresentWaitFeaturesKHR{1}
+								: nullptr
+							)
+						: nullptr
 				)
 #endif
 			);
@@ -314,10 +338,11 @@ int main(int argc, char** argv)
 
 		// function pointers
 		vkFuncs.vkWaitForPresentKHR = PFN_vkWaitForPresentKHR(device->getProcAddr("vkWaitForPresentKHR"));
+		//vkFuncs.vkAcquireFullScreenExclusiveModeEXT = PFN_vkAcquireFullScreenExclusiveModeEXT(device->getProcAddr("vkAcquireFullScreenExclusiveModeEXT"));
 
 		// init TimestampGenerator
 		tsg.init(device.get(), graphicsQueue, graphicsQueueFamily,
-		        useCalibratedTimestamps, timestampHostTimeDomain, 2);
+		         useCalibratedTimestamps, timestampHostTimeDomain, 2);
 
 		// print surface formats
 		cout << "Surface formats:" << endl;
@@ -456,12 +481,15 @@ int main(int argc, char** argv)
 								}(),
 							VK_TRUE,  // clipped
 							swapchain.get()  // oldSwapchain
+						).setPNext(
+							nullptr//&vk::SurfaceFullScreenExclusiveInfoEXT(vk::FullScreenExclusiveEXT::eAllowed)
 						)
 					);
 				swapchain = move(newSwapchain);
 
 				// swapchain image views
 				vector<vk::Image> swapchainImages = device->getSwapchainImagesKHR(swapchain.get());
+				cout << "Num swapchain images: " << swapchainImages.size() << endl;
 				swapchainImageViews.reserve(swapchainImages.size());
 				for(vk::Image image : swapchainImages)
 					swapchainImageViews.emplace_back(
@@ -638,7 +666,7 @@ int main(int argc, char** argv)
 				)
 			)[0];
 
-		// semaphores
+		// rendering semaphores and fences
 		imageAvailableSemaphore =
 			device->createSemaphoreUnique(
 				vk::SemaphoreCreateInfo(
@@ -649,6 +677,20 @@ int main(int argc, char** argv)
 			device->createSemaphoreUnique(
 				vk::SemaphoreCreateInfo(
 					vk::SemaphoreCreateFlags()  // flags
+				)
+			);
+#if 1
+		acquireFence =
+			device->createFenceUnique(
+				vk::FenceCreateInfo{
+					vk::FenceCreateFlags()  // flags
+				}
+			);
+#endif
+		renderingFinishedFence =
+			device->createFenceUnique(
+				vk::FenceCreateInfo(
+					vk::FenceCreateFlagBits::eSignaled  // flags
 				)
 			);
 
@@ -685,50 +727,61 @@ int main(int argc, char** argv)
 		window.setFrameCallback(
 			[]() {
 
-				// wait for previous frame
+				// wait for previous frame rendering work
 				// if still not finished
-				//uint64_t waitStartTime = ts.getGpuTimestamp();
-				uint64_t waitStartTime = tsg.getCpuTimestamp();
-#if 0
-				graphicsQueue.waitIdle();
-#else
-				if(frameID != 0)
-					if(device->waitForPresentKHR(swapchain.get(), frameID, uint64_t(3e9), vkFuncs) == vk::Result::eTimeout)
-						throw runtime_error("Vulkan error: vkWaitForPresentKHR timed out.");
+				uint64_t fenceStartTime = tsg.getCpuTimestamp();
+				vk::Result r;
+#if 1
+				r =
+					device->waitForFences(
+						renderingFinishedFence.get(),  // fences
+						VK_TRUE,  // waitAll
+						uint64_t(3e9)  // timeout
+					);
+				if(r != vk::Result::eSuccess) {
+					if(r == vk::Result::eTimeout)
+						throw runtime_error("GPU timeout. Task is probably hanging on GPU.");
+					throw runtime_error("Vulkan error: vkWaitForFences failed with error " + to_string(r) + ".");
+				}
+				device->resetFences(renderingFinishedFence.get());
 #endif
-				uint64_t waitStopTime = tsg.getCpuTimestamp();
+				uint64_t fenceFinishTime = tsg.getCpuTimestamp();
+				uint64_t presentWaitStartTime = tsg.getCpuTimestamp();
+#if 1
+				if(presentWaitSupported) {
+					if(frameID != ~size_t(0)) {
+						vk::Result r = device->waitForPresentKHR(swapchain.get(), frameID+1, uint64_t(3e9), vkFuncs);
+						if(r != vk::Result::eSuccess) {
+							if(r == vk::Result::eTimeout)
+								throw runtime_error("Vulkan error: vkWaitForPresentKHR timed out.");
+							throw runtime_error("Vulkan error: vkWaitForPresentKHR failed.");
+						}
+					}
+				}
+#endif
+				uint64_t presentWaitFinishTime = tsg.getCpuTimestamp();
 				uint64_t frameFinishTS = tsg.getGpuTimestamp();
-				if(frameStartTimes.size() < 10)
-					frameStartTimes.push_back(frameFinishTS);
-				graphicsQueue.waitIdle();
+				array<uint64_t, 2> renderingTS;
+				if(frameID != ~size_t(0))
+					tsg.readGpuTimestamps(2, renderingTS.data());
 
 				// increment frame counter
 				frameID++;
 
 				// measure FPS
 				fpsNumFrames++;
-				if(frameID == 1) {
+				if(frameID == 0)
 					fpsStartTime = chrono::high_resolution_clock::now();
-					frameStartTS = frameFinishTS;
-				}
 				else {
-					array<uint64_t, 2> renderingTS;
-					tsg.readGpuTimestamps(2, renderingTS.data());
-					frameTimes.push_back(frameFinishTS-frameStartTS);
-					frameRenderingTimes.push_back(renderingTS[1]-renderingTS[0]);
-					presentBlockingTimes.push_back(presentFinishedTime > renderingTS[1] ? presentFinishedTime-renderingTS[1] : 0);
-					presentationLagTimes.push_back(frameFinishTS-renderingTS[1]);
-					//waitTimes.push_back(frameFinishTS-waitStartTime);
-					waitTimes.push_back(waitStopTime-waitStartTime);
-					frameStartTS = frameFinishTS;
-
 					auto t = chrono::high_resolution_clock::now();
 					auto dt = t - fpsStartTime;
 					if(dt >= chrono::seconds(2)) {
 						cout << "FPS: " << fpsNumFrames/chrono::duration<double>(dt).count() << endl;
 						fpsNumFrames = 0;
 						fpsStartTime = t;
-
+					}
+					if(frameID == 10) {
+#if 0
 						float avgValue = std::accumulate(frameTimes.begin(), frameTimes.end(), uint64_t(0)) /
 							frameTimes.size() * gpuTimestampPeriod * 1e-6f;
 						float minValue = *std::min_element(frameTimes.begin(), frameTimes.end()) * gpuTimestampPeriod * 1e-6f;
@@ -747,45 +800,62 @@ int main(int argc, char** argv)
 						maxValue = *std::max_element(presentationLagTimes.begin(), presentationLagTimes.end()) * gpuTimestampPeriod * 1e-6f;
 						cout << "frameWaitingTimes - avg: " << avgValue << "ms "
 						        "(min: " << minValue << "ms, max: " << maxValue << "ms)" << endl;
-						if(frameID-1==frameTimes.size()) {
-							cout << "FrameTimes: ";
-							for(size_t i=0; i<10; i++)
-								cout << frameTimes[i] * gpuTimestampPeriod * 1e-6f << ", ";
-							cout << endl;
-							cout << "PresentBlockingTimes: ";
-							for(size_t i=0; i<10; i++)
-								cout << presentBlockingTimes[i] * gpuTimestampPeriod * 1e-6f << ", ";
-							cout << endl;
-							cout << "PresentationLagTimes: ";
-							for(size_t i=0; i<10; i++)
-								cout << presentationLagTimes[i] * gpuTimestampPeriod * 1e-6f << ", ";
-							cout << endl;
-							cout << "WaitTimes: ";
-							for(size_t i=0; i<10; i++)
-								//cout << waitTimes[i] * gpuTimestampPeriod * 1e-6f << ", ";
-								cout << waitTimes[i] * float(tsg.getCpuTimestampPeriod()) * 1e3f << ", ";
-							cout << endl;
-							cout << "FrameStartTimes: ";
-							for(size_t i=1; i<10; i++)
-								cout << (frameStartTimes[i]-frameStartTimes[0]) * gpuTimestampPeriod * 1e-6f << ", ";
-							cout << endl;
-						}
+#endif
+						cout << "AcquireFence is " << acquireFence.get() << endl;
+						cout << "FrameStartTimes: 0.0, ";
+						for(size_t i=1; i<9; i++)
+							cout << (frameStartTimes[i]-frameStartTimes[0]) * gpuTimestampPeriod * 1e-6f << ", ";
+						cout << endl;
+						cout << "FrameTimes: ";
+						for(size_t i=0; i<9; i++)
+							cout << frameTimes[i] * gpuTimestampPeriod * 1e-6f << ", ";
+						cout << endl;
+						cout << "Acquire blocking times: ";
+						for(size_t i=0; i<9; i++)
+							cout << acquireBlockingTimes[i] * float(tsg.getCpuTimestampPeriod()) * 1e3f << ", ";
+						cout << endl;
+						cout << "Acquire fence blocking times: ";
+						for(size_t i=0; i<9; i++)
+							cout << acquireFenceBlockingTimes[i] * float(tsg.getCpuTimestampPeriod()) * 1e3f << ", ";
+						cout << endl;
+						cout << "Frame rendering times: ";
+						for(size_t i=0; i<9; i++)
+							cout << frameRenderingTimes[i] * gpuTimestampPeriod * 1e-6f << ", ";
+						cout << endl;
+						cout << "PresentBlockingTimes: ";
+						for(size_t i=0; i<9; i++)
+							cout << presentBlockingTimes[i] * float(tsg.getCpuTimestampPeriod()) * 1e3f << ", ";
+						cout << endl;
+						cout << "Fence blocking times: ";
+						for(size_t i=0; i<9; i++)
+							cout << fenceBlockingTimes[i] * float(tsg.getCpuTimestampPeriod()) * 1e3f << ", ";
+						cout << endl;
+						cout << "PresentWaitTimes: ";
+						for(size_t i=0; i<9; i++)
+							cout << presentWaitTimes[i] * float(tsg.getCpuTimestampPeriod()) * 1e3f << ", ";
+						cout << endl;
+						cout << "PresentationLagTimes: ";
+						for(size_t i=0; i<9; i++)
+							cout << presentationLagTimes[i] * gpuTimestampPeriod * 1e-6f << ", ";
+						cout << endl;
+
 						frameTimes.clear();
 						frameRenderingTimes.clear();
 						presentBlockingTimes.clear();
 						presentationLagTimes.clear();
-						waitTimes.clear();
 					}
 				}
 
 				// acquire image
 				uint32_t imageIndex;
-				vk::Result r =
+				uint64_t acquireStartTime = tsg.getCpuTimestamp();
+				r =
 					device->acquireNextImageKHR(
 						swapchain.get(),                // swapchain
 						uint64_t(3e9),                  // timeout (3s)
 						imageAvailableSemaphore.get(),  // semaphore to signal
-						vk::Fence(nullptr),             // fence to signal
+						//nullptr,                        // semaphore to signal
+						acquireFence.get(),             // fence to signal
 						&imageIndex                     // pImageIndex
 					);
 				if(r != vk::Result::eSuccess) {
@@ -800,6 +870,25 @@ int main(int argc, char** argv)
 					} else
 						throw runtime_error("Vulkan error: vkAcquireNextImageKHR failed with error " + to_string(r) + ".");
 				}
+				uint64_t acquireFinishTime = tsg.getCpuTimestamp();
+
+				uint64_t acquireFenceStartTime = tsg.getCpuTimestamp();
+				if(acquireFence) {
+					
+					// wait for the work
+					vk::Result r = device->waitForFences(
+						acquireFence.get(),  // fences (vk::ArrayProxy)
+						VK_TRUE,       // waitAll
+						uint64_t(3e9)  // timeout (3s)
+					);
+					device->resetFences(acquireFence.get());
+					if(r!=vk::Result::eSuccess) {
+						if(r==vk::Result::eTimeout)
+							throw std::runtime_error("GPU timeout. Task is probably hanging.");
+						throw std::runtime_error("vk::Device::waitForFences() returned strange success code.");	 // error codes are already handled by throw inside waitForFences()
+					}
+				}
+				uint64_t acquireFenceFinishTime = tsg.getCpuTimestamp();
 
 				// record command buffer
 				commandBuffer.begin(
@@ -848,10 +937,11 @@ int main(int argc, char** argv)
 							1, &renderingFinishedSemaphore.get()  // signalSemaphoreCount + pSignalSemaphores
 						)
 					),
-					nullptr  // fence
+					renderingFinishedFence.get()  // fence
 				);
 
 				// present
+				uint64_t presentStartTime = tsg.getCpuTimestamp();
 				r =
 					presentationQueue.presentKHR(
 						vk::StructureChain<vk::PresentInfoKHR, vk::PresentIdKHR>{
@@ -862,7 +952,7 @@ int main(int argc, char** argv)
 							},
 							{
 								1,  // swapchainCount
-								&frameID  // pPresentIds
+								&(const size_t&)size_t(frameID+1)  // pPresentIds
 							}
 						}.get()
 #if 0
@@ -890,11 +980,28 @@ int main(int argc, char** argv)
 					} else
 						throw runtime_error("Vulkan error: vkQueuePresentKHR() failed with error " + to_string(r) + ".");
 				}
-				presentFinishedTime = tsg.getGpuTimestamp();
+				uint64_t presentFinishTime = tsg.getCpuTimestamp();
+				//presentFinishGpuTime = tsg.getGpuTimestamp();
 
 				// schedule next frame
 				if(frameUpdateMode != FrameUpdateMode::OnDemand)
 					window.scheduleFrame();
+
+				if(frameID <= 10) {
+					frameStartTimes.push_back(frameFinishTS);
+					acquireBlockingTimes.push_back(acquireFinishTime-acquireStartTime);
+					acquireFenceBlockingTimes.push_back(acquireFenceFinishTime-acquireFenceStartTime);
+					presentBlockingTimes.push_back(presentFinishTime-presentStartTime);
+
+					if(frameID != 0) {
+						frameTimes.push_back(frameFinishTS-frameStartTS);
+						fenceBlockingTimes.push_back(fenceFinishTime-fenceStartTime);
+						presentWaitTimes.push_back(presentWaitFinishTime-presentWaitStartTime);
+						frameRenderingTimes.push_back(renderingTS[1]-renderingTS[0]);
+						presentationLagTimes.push_back(frameFinishTS-renderingTS[1]);
+					}
+					frameStartTS = frameFinishTS;
+				}
 
 			},
 			physicalDevice,

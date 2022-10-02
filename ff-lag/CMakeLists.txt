@@ -37,3 +37,4 @@ target_compile_definitions(${APP_NAME} PRIVATE ${defines})
 target_link_libraries(${APP_NAME} ${libs})
 set_property(SOURCE VulkanWindow.cpp APPEND PROPERTY COMPILE_DEFINITIONS ${vulkanWindowDefines})
 set_property(TARGET ${APP_NAME} PROPERTY CXX_STANDARD 17)
+set_property(TARGET ${APP_NAME} PROPERTY VS_DPI_AWARE "PerMonitor")  # VS_DPI_AWARE was introduced by CMake 3.16.0
