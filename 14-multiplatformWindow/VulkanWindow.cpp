@@ -649,7 +649,7 @@ void VulkanWindow::mainLoop()
 		{
 			// dispatch events with blocking
 			if(wl_display_dispatch(_display) == -1)  // it blocks if there are no events
-				throw std::runtime_error("wl_display_dispatch() failed.");
+				throw runtime_error("wl_display_dispatch() failed.");
 		}
 		else
 		{

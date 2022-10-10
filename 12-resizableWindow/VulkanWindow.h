@@ -120,7 +120,9 @@ inline void VulkanWindow::setFrameCallback(const std::function<FrameCallback>& c
 inline vk::SurfaceKHR VulkanWindow::surface() const  { return _surface; }
 inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return _surfaceExtent; }
 inline void VulkanWindow::scheduleSwapchainResize()  { _swapchainResizePending = true; _framePending = true; }
+#if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_WAYLAND)
 inline const std::vector<const char*>& VulkanWindow::requiredExtensions()  { return _requiredInstanceExtensions; }
 inline std::vector<const char*>& VulkanWindow::appendRequiredExtensions(std::vector<const char*>& v)  { v.insert(v.end(), _requiredInstanceExtensions.begin(), _requiredInstanceExtensions.end()); return v; }
 inline uint32_t VulkanWindow::requiredExtensionCount()  { return uint32_t(_requiredInstanceExtensions.size()); }
 inline const char* const* VulkanWindow::requiredExtensionNames()  { return _requiredInstanceExtensions.data(); }
+#endif

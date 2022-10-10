@@ -394,7 +394,7 @@ int main(int argc, char* argv[])
 											i                         // memoryTypeIndex
 										)
 									);
-					throw std::runtime_error("No suitable memory type found for the buffer.");
+					throw runtime_error("No suitable memory type found for the buffer.");
 				}
 				(buffer.get(), vk::MemoryPropertyFlagBits::eDeviceLocal, pd, device.get());
 
@@ -556,7 +556,7 @@ int main(int argc, char* argv[])
 						uint64_t(3e9)  // timeout (3s)
 					);
 					if(r == vk::Result::eTimeout)
-						throw std::runtime_error("GPU timeout. Task is probably hanging.");
+						throw runtime_error("GPU timeout. Task is probably hanging.");
 					device->resetFences(computingFinishedFence.get());
 
 					// read timestamps
@@ -571,7 +571,7 @@ int main(int argc, char* argv[])
 							vk::QueryResultFlagBits::e64 | vk::QueryResultFlagBits::eWait  // flags
 						);
 					if(r != vk::Result::eSuccess)
-						throw std::runtime_error("vkGetQueryPoolResults() did not finish with VK_SUCCESS result.");
+						throw runtime_error("vkGetQueryPoolResults() did not finish with VK_SUCCESS result.");
 
 					// finishTS
 					// make it 1 second from start of the measurement

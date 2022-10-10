@@ -159,7 +159,7 @@ void VulkanWindow::destroy()
 	}
 	if(m_sdlInitialized) {
 		SDL_QuitSubSystem(SDL_INIT_VIDEO);
-		m_sdlInitilized = false;
+		m_sdlInitialized = false;
 	}
 
 #endif
@@ -485,7 +485,7 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 		throw runtime_error("VulkanWindow: SDL_CreateWindow() function failed.");
 
 	// create surface
-	if(!SDL_Vulkan_CreateSurface(m_window, instance, &m_surface))
+	if(!SDL_Vulkan_CreateSurface(m_window, instance, reinterpret_cast<VkSurfaceKHR*>(&m_surface)))
 		throw runtime_error("VulkanWindow: SDL_Vulkan_CreateSurface() function failed.");
 	return m_surface;
 
@@ -699,7 +699,7 @@ void VulkanWindow::mainLoop()
 
 		// dispatch events
 		if(wl_display_dispatch(m_display) == -1)  // it blocks if there are no events
-			throw std::runtime_error("wl_display_dispatch() failed.");
+			throw runtime_error("wl_display_dispatch() failed.");
 
 		if(m_forceFrame) {
 			cout<<"force expose is set"<<endl;
@@ -942,11 +942,11 @@ const vector<const char*>& VulkanWindow::requiredExtensions()
 }
 
 void VulkanWindow::appendRequiredExtensions(vector<const char*>& v)  { auto& l=requiredExtensions(); v.reserve(v.size()+l.size()); for(auto s : l) v.push_back(s); }
-uint32_t VulkanWindow::requiredExtensionCount()  { return requiredExtensions().size(); }
+uint32_t VulkanWindow::requiredExtensionCount()  { return uint32_t(requiredExtensions().size()); }
 const char* const* VulkanWindow::requiredExtensionNames()  { return requiredExtensions().data(); }
 
 
-void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device, vk::SurfaceKHR surface, FrameCallback frameCallback)
+void VulkanWindow::mainLoop()
 {
 	SDL_Event event;
 	while(true) {
@@ -1001,10 +1001,10 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 
 				// make sure that we finished all the rendering
 				// (this is necessary for swapchain re-creation)
-				device.waitIdle();
+				m_device.waitIdle();
 
 				// get surface capabilities
-				vk::SurfaceCapabilitiesKHR surfaceCapabilities(physicalDevice.getSurfaceCapabilitiesKHR(surface));
+				vk::SurfaceCapabilitiesKHR surfaceCapabilities(m_physicalDevice.getSurfaceCapabilitiesKHR(m_surface));
 
 				// do not allow swapchain creation and rendering when currentExtent is 0,0
 				if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0))
@@ -1019,7 +1019,7 @@ void VulkanWindow::mainLoop(vk::PhysicalDevice physicalDevice, vk::Device device
 			// render scene
 			cout<<"expose"<<m_surfaceExtent.width<<"x"<<m_surfaceExtent.height<<endl;
 			m_framePending = false;
-			frameCallback();
+			m_frameCallback();
 
 		}
 	}

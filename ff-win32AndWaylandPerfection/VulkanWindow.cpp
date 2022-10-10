@@ -470,6 +470,11 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 		throw runtime_error("wl_display_flush() failed.");
 	return _surface;
 
+#else
+
+	// unknown platform
+	throw runtime_error("VulkanWindow: Unknown platform.");
+
 #endif
 }
 
@@ -701,7 +706,7 @@ void VulkanWindow::mainLoop()
 		else
 			// dispatch events with blocking
 			if(wl_display_dispatch(_display) == -1)  // it blocks if there are no events
-				throw std::runtime_error("wl_display_dispatch() failed.");
+				throw runtime_error("wl_display_dispatch() failed.");
 
 		// flush outgoing buffers
 		if(wl_display_flush(_display) == -1)
@@ -778,6 +783,19 @@ void VulkanWindow::doFrame()
 		_framePending = false;
 		_frameCallback();
 }
+
+
+#else
+
+
+static const vector<const char*> requiredInstanceExtensions;
+
+const vector<const char*>& VulkanWindow::requiredExtensions()  { return requiredInstanceExtensions; }
+vector<const char*>& VulkanWindow::appendRequiredExtensions(vector<const char*>& v)  { return v; }
+uint32_t VulkanWindow::requiredExtensionCount()  { return 0; }
+const char* const* VulkanWindow::requiredExtensionNames()  { return nullptr; }
+void VulkanWindow::mainLoop()  {}
+void VulkanWindow::scheduleFrame()  {}
 
 
 #endif

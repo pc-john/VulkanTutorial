@@ -91,7 +91,7 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines inc
 
 		# configure for SDL
 		find_package(SDL REQUIRED)
-		set(${libs} ${${libs}} ${SDL_LIBRARY})
+		set(${libs} ${${libs}} ${SDL_LIBRARY} ${SDLMAIN_LIBRARY})
 		set(${defines} ${${defines}} USE_PLATFORM_SDL)
 		set(${includes} ${${includes}} ${SDL_INCLUDE_DIR})
 
