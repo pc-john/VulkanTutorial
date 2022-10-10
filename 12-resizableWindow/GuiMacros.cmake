@@ -21,14 +21,14 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines inc
 				endif()
 			endif()
 		endif()
-		set(GUI_TYPE ${guiTypeDetected} CACHE STRING "Gui type. Accepted values: default, Win32, Xlib or Wayland." FORCE)
+		set(GUI_TYPE ${guiTypeDetected} CACHE STRING "Gui type. Accepted values: default, Win32, Xlib, Wayland, SDL, GLFW, Qt6 and Qt5." FORCE)
 
 	endif()
 
 	# give error on invalid GUI_TYPE
-	set(guiList "Win32" "Xlib" "Wayland")
+	set(guiList "Win32" "Xlib" "Wayland" "SDL" "GLFW" "Qt6" "Qt5")
 	if(NOT "${GUI_TYPE}" IN_LIST guiList)
-		message(FATAL_ERROR "GUI_TYPE value is invalid. It must be set to default, Win32, Xlib or Wayland.")
+		message(FATAL_ERROR "GUI_TYPE value is invalid. It must be set to default, Win32, Xlib, Wayland, SDL, GLFW, Qt6 or Qt5.")
 	endif()
 
 
@@ -70,6 +70,29 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines inc
 		else()
 			message(FATAL_ERROR "Not all Wayland variables were detected properly.")
 		endif()
+
+	elseif("${GUI_TYPE}" STREQUAL "SDL")
+
+		# configure for SDL
+		find_package(SDL REQUIRED)
+		set(${libs} ${${libs}} ${SDL_LIBRARY})
+		set(${defines} ${${defines}} USE_PLATFORM_SDL)
+		set(${includes} ${${includes}} ${SDL_INCLUDE_DIR})
+
+	elseif("${GUI_TYPE}" STREQUAL "Qt6")
+
+		# configure for Qt6
+		find_package(Qt6Gui REQUIRED)
+		set(${libs} ${${libs}} Qt6::Gui)
+		set(${defines} ${${defines}} USE_PLATFORM_QT)
+
+	elseif("${GUI_TYPE}" STREQUAL "Qt5")
+
+		# configure for Qt5
+		# (we need at least version 5.10 because of Vulkan support)
+		find_package(Qt5Gui 5.10 REQUIRED)
+		set(${libs} ${${libs}} Qt5::Gui)
+		set(${defines} ${${defines}} USE_PLATFORM_QT)
 
 	else()
 		message(FATAL_ERROR "Invalid GUI_TYPE value: ${GUI_TYPE}")
