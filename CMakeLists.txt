@@ -16,6 +16,7 @@ set(PACKAGES
     11-swapchain
     12-resizableWindow
     13-spinningTriangle
+    14-multiplatformWindow
     ff-lag
     ff-win32AndWaylandPerfection
     ff-qtWindow
