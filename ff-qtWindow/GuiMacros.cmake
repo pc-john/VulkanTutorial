@@ -90,10 +90,10 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines inc
 	elseif("${GUI_TYPE}" STREQUAL "SDL")
 
 		# configure for SDL
-		find_package(SDL REQUIRED)
-		set(${libs} ${${libs}} ${SDL_LIBRARY} ${SDLMAIN_LIBRARY})
+		find_package(SDL2 REQUIRED)
+		set(${libs} ${${libs}} ${SDL2_LIBRARIES})
 		set(${defines} ${${defines}} USE_PLATFORM_SDL)
-		set(${includes} ${${includes}} ${SDL_INCLUDE_DIR})
+		set(${includes} ${${includes}} ${SDL2_INCLUDE_DIRS})
 
 	else()
 		message(FATAL_ERROR "Invalid GUI_TYPE value: ${GUI_TYPE}")
