@@ -9,6 +9,7 @@
 #elif defined(USE_PLATFORM_SDL)
 # include "SDL.h"
 # include "SDL_vulkan.h"
+# include <algorithm>
 #endif
 #include <vulkan/vulkan.hpp>
 #include <cstring>
@@ -713,7 +714,7 @@ const vector<const char*>& VulkanWindow::requiredExtensions()
 			struct SDL {
 				SDL() {
 					if(SDL_InitSubSystem(SDL_INIT_VIDEO) != 0)
-						runtime_error("VulkanWindow: SDL_InitSubSystem(SDL_INIT_VIDEO) function failed.");
+						throw runtime_error(string("VulkanWindow: SDL_InitSubSystem(SDL_INIT_VIDEO) function failed. Error details: ") + SDL_GetError());
 				}
 				~SDL() {
 					SDL_QuitSubSystem(SDL_INIT_VIDEO);
@@ -726,7 +727,7 @@ const vector<const char*>& VulkanWindow::requiredExtensions()
 				[](SDL_Window* w){ SDL_DestroyWindow(w); }
 			);
 			if(tmpWindow.get() == nullptr)
-				throw runtime_error("VulkanWindow: SDL_CreateWindow() function failed.");
+				throw runtime_error(string("VulkanWindow: SDL_CreateWindow() function failed. Error details: ") + SDL_GetError());
 
 			// get number of required instance extensions
 			unsigned int count;
@@ -735,10 +736,10 @@ const vector<const char*>& VulkanWindow::requiredExtensions()
 
 			// get required instance extensions
 			vector<const char*> l;
-			l.reserve(count);
 			l.resize(count);
-			while(!SDL_Vulkan_GetInstanceExtensions(tmpWindow.get(), &count, l.data())) {}
-
+			if(!SDL_Vulkan_GetInstanceExtensions(tmpWindow.get(), &count, l.data()))
+				throw runtime_error("VulkanWindow: SDL_Vulkan_GetInstanceExtensions() function failed.");
+			l.resize(count);
 			return l;
 
 		}();
@@ -761,7 +762,8 @@ void VulkanWindow::mainLoop()
 			if(_framePending && _visible)
 				goto skipMessageLoop;  // render frame
 			else
-				SDL_WaitEvent(&event);  // want for events
+				if(SDL_WaitEvent(&event) == 0)  // want for events
+					throw runtime_error(string("VulkanWindow: SDL_WaitEvent() function failed. Error details: ") + SDL_GetError());
 
 		do {
 			switch(event.type) {
@@ -811,14 +813,23 @@ void VulkanWindow::mainLoop()
 				// get surface capabilities
 				vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
 
-				// do not allow swapchain creation and rendering when currentExtent is 0,0
-				if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0))
+				// get window size
+				vk::Extent2D windowSize;
+				SDL_Vulkan_GetDrawableSize(_window, reinterpret_cast<int*>(&windowSize.width), reinterpret_cast<int*>(&windowSize.height));
+				windowSize.width = clamp(windowSize.width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
+				windowSize.height = clamp(windowSize.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
+
+				// do not allow swapchain creation and rendering when windowSize is 0,0;
+				// we will repeat the resize attempt after the next window resize
+				if(windowSize == vk::Extent2D(0,0)) {
+					_framePending = false;  // this will be rescheduled on the first window resize
 					continue;
+				}
 
 				// recreate swapchain
 				_swapchainResizePending = false;
-				_surfaceExtent = surfaceCapabilities.currentExtent;
-				_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
+				_surfaceExtent = windowSize;
+				_recreateSwapchainCallback(surfaceCapabilities, windowSize);
 			}
 
 			// render scene
