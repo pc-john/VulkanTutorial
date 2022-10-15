@@ -519,7 +519,7 @@ int main(int argc, char* argv[])
 			vk::UniqueFence computingFinishedFence =
 				device->createFenceUnique(
 					vk::FenceCreateInfo(
-						{}  // flags
+						vk::FenceCreateFlags()  // flags
 					)
 				);
 
