@@ -278,9 +278,10 @@ int main(int argc, char* argv[])
 						nullptr,  // enabled extension names
 						doublePrecisionSupported  // enabled features
 							? &vk::PhysicalDeviceFeatures().setShaderFloat64(true)
-							: nullptr,
-						halfPrecisionSupported  // pNext
-							? &vk::PhysicalDeviceShaderFloat16Int8FeaturesKHR(
+							: nullptr
+					).setPNext(
+						halfPrecisionSupported
+							? &(const vk::PhysicalDeviceShaderFloat16Int8FeaturesKHR&)vk::PhysicalDeviceShaderFloat16Int8FeaturesKHR(
 									true,  // shaderFloat16
 									false  // shaderInt8
 								)
@@ -324,13 +325,15 @@ int main(int argc, char* argv[])
 					vk::DescriptorSetLayoutCreateInfo(
 						{},  // flags
 						1,  // bindingCount
-						&vk::DescriptorSetLayoutBinding(
-							0,  // binding
-							vk::DescriptorType::eStorageBuffer,  // descriptorType
-							1,  // descriptorCount
-							vk::ShaderStageFlagBits::eCompute,  // stageFlags
-							nullptr  // pImmutableSamplers
-						)
+						array{  // pBindings
+							vk::DescriptorSetLayoutBinding(
+								0,  // binding
+								vk::DescriptorType::eStorageBuffer,  // descriptorType
+								1,  // descriptorCount
+								vk::ShaderStageFlagBits::eCompute,  // stageFlags
+								nullptr  // pImmutableSamplers
+							)
+						}.data()
 					)
 				);
 
