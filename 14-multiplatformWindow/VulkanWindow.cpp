@@ -791,6 +791,16 @@ void VulkanWindow::mainLoop()
 					_visible = false;
 					break;
 
+				case SDL_WINDOWEVENT_MINIMIZED:
+					cout << "Minimized event" << endl;
+					_visible = false;
+					break;
+
+				case SDL_WINDOWEVENT_RESTORED:
+					cout << "Restored event" << endl;
+					_visible = true;
+					break;
+
 				}
 				break;
 
@@ -821,6 +831,7 @@ void VulkanWindow::mainLoop()
 
 				// do not allow swapchain creation and rendering when windowSize is 0,0;
 				// we will repeat the resize attempt after the next window resize
+				// (this happens on Win32 systems and may happen also on systems that use Xlib)
 				if(windowSize == vk::Extent2D(0,0)) {
 					_framePending = false;  // this will be rescheduled on the first window resize
 					continue;
