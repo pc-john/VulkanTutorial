@@ -79,6 +79,13 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines inc
 		set(${defines} ${${defines}} USE_PLATFORM_SDL)
 		set(${includes} ${${includes}} ${SDL2_INCLUDE_DIRS})
 
+	elseif("${GUI_TYPE}" STREQUAL "GLFW")
+
+		# configure for GLFW
+		find_package(glfw3 REQUIRED)
+		set(${libs} ${${libs}} glfw)
+		set(${defines} ${${defines}} USE_PLATFORM_GLFW)
+
 	elseif("${GUI_TYPE}" STREQUAL "Qt6")
 
 		# configure for Qt6

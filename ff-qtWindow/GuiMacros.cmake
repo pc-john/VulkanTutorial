@@ -21,15 +21,14 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines inc
 				endif()
 			endif()
 		endif()
-		set(GUI_TYPE ${guiTypeDetected} CACHE STRING "Gui type. Accepted values: default, Win32, Xlib or Wayland." FORCE)
-		#set(GUI_TYPE ${guiTypeDetected} CACHE STRING "Gui type. Accepted values: default, Win32, Xlib, Wayland, Qt6, Qt5 or SDL." FORCE)
+		set(GUI_TYPE ${guiTypeDetected} CACHE STRING "Gui type. Accepted values: default, Win32, Xlib, Wayland, SDL, GLFW, Qt6 and Qt5." FORCE)
 
 	endif()
 
 	# give error on invalid GUI_TYPE
-	set(guiList "Win32" "Xlib" "Wayland" "Qt6" "Qt5" "SDL")
+	set(guiList "Win32" "Xlib" "Wayland" "SDL" "GLFW" "Qt6" "Qt5")
 	if(NOT "${GUI_TYPE}" IN_LIST guiList)
-		message(FATAL_ERROR "GUI_TYPE value is invalid. It must be set to default, Win32, Xlib, Wayland, Qt6, Qt5 or SDL.")
+		message(FATAL_ERROR "GUI_TYPE value is invalid. It must be set to default, Win32, Xlib, Wayland, SDL, GLFW, Qt6 or Qt5.")
 	endif()
 
 
@@ -72,6 +71,21 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines inc
 			message(FATAL_ERROR "Not all Wayland variables were detected properly.")
 		endif()
 
+	elseif("${GUI_TYPE}" STREQUAL "SDL")
+
+		# configure for SDL
+		find_package(SDL2 REQUIRED)
+		set(${libs} ${${libs}} ${SDL2_LIBRARIES})
+		set(${defines} ${${defines}} USE_PLATFORM_SDL)
+		set(${includes} ${${includes}} ${SDL2_INCLUDE_DIRS})
+
+	elseif("${GUI_TYPE}" STREQUAL "GLFW")
+
+		# configure for GLFW
+		find_package(glfw3 REQUIRED)
+		set(${libs} ${${libs}} glfw)
+		set(${defines} ${${defines}} USE_PLATFORM_GLFW)
+
 	elseif("${GUI_TYPE}" STREQUAL "Qt6")
 
 		# configure for Qt6
@@ -86,14 +100,6 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines inc
 		find_package(Qt5Gui 5.10 REQUIRED)
 		set(${libs} ${${libs}} Qt5::Gui)
 		set(${defines} ${${defines}} USE_PLATFORM_QT)
-
-	elseif("${GUI_TYPE}" STREQUAL "SDL")
-
-		# configure for SDL
-		find_package(SDL2 REQUIRED)
-		set(${libs} ${${libs}} ${SDL2_LIBRARIES})
-		set(${defines} ${${defines}} USE_PLATFORM_SDL)
-		set(${includes} ${${includes}} ${SDL2_INCLUDE_DIRS})
 
 	else()
 		message(FATAL_ERROR "Invalid GUI_TYPE value: ${GUI_TYPE}")
