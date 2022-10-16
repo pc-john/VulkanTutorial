@@ -225,7 +225,7 @@ int main(int argc, char* argv[])
 					goto computeFamilyFound;
 				}
 			}
-			cout << "   GFLOPS: n/a" << endl;
+			cout << "   GFLOPS: n/a (no compute support)" << endl;
 			continue;
 		computeFamilyFound:
 
