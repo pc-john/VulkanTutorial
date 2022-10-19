@@ -13,6 +13,8 @@
   #include "xdg-decoration-client-protocol.h"
 #elif defined(USE_PLATFORM_SDL)
   struct SDL_Window;
+#elif defined(USE_PLATFORM_GLFW)
+  struct GLFWwindow;
 #elif defined(USE_PLATFORM_QT)
   class QWindow;
   class QVulkanInstance;
@@ -81,6 +83,10 @@ protected:
 
 	SDL_Window* _window = nullptr;
 	bool _visible = false;
+
+#elif defined(USE_PLATFORM_GLFW)
+
+	GLFWwindow* _window = nullptr;
 
 #elif defined(USE_PLATFORM_QT)
 #endif

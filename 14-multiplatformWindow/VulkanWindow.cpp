@@ -10,6 +10,9 @@
 # include "SDL.h"
 # include "SDL_vulkan.h"
 # include <algorithm>
+#elif defined(USE_PLATFORM_GLFW)
+# define GLFW_INCLUDE_NONE  // do not include OpenGL headers
+# include <GLFW/glfw3.h>
 #endif
 #include <vulkan/vulkan.hpp>
 #include <cstring>
@@ -40,6 +43,25 @@ static wstring utf8toWString(const char* s)
 }
 #endif
 
+
+// GLFW error handling
+#if defined(USE_PLATFORM_GLFW)
+static void throwError(const string& funcName)
+{
+	const char* errorString;
+	int errorCode = glfwGetError(&errorString);
+	throw runtime_error(string("VulkanWindow: ") + funcName + "() function failed. Error code: " +
+	                    to_string(errorCode) + ". Error string: " + errorString);
+}
+static void checkError(const string& funcName)
+{
+	const char* errorString;
+	int errorCode = glfwGetError(&errorString);
+	if(errorCode != GLFW_NO_ERROR)
+		throw runtime_error(string("VulkanWindow: ") + funcName + "() function failed. Error code: " +
+		                    to_string(errorCode) + ". Error string: " + errorString);
+}
+#endif
 
 
 void VulkanWindow::destroy() noexcept
@@ -121,6 +143,13 @@ void VulkanWindow::destroy() noexcept
 
 	if(_window) {
 		SDL_DestroyWindow(_window);
+		_window = nullptr;
+	}
+
+#elif defined(USE_PLATFORM_GLFW)
+
+	if(_window) {
+		glfwDestroyWindow(_window);
 		_window = nullptr;
 	}
 
@@ -432,6 +461,31 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 	if(!SDL_Vulkan_CreateSurface(_window, instance, reinterpret_cast<VkSurfaceKHR*>(&_surface)))
 		throw runtime_error(string("VulkanWindow: SDL_Vulkan_CreateSurface() function failed. Error details: ") + SDL_GetError());
 
+	return _surface;
+
+#elif defined(USE_PLATFORM_GLFW)
+
+	// create window
+	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+	_window = glfwCreateWindow(surfaceExtent.width, surfaceExtent.height, title, nullptr, nullptr);
+	if(_window == nullptr)
+		throwError("glfwCreateWindow");
+
+	// setup window
+	glfwSetWindowUserPointer(_window, this);
+	glfwSetWindowRefreshCallback(
+		_window,
+		[](GLFWwindow* window) {
+			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
+				glfwGetWindowUserPointer(window));
+			w->_framePending = true;
+		}
+	);
+
+	// create surface
+	if(glfwCreateWindowSurface(instance, _window, nullptr, reinterpret_cast<VkSurfaceKHR*>(&_surface)) != VK_SUCCESS)
+		throwError("glfwCreateWindowSurface");
+	
 	return _surface;
 
 #endif
@@ -823,16 +877,16 @@ void VulkanWindow::mainLoop()
 				// get surface capabilities
 				vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
 
-				// get window size
-				vk::Extent2D windowSize;
-				SDL_Vulkan_GetDrawableSize(_window, reinterpret_cast<int*>(&windowSize.width), reinterpret_cast<int*>(&windowSize.height));
-				windowSize.width = clamp(windowSize.width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
-				windowSize.height = clamp(windowSize.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
+				// get surface size
+				vk::Extent2D surfaceSize;
+				SDL_Vulkan_GetDrawableSize(_window, reinterpret_cast<int*>(&surfaceSize.width), reinterpret_cast<int*>(&surfaceSize.height));
+				surfaceSize.width = clamp(surfaceSize.width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
+				surfaceSize.height = clamp(surfaceSize.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
 
-				// do not allow swapchain creation and rendering when windowSize is 0,0;
+				// do not allow swapchain creation and rendering when surfaceSize is 0,0;
 				// we will repeat the resize attempt after the next window resize
 				// (this happens on Win32 systems and may happen also on systems that use Xlib)
-				if(windowSize == vk::Extent2D(0,0)) {
+				if(surfaceSize == vk::Extent2D(0,0)) {
 					_framePending = false;  // this will be rescheduled on the first window resize
 					continue;
 				}
@@ -840,7 +894,7 @@ void VulkanWindow::mainLoop()
 				// recreate swapchain
 				_swapchainResizePending = false;
 				_surfaceExtent = windowSize;
-				_recreateSwapchainCallback(surfaceCapabilities, windowSize);
+				_recreateSwapchainCallback(surfaceCapabilities, surfaceSize);
 			}
 
 			// render scene
@@ -848,6 +902,103 @@ void VulkanWindow::mainLoop()
 			_frameCallback();
 
 		}
+	}
+}
+
+
+#elif defined(USE_PLATFORM_GLFW)
+
+
+const vector<const char*>& VulkanWindow::requiredExtensions()
+{
+	// cache the result in static local variable
+	// so extension list is constructed only once
+	static const vector<const char*> l =
+		[]() {
+
+			// get required extensions
+			uint32_t count;
+			const char** a = glfwGetRequiredInstanceExtensions(&count);
+			if(a == nullptr) {
+				const char* errorString;
+				int errorCode = glfwGetError(&errorString);
+				throw runtime_error(string("VulkanWindow: glfwGetRequiredInstanceExtensions() function failed. Error code: ") +
+				                    to_string(errorCode) + ". Error string: " + errorString);
+			}
+			
+			// fill std::vector
+			vector<const char*> l;
+			l.reserve(count);
+			for(uint32_t i=0; i<count; i++)
+				l.emplace_back(a[i]);
+			return l;
+		}();
+
+	return l;
+}
+
+
+vector<const char*>& VulkanWindow::appendRequiredExtensions(vector<const char*>& v)  { auto& l=requiredExtensions(); v.insert(v.end(), l.begin(), l.end()); return v; }
+uint32_t VulkanWindow::requiredExtensionCount()  { return uint32_t(requiredExtensions().size()); }
+const char* const* VulkanWindow::requiredExtensionNames()  { return requiredExtensions().data(); }
+
+
+void VulkanWindow::mainLoop()
+{
+	while(!glfwWindowShouldClose(_window)) {
+
+		if(_framePending)
+		{
+			glfwPollEvents();
+			checkError("glfwPollEvents");
+		}
+		else
+		{
+			glfwWaitEvents();
+			checkError("glfwWaitEvents");
+		}
+
+		// render window
+		if(_framePending) {
+
+			if(_swapchainResizePending) {
+
+				// make sure that we finished all the rendering
+				// (this is necessary for swapchain re-creation)
+				_device.waitIdle();
+
+				// get surface capabilities
+				vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
+
+				// get surface size
+				// (UINT_MAX values might be returned on Wayland)
+				if(surfaceCapabilities.currentExtent.width != UINT_MAX && surfaceCapabilities.currentExtent.height != UINT_MAX)
+					_surfaceExtent = surfaceCapabilities.currentExtent;
+				else {
+					glfwGetFramebufferSize(_window, reinterpret_cast<int*>(&_surfaceExtent.width), reinterpret_cast<int*>(&_surfaceExtent.height));
+					_surfaceExtent.width = clamp(_surfaceExtent.width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
+					_surfaceExtent.height = clamp(_surfaceExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
+				}
+
+				// do not allow swapchain creation and rendering when surface size is 0,0;
+				// we will repeat the resize attempt after the next window resize
+				// (this happens on Win32 systems and may happen also on systems that use Xlib)
+				if(_surfaceExtent == vk::Extent2D(0,0)) {
+					_framePending = false;  // this will be rescheduled on the first window resize
+					continue;
+				}
+
+				// recreate swapchain
+				_swapchainResizePending = false;
+				_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
+			}
+
+			// render scene
+			_framePending = false;
+			_frameCallback();
+
+		}
+
 	}
 }
 

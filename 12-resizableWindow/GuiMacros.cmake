@@ -73,32 +73,22 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines inc
 
 	elseif("${GUI_TYPE}" STREQUAL "SDL")
 
-		# configure for SDL
-		find_package(SDL2 REQUIRED)
-		set(${libs} ${${libs}} ${SDL2_LIBRARIES})
+		# no real SDL support for this example
 		set(${defines} ${${defines}} USE_PLATFORM_SDL)
-		set(${includes} ${${includes}} ${SDL2_INCLUDE_DIRS})
 
 	elseif("${GUI_TYPE}" STREQUAL "GLFW")
 
-		# configure for GLFW
-		find_package(glfw3 REQUIRED)
-		set(${libs} ${${libs}} glfw)
+		# no real GLFW support for this example
 		set(${defines} ${${defines}} USE_PLATFORM_GLFW)
 
 	elseif("${GUI_TYPE}" STREQUAL "Qt6")
 
-		# configure for Qt6
-		find_package(Qt6Gui REQUIRED)
-		set(${libs} ${${libs}} Qt6::Gui)
+		# no real Qt6 support for this example
 		set(${defines} ${${defines}} USE_PLATFORM_QT)
 
 	elseif("${GUI_TYPE}" STREQUAL "Qt5")
 
-		# configure for Qt5
-		# (we need at least version 5.10 because of Vulkan support)
-		find_package(Qt5Gui 5.10 REQUIRED)
-		set(${libs} ${${libs}} Qt5::Gui)
+		# no real Qt5 support for this example
 		set(${defines} ${${defines}} USE_PLATFORM_QT)
 
 	else()

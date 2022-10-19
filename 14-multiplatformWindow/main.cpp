@@ -4,6 +4,9 @@
 #include <iostream>
 #if defined(USE_PLATFORM_SDL)
 # include "SDL.h"
+#elif defined(USE_PLATFORM_GLFW)
+# define GLFW_INCLUDE_NONE  // do not include OpenGL headers
+# include <GLFW/glfw3.h>
 #endif
 
 using namespace std;
@@ -150,6 +153,15 @@ App::~App()
 		SDL_QuitSubSystem(SDL_INIT_VIDEO);
 		SDL_Quit();
 	}
+#elif defined(USE_PLATFORM_GLFW)
+	// finalize GLFW
+	// (it is safe to call glfwTerminate() even if GLFW was not initialized)
+	glfwTerminate();
+	const char* errorString;
+	int errorCode = glfwGetError(&errorString);
+	if(errorCode != GLFW_NO_ERROR)
+		cout << "App error: glfwTerminate() function failed. Error code: 0x"
+		     << hex << errorCode << ". Error string: " << errorString << endl;
 #endif
 }
 
@@ -161,6 +173,13 @@ void App::init()
 	if(SDL_InitSubSystem(SDL_INIT_VIDEO) != 0)
 		throw runtime_error(string("SDL_InitSubSystem(SDL_INIT_VIDEO) function failed. Error details: ") + SDL_GetError());
 	sdlInitialized = true;
+#elif defined(USE_PLATFORM_GLFW)
+	// initialize GLFW
+	if(!glfwInit()) {
+		const char* errorString;
+		int errorCode = glfwGetError(&errorString);
+		throw runtime_error(string("glfwInit() function failed. Error code: ") + to_string(errorCode) + ". Error string: " + errorString);
+	}
 #endif
 
 	// Vulkan instance

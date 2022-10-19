@@ -489,6 +489,11 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 		throw runtime_error("VulkanWindow: SDL_Vulkan_CreateSurface() function failed.");
 	return m_surface;
 
+#else
+
+	// unknown platform
+	throw runtime_error("VulkanWindow: Unknown platform.");
+
 #endif
 }
 
@@ -1041,5 +1046,21 @@ void VulkanWindow::scheduleNextFrame()
 		SDL_PushEvent(&event);
 	}*/
 }
+
+
+#else
+
+
+static const vector<const char*> requiredInstanceExtensions;
+
+const vector<const char*>& VulkanWindow::requiredExtensions()  { return requiredInstanceExtensions; }
+void VulkanWindow::appendRequiredExtensions(vector<const char*>& v)  {}
+uint32_t VulkanWindow::requiredExtensionCount()  { return 0; }
+const char* const* VulkanWindow::requiredExtensionNames()  { return nullptr; }
+void VulkanWindow::mainLoop()  {}
+
+void VulkanWindow::scheduleNextFrame()  {}
+void VulkanWindow::scheduleSwapchainResize()  { m_swapchainResizePending = true; }
+
 
 #endif
