@@ -1,7 +1,12 @@
 #
 # Module for finding GLFW3
 #
-# glfw target will be created
+# glfw3 target will be created and if config-based find failed,
+# following variables will be created:
+#    glfw3_FOUND
+#    glfw3_INCLUDE_DIR
+#    glfw3_LIBRARY
+#    glfw3_DLL (Win32 only)
 #
 
 
@@ -30,12 +35,21 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 			/usr/local/lib
 	)
 
+	# find GLFW library
+	if(WIN32)
+		find_file(${CMAKE_FIND_PACKAGE_NAME}_DLL
+			NAMES
+				glfw3.dll
+		)
+	endif()
+
 	# set *_FOUND flag
 	if(${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR AND ${CMAKE_FIND_PACKAGE_NAME}_LIBRARY)
 		set(${CMAKE_FIND_PACKAGE_NAME}_FOUND True)
 	else()
-		message(FATAL_ERROR "Finding of package ${CMAKE_FIND_PACKAGE_NAME} failed. Make sure it is installed and "
-		                    "either (1) ${CMAKE_FIND_PACKAGE_NAME}_DIR is set to the directory of "
+		message(FATAL_ERROR "Finding of package ${CMAKE_FIND_PACKAGE_NAME} failed. "
+		                    "Make sure it is installed, it is of the required version and either "
+		                    "(1) ${CMAKE_FIND_PACKAGE_NAME}_DIR is set to the directory of "
 		                    "${CMAKE_FIND_PACKAGE_NAME}Config.cmake and ${CMAKE_FIND_PACKAGE_NAME}-config.cmake "
 		                    "or (2) ${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR and ${CMAKE_FIND_PACKAGE_NAME}_LIBRARY "
 		                    "are set properly.")  # FATAL_ERROR will stop CMake processing

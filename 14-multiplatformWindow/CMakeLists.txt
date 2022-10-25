@@ -35,3 +35,14 @@ target_compile_definitions(${APP_NAME} PRIVATE ${defines})
 target_link_libraries(${APP_NAME} ${libs})
 set_property(SOURCE VulkanWindow.cpp APPEND PROPERTY COMPILE_DEFINITIONS ${vulkanWindowDefines})
 set_property(TARGET ${APP_NAME} PROPERTY CXX_STANDARD 17)
+
+# copy DLLs (SDL2.dll, glfw3.dll)
+if(WIN32)
+	if(${GUI_TYPE} STREQUAL "SDL" AND SDL2_DLL)
+		add_custom_command(TARGET ${APP_NAME}
+			POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${SDL2_DLL}" $<TARGET_FILE_DIR:${APP_NAME}>)
+	elseif(${GUI_TYPE} STREQUAL "GLFW" AND glfw3_DLL)
+		add_custom_command(TARGET ${APP_NAME}
+			POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${glfw3_DLL}" $<TARGET_FILE_DIR:${APP_NAME}>)
+	endif()
+endif()
