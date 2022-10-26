@@ -13,6 +13,14 @@
 # try config-based find first
 find_package(${CMAKE_FIND_PACKAGE_NAME} ${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSION} CONFIG QUIET)
 
+# find GLFW DLL
+if(TARGET ${CMAKE_FIND_PACKAGE_NAME} AND WIN32)
+	find_file(${CMAKE_FIND_PACKAGE_NAME}_DLL
+		NAMES
+			glfw3.dll
+	)
+endif()
+
 # use regular old-style approach
 if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 
@@ -35,7 +43,7 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 			/usr/local/lib
 	)
 
-	# find GLFW library
+	# find GLFW DLL
 	if(WIN32)
 		find_file(${CMAKE_FIND_PACKAGE_NAME}_DLL
 			NAMES
@@ -47,6 +55,8 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 	if(${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR AND ${CMAKE_FIND_PACKAGE_NAME}_LIBRARY)
 		set(${CMAKE_FIND_PACKAGE_NAME}_FOUND True)
 	else()
+		# generate error message by find_package and by message(FATAL_ERROR)
+		find_package(${CMAKE_FIND_PACKAGE_NAME} ${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSION} CONFIG)
 		message(FATAL_ERROR "Finding of package ${CMAKE_FIND_PACKAGE_NAME} failed. "
 		                    "Make sure it is installed, it is of the required version and either "
 		                    "(1) ${CMAKE_FIND_PACKAGE_NAME}_DIR is set to the directory of "

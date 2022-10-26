@@ -61,7 +61,7 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 		)
 	endif()
 
-	# set *_FOUND flag
+	# set output variables
 	if(${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR AND ${CMAKE_FIND_PACKAGE_NAME}_LIBRARY)
 		set(${CMAKE_FIND_PACKAGE_NAME}_FOUND True)
 		set(SDL2_INCLUDE_DIRS "${SDL2_INCLUDE_DIR}")
@@ -71,6 +71,7 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 			set(SDL2_LIBRARIES    "${SDL2_LIBRARY}")
 		endif()
 	else()
+		# error message
 		message(FATAL_ERROR "Finding of package ${CMAKE_FIND_PACKAGE_NAME} failed. Make sure it is installed "
 		                    "and either (1) ${CMAKE_FIND_PACKAGE_NAME}_DIR is set to the directory of "
 		                    "${CMAKE_FIND_PACKAGE_NAME}Config.cmake and ${CMAKE_FIND_PACKAGE_NAME}-config.cmake "
