@@ -481,6 +481,15 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 			w->_framePending = true;
 		}
 	);
+	glfwSetFramebufferSizeCallback(
+		_window,
+		[](GLFWwindow* window, int width, int height) {
+			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
+				glfwGetWindowUserPointer(window));
+			w->_framePending = true;
+			w->_swapchainResizePending = true;
+		}
+	);
 
 	// create surface
 	if(glfwCreateWindowSurface(instance, _window, nullptr, reinterpret_cast<VkSurfaceKHR*>(&_surface)) != VK_SUCCESS)
@@ -878,23 +887,21 @@ void VulkanWindow::mainLoop()
 				vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
 
 				// get surface size
-				vk::Extent2D surfaceSize;
-				SDL_Vulkan_GetDrawableSize(_window, reinterpret_cast<int*>(&surfaceSize.width), reinterpret_cast<int*>(&surfaceSize.height));
-				surfaceSize.width = clamp(surfaceSize.width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
-				surfaceSize.height = clamp(surfaceSize.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
+				SDL_Vulkan_GetDrawableSize(_window, reinterpret_cast<int*>(&_surfaceExtent.width), reinterpret_cast<int*>(&_surfaceExtent.height));
+				_surfaceExtent.width = clamp(_surfaceExtent.width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
+				_surfaceExtent.height = clamp(_surfaceExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
 
-				// do not allow swapchain creation and rendering when surfaceSize is 0,0;
+				// do not allow swapchain creation and rendering when surface extent is 0,0;
 				// we will repeat the resize attempt after the next window resize
 				// (this happens on Win32 systems and may happen also on systems that use Xlib)
-				if(surfaceSize == vk::Extent2D(0,0)) {
+				if(_surfaceExtent == vk::Extent2D(0,0)) {
 					_framePending = false;  // this will be rescheduled on the first window resize
 					continue;
 				}
 
 				// recreate swapchain
 				_swapchainResizePending = false;
-				_surfaceExtent = windowSize;
-				_recreateSwapchainCallback(surfaceCapabilities, surfaceSize);
+				_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
 			}
 
 			// render scene
@@ -980,7 +987,7 @@ void VulkanWindow::mainLoop()
 					_surfaceExtent.height = clamp(_surfaceExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
 				}
 
-				// do not allow swapchain creation and rendering when surface size is 0,0;
+				// do not allow swapchain creation and rendering when surface extent is 0,0;
 				// we will repeat the resize attempt after the next window resize
 				// (this happens on Win32 systems and may happen also on systems that use Xlib)
 				if(_surfaceExtent == vk::Extent2D(0,0)) {
