@@ -12,23 +12,37 @@
 
 
 # try config-based find first
-find_package(${CMAKE_FIND_PACKAGE_NAME} ${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSION} CONFIG QUIET)
+# but only if the user did not specified its own include dir or library
+if(NOT ${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR AND NOT ${CMAKE_FIND_PACKAGE_NAME}_LIBRARY)
 
-# get SDL2_DLL
-if(TARGET SDL2::SDL2 AND NOT DEFINED SDL2_DLL)
-	get_target_property(SDL2_DLL SDL2::SDL2 IMPORTED_LOCATION)
-	cmake_path(NORMAL_PATH SDL2_DLL)
-	set(SDL2_DLL "${SDL2_DLL}" CACHE FILEPATH "Path to SDL2.dll that will be copied into the directory of built executable.")
+	find_package(${CMAKE_FIND_PACKAGE_NAME} ${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSION} CONFIG QUIET)
+
+	# initialize cache variables
+	set(${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR ${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR-NOTFOUND CACHE PATH "Path to ${CMAKE_FIND_PACKAGE_NAME} include directory.")
+	set(${CMAKE_FIND_PACKAGE_NAME}_LIBRARY ${CMAKE_FIND_PACKAGE_NAME}_LIBRARY-NOTFOUND CACHE FILEPATH "Path to ${CMAKE_FIND_PACKAGE_NAME} library.")
+	set(${CMAKE_FIND_PACKAGE_NAME}_MAIN_LIBRARY ${CMAKE_FIND_PACKAGE_NAME}_MAIN_LIBRARY-NOTFOUND CACHE FILEPATH "Path to ${CMAKE_FIND_PACKAGE_NAME} main library.")
+
+	# get SDL2_DLL
+	if(TARGET SDL2::SDL2 AND NOT DEFINED SDL2_DLL AND WIN32)
+		get_target_property(SDL2_DLL SDL2::SDL2 IMPORTED_LOCATION)
+		cmake_path(NORMAL_PATH SDL2_DLL)
+		set(SDL2_DLL "${SDL2_DLL}" CACHE FILEPATH "Path to SDL2.dll that will be copied into the directory of built executable.")
+	endif()
+
 endif()
 
 # use regular old-style approach
+# if config-based find did not succeed
 if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 
 	# find SDL2 include path
 	find_path(${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR SDL.h
-		/usr/include
-		/usr/local/include
-		/opt/local/include
+		PATH_SUFFIXES
+			SDL2
+		PATHS
+			/usr/include
+			/usr/local/include
+			/opt/local/include
 	)
 
 	# find SDL2 library

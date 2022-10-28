@@ -1,8 +1,9 @@
 #
 # Module for finding GLFW3
 #
-# glfw3 target will be created and if config-based find failed,
-# following variables will be created:
+# Config-based find is attempted first.
+# If it fails standard detection is performed.
+# If successfull, glfw3 target will be created and following variables will be set:
 #    glfw3_FOUND
 #    glfw3_INCLUDE_DIR
 #    glfw3_LIBRARY
@@ -11,17 +12,27 @@
 
 
 # try config-based find first
-find_package(${CMAKE_FIND_PACKAGE_NAME} ${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSION} CONFIG QUIET)
+# but only if the user did not specified its own include dir or library
+if(NOT ${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR AND NOT ${CMAKE_FIND_PACKAGE_NAME}_LIBRARY)
 
-# find GLFW DLL
-if(TARGET ${CMAKE_FIND_PACKAGE_NAME} AND WIN32)
-	find_file(${CMAKE_FIND_PACKAGE_NAME}_DLL
-		NAMES
-			glfw3.dll
-	)
+	find_package(${CMAKE_FIND_PACKAGE_NAME} ${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSION} CONFIG QUIET)
+
+	# initialize cache variables
+	set(${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR ${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR-NOTFOUND CACHE PATH "Path to ${CMAKE_FIND_PACKAGE_NAME} include directory.")
+	set(${CMAKE_FIND_PACKAGE_NAME}_LIBRARY ${CMAKE_FIND_PACKAGE_NAME}_LIBRARY-NOTFOUND CACHE FILEPATH "Path to ${CMAKE_FIND_PACKAGE_NAME} library.")
+
+	# find GLFW DLL
+	if(TARGET ${CMAKE_FIND_PACKAGE_NAME} AND WIN32)
+		find_file(${CMAKE_FIND_PACKAGE_NAME}_DLL
+			NAMES
+				glfw3.dll
+		)
+	endif()
+
 endif()
 
 # use regular old-style approach
+# if config-based find did not succeed
 if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 
 	# find GLFW include path
@@ -32,16 +43,23 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 	)
 
 	# find GLFW library
-	find_library(${CMAKE_FIND_PACKAGE_NAME}_LIBRARY
-		NAMES
-			glfw3.lib glfw3_mt.lib glfw3dll.lib
-		PATHS
-			/usr/lib64
-			/usr/local/lib64
-			/usr/lib
-			/usr/lib/x86_64-linux-gnu
-			/usr/local/lib
-	)
+	if(WIN32)
+		find_library(${CMAKE_FIND_PACKAGE_NAME}_LIBRARY
+			NAMES
+				glfw3.lib glfw3_mt.lib glfw3dll.lib
+		)
+	else()
+		find_library(${CMAKE_FIND_PACKAGE_NAME}_LIBRARY
+			NAMES
+				libglfw.so libglfw.so.3
+			PATHS
+				/usr/lib64
+				/usr/local/lib64
+				/usr/lib
+				/usr/lib/x86_64-linux-gnu
+				/usr/local/lib
+		)
+	endif()
 
 	# find GLFW DLL
 	if(WIN32)
