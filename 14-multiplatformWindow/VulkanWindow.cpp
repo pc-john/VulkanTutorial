@@ -996,8 +996,8 @@ void VulkanWindow::mainLoop()
 				vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
 
 				// get surface size
-				// (UINT_MAX values might be returned on Wayland)
-				if(surfaceCapabilities.currentExtent.width != UINT_MAX && surfaceCapabilities.currentExtent.height != UINT_MAX)
+				// (0xffffffff values might be returned on Wayland)
+				if(surfaceCapabilities.currentExtent.width != 0xffffffff && surfaceCapabilities.currentExtent.height != 0xffffffff)
 					_surfaceExtent = surfaceCapabilities.currentExtent;
 				else {
 					glfwGetFramebufferSize(_window, reinterpret_cast<int*>(&_surfaceExtent.width), reinterpret_cast<int*>(&_surfaceExtent.height));
