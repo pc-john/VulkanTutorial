@@ -490,6 +490,16 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 			w->_swapchainResizePending = true;
 		}
 	);
+	glfwSetWindowIconifyCallback(
+		_window,
+		[](GLFWwindow* window, int iconified) {
+			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
+				glfwGetWindowUserPointer(window));
+			w->_visible = iconified==GLFW_FALSE;
+			if(iconified == GLFW_FALSE)
+				w->_framePending = true;
+		}
+	);
 
 	// create surface
 	if(glfwCreateWindowSurface(instance, _window, nullptr, reinterpret_cast<VkSurfaceKHR*>(&_surface)) != VK_SUCCESS)
@@ -967,6 +977,13 @@ void VulkanWindow::mainLoop()
 
 		// render window
 		if(_framePending) {
+
+			// do not render invisible window
+			// (rendering will be re-triggered when window is made visible again)
+			if(!_visible) {
+				_framePending = false;
+				continue;
+			}
 
 			if(_swapchainResizePending) {
 

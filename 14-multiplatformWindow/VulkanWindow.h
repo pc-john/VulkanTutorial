@@ -87,6 +87,7 @@ protected:
 #elif defined(USE_PLATFORM_GLFW)
 
 	GLFWwindow* _window = nullptr;
+	bool _visible = true;
 
 #elif defined(USE_PLATFORM_QT)
 #endif
