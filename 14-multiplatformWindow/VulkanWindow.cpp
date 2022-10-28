@@ -10,6 +10,7 @@
 # include "SDL.h"
 # include "SDL_vulkan.h"
 # include <algorithm>
+# include <memory>
 #elif defined(USE_PLATFORM_GLFW)
 # define GLFW_INCLUDE_NONE  // do not include OpenGL headers
 # include <GLFW/glfw3.h>

@@ -14,6 +14,7 @@
 #elif defined(USE_PLATFORM_SDL)
 # include "SDL.h"
 # include "SDL_vulkan.h"
+# include <memory>
 #endif
 #include <vulkan/vulkan.hpp>
 #include <cstring>

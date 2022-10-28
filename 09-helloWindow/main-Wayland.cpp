@@ -1,6 +1,7 @@
 #define VK_USE_PLATFORM_WAYLAND_KHR
 #include <vulkan/vulkan.hpp>
 #include <iostream>
+#include <memory>
 #include "xdg-shell-client-protocol.h"
 
 using namespace std;
