@@ -90,6 +90,14 @@ protected:
 	bool _visible = true;
 
 #elif defined(USE_PLATFORM_QT)
+
+	QVulkanInstance* _vulkanInstance = nullptr;
+	QWindow* _window = nullptr;
+	std::exception_ptr _thrownException;
+
+	void doFrame();
+	friend class QtRenderingWindow;
+
 #endif
 
 	bool _framePending = true;
@@ -139,8 +147,12 @@ inline void VulkanWindow::setFrameCallback(std::function<FrameCallback>&& cb, vk
 inline void VulkanWindow::setFrameCallback(const std::function<FrameCallback>& cb, vk::PhysicalDevice physicalDevice, vk::Device device)  { _frameCallback = cb; _physicalDevice = physicalDevice; _device = device; }
 inline vk::SurfaceKHR VulkanWindow::surface() const  { return _surface; }
 inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return _surfaceExtent; }
+#if !defined(USE_PLATFORM_QT)
 inline void VulkanWindow::scheduleFrame()  { _framePending = true; }
 inline void VulkanWindow::scheduleSwapchainResize()  { _swapchainResizePending = true; _framePending = true; }
+#else
+inline void VulkanWindow::scheduleSwapchainResize()  { _swapchainResizePending = true; scheduleFrame(); }
+#endif
 #if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_WAYLAND)
 inline const std::vector<const char*>& VulkanWindow::requiredExtensions()  { return _requiredInstanceExtensions; }
 inline std::vector<const char*>& VulkanWindow::appendRequiredExtensions(std::vector<const char*>& v)  { v.insert(v.end(), _requiredInstanceExtensions.begin(), _requiredInstanceExtensions.end()); return v; }

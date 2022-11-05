@@ -14,6 +14,11 @@
 #elif defined(USE_PLATFORM_GLFW)
 # define GLFW_INCLUDE_NONE  // do not include OpenGL headers
 # include <GLFW/glfw3.h>
+#elif defined(USE_PLATFORM_QT)
+# include <QGuiApplication>
+# include <QWindow>
+# include <QVulkanInstance>
+# include <QResizeEvent>
 #endif
 #include <vulkan/vulkan.hpp>
 #include <cstring>
@@ -65,13 +70,32 @@ static void checkError(const string& funcName)
 #endif
 
 
+// QtRenderingWindow is customized QWindow class for Vulkan rendering
+#if defined(USE_PLATFORM_QT)
+class QtRenderingWindow : public QWindow {
+public:
+	VulkanWindow* vulkanWindow;
+	int timer = 0;
+	QtRenderingWindow(QWindow* parent, VulkanWindow* vulkanWindow_) : QWindow(parent), vulkanWindow(vulkanWindow_)  {}
+	bool event(QEvent* event) override;
+};
+#endif
+
+
+
 void VulkanWindow::destroy() noexcept
 {
 	// destroy surface
+#if !defined(USE_PLATFORM_QT)
 	if(_instance && _surface) {
 		_instance.destroy(_surface);
 		_surface = nullptr;
 	}
+#else
+	// do not destroy surface on Qt platform
+	// because QtRenderingWindow owns the surface object and it will destroy the surface by itself
+	_surface = nullptr;
+#endif
 
 #if defined(USE_PLATFORM_WIN32)
 
@@ -152,6 +176,20 @@ void VulkanWindow::destroy() noexcept
 	if(_window) {
 		glfwDestroyWindow(_window);
 		_window = nullptr;
+	}
+
+#elif defined(USE_PLATFORM_QT)
+
+	// delete QtRenderingWindow
+	if(_window) {
+		delete _window;
+		_window = nullptr;
+	}
+
+	// delete QVulkanInstance
+	if(_vulkanInstance) {
+		delete _vulkanInstance;
+		_vulkanInstance = nullptr;
 	}
 
 #endif
@@ -508,6 +546,26 @@ vk::SurfaceKHR VulkanWindow::init(vk::Instance instance, vk::Extent2D surfaceExt
 	
 	return _surface;
 
+#elif defined(USE_PLATFORM_QT)
+
+	// init QVulkanInstance
+	_vulkanInstance = new QVulkanInstance;
+	_vulkanInstance->setVkInstance(instance);
+	_vulkanInstance->create();
+
+	// setup QtRenderingWindow
+	_window = new QtRenderingWindow(nullptr, this);
+	_window->setSurfaceType(QSurface::VulkanSurface);
+	_window->setVulkanInstance(_vulkanInstance);
+	_window->resize(surfaceExtent.width, surfaceExtent.height);
+	_window->show();
+
+	// return Vulkan surface
+	_surface = QVulkanInstance::surfaceForWindow(_window);
+	if(!_surface)
+		throw runtime_error("VulkanWindow::init(): Failed to create surface.");
+	return _surface;
+
 #endif
 }
 
@@ -828,6 +886,11 @@ const char* const* VulkanWindow::requiredExtensionNames()  { return requiredExte
 
 void VulkanWindow::mainLoop()
 {
+	// callbacks need to be assigned
+	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
+	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
+
+	// main loop
 	SDL_Event event;
 	while(true) {
 
@@ -963,6 +1026,11 @@ const char* const* VulkanWindow::requiredExtensionNames()  { return requiredExte
 
 void VulkanWindow::mainLoop()
 {
+	// callbacks need to be assigned
+	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
+	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
+
+	// main loop
 	while(!glfwWindowShouldClose(_window)) {
 
 		if(_framePending)
@@ -1024,6 +1092,155 @@ void VulkanWindow::mainLoop()
 
 		}
 
+	}
+}
+
+
+#elif defined(USE_PLATFORM_QT)
+
+
+const vector<const char*>& VulkanWindow::requiredExtensions()
+{
+	static vector<const char*> l =
+		[]() {
+			QString platform = QGuiApplication::platformName();
+			if(platform == "wayland")
+				return vector<const char*>{ "VK_KHR_surface", "VK_KHR_wayland_surface" };
+			else if(platform == "windows")
+				return vector<const char*>{ "VK_KHR_surface", "VK_KHR_win32_surface" };
+			else if(platform == "xcb")
+				return vector<const char*>{ "VK_KHR_surface", "VK_KHR_xcb_surface" };
+			else
+				throw runtime_error("VulkanWindow::requiredExtensions(): Unknown Qt platform.");
+		}();
+
+	return l;
+}
+
+vector<const char*>& VulkanWindow::appendRequiredExtensions(vector<const char*>& v)  { auto& l=requiredExtensions(); v.insert(v.end(), l.begin(), l.end()); return v; }
+uint32_t VulkanWindow::requiredExtensionCount()  { return uint32_t(requiredExtensions().size()); }
+const char* const* VulkanWindow::requiredExtensionNames()  { return requiredExtensions().data(); }
+
+
+void VulkanWindow::mainLoop()
+{
+	// callbacks need to be assigned
+	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
+	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
+
+	// call exec()
+	_thrownException = nullptr;
+	QGuiApplication::exec();
+	if(_thrownException)  // rethrow the exception that we caught in QtRenderingWindow::event()
+		rethrow_exception(_thrownException);
+}
+
+
+void VulkanWindow::doFrame()
+{
+	if(_swapchainResizePending) {
+
+		// make sure that we finished all the rendering
+		// (this is necessary for swapchain re-creation)
+		_device.waitIdle();
+
+		// get surface capabilities
+		vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
+
+		// get surface size
+		// (0xffffffff values might be returned on Wayland)
+		if(surfaceCapabilities.currentExtent.width != 0xffffffff && surfaceCapabilities.currentExtent.height != 0xffffffff)
+			_surfaceExtent = surfaceCapabilities.currentExtent;
+		else {
+			_surfaceExtent = vk::Extent2D(uint32_t(_window->width()), uint32_t(_window->height()));
+			_surfaceExtent.width = clamp(_surfaceExtent.width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
+			_surfaceExtent.height = clamp(_surfaceExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
+		}
+
+		// do not allow swapchain creation and rendering when surface extent is 0,0;
+		// we will repeat the resize attempt after the next window resize
+		// (this happens on Win32 systems and may happen also on systems that use Xlib)
+		if(_surfaceExtent == vk::Extent2D(0,0)) {
+			_framePending = false;  // this will be rescheduled on the first window resize
+			return;
+		}
+
+		// recreate swapchain
+		_swapchainResizePending = false;
+		_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
+	}
+
+	// render scene
+#if (QT_VERSION >= QT_VERSION_CHECK(5, 15, 0))
+	_vulkanInstance->presentAboutToBeQueued(_window);
+#endif
+	_frameCallback();
+	_vulkanInstance->presentQueued(_window);
+}
+
+
+bool QtRenderingWindow::event(QEvent* event)
+{
+	try {
+
+		// handle verious events
+		switch(event->type()) {
+
+		case QEvent::Type::Timer:
+			cout<<"t";
+			killTimer(timer);
+			timer = 0;
+			if(isExposed())
+				vulkanWindow->doFrame();
+			return true;
+
+		case QEvent::Type::UpdateRequest:
+			if(isExposed())
+				vulkanWindow->scheduleFrame();
+			return true;
+
+		case QEvent::Type::Expose: {
+			cout<<"e";
+			bool r = QWindow::event(event);
+			if(isExposed())
+				vulkanWindow->scheduleFrame();
+			return r;
+		}
+
+		case QEvent::Type::Resize: {
+			vulkanWindow->scheduleSwapchainResize();
+			return QWindow::event(event);
+		}
+
+		// hide window on close
+		// (we must not really close it as Vulkan surface would be destroyed
+		// and this would make a problem as swapchain still exists and Vulkan
+		// requires the swapchain to be destroyed first)
+		case QEvent::Type::Close:
+			if(isVisible())
+				hide();
+			QGuiApplication::quit();
+			return true;
+
+		default:
+			return QWindow::event(event);
+		}
+	}
+	catch(...) {
+		vulkanWindow->_thrownException = std::current_exception();
+		QGuiApplication::quit();
+		return true;
+	}
+}
+
+
+void VulkanWindow::scheduleFrame()
+{
+	QtRenderingWindow* w = static_cast<QtRenderingWindow*>(_window);
+	if(w->timer == 0) {
+		w->timer = _window->startTimer(0);
+		if(w->timer == 0)
+			throw runtime_error("VulkanWindow::scheduleNextFrame(): Cannot allocate timer.");
 	}
 }
 

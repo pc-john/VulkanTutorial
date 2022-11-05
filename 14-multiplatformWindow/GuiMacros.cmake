@@ -89,7 +89,7 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines inc
 	elseif("${GUI_TYPE}" STREQUAL "Qt6")
 
 		# configure for Qt6
-		find_package(Qt6Gui REQUIRED)
+		find_package(Qt6 REQUIRED COMPONENTS Core Gui)
 		set(${libs} ${${libs}} Qt6::Gui)
 		set(${defines} ${${defines}} USE_PLATFORM_QT)
 
