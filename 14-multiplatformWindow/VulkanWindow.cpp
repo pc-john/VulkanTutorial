@@ -1110,8 +1110,10 @@ const vector<const char*>& VulkanWindow::requiredExtensions()
 				return vector<const char*>{ "VK_KHR_surface", "VK_KHR_win32_surface" };
 			else if(platform == "xcb")
 				return vector<const char*>{ "VK_KHR_surface", "VK_KHR_xcb_surface" };
+			else if(platform == "")
+				throw runtime_error("VulkanWindow::requiredExtensions(): QGuiApplication not initialized or unknown Qt platform.");
 			else
-				throw runtime_error("VulkanWindow::requiredExtensions(): Unknown Qt platform.");
+				throw runtime_error("VulkanWindow::requiredExtensions(): Unknown Qt platform \"" + platform.toStdString() + "\".");
 		}();
 
 	return l;
