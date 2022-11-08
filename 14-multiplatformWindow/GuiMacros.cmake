@@ -97,9 +97,15 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines inc
 
 		# configure for Qt5
 		# (we need at least version 5.10 because of Vulkan support)
-		find_package(Qt5Gui 5.10 REQUIRED)
+		find_package(Qt5 5.10 REQUIRED COMPONENTS Core Gui)
 		set(${libs} ${${libs}} Qt5::Gui)
 		set(${defines} ${${defines}} USE_PLATFORM_QT)
+		if(WIN32)
+			# windeployqt path
+			get_target_property(_qmake_executable Qt5::qmake IMPORTED_LOCATION)
+			get_filename_component(_qt_bin_dir "${_qmake_executable}" DIRECTORY)
+			set(QT5_WINDEPLOYQT_EXECUTABLE "${_qt_bin_dir}/windeployqt.exe")
+		endif()
 
 	else()
 		message(FATAL_ERROR "Invalid GUI_TYPE value: ${GUI_TYPE}")

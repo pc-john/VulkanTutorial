@@ -46,6 +46,19 @@ if(WIN32)
 			POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different "${glfw3_DLL}" $<TARGET_FILE_DIR:${APP_NAME}>)
 	elseif(${GUI_TYPE} STREQUAL "Qt6")
 		add_custom_command(TARGET ${APP_NAME}
-			POST_BUILD COMMAND Qt6::windeployqt $<TARGET_FILE_DIR:${APP_NAME}>)
+			POST_BUILD COMMAND Qt6::windeployqt
+					--no-translations  # skip Qt translations
+					--no-opengl-sw  # skip software OpenGL
+					--no-system-d3d-compiler  # skip D3D stuff
+					--no-svg  # skip svg support
+					$<TARGET_FILE_DIR:${APP_NAME}>)
+	elseif(${GUI_TYPE} STREQUAL "Qt5")
+		add_custom_command(TARGET ${APP_NAME}
+			POST_BUILD COMMAND "${QT5_WINDEPLOYQT_EXECUTABLE}"
+					--no-translations  # skip Qt translations
+					--no-widgets  # skip Qt widgets
+					--no-opengl-sw  # skip software OpenGL
+					--no-angle  # skip software OpenGL (ANGLE)
+					$<TARGET_FILE_DIR:${APP_NAME}>)
 	endif()
 endif()
