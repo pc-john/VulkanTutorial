@@ -1154,10 +1154,15 @@ void VulkanWindow::doFrame()
 		if(surfaceCapabilities.currentExtent.width != 0xffffffff && surfaceCapabilities.currentExtent.height != 0xffffffff)
 			_surfaceExtent = surfaceCapabilities.currentExtent;
 		else {
-			_surfaceExtent = vk::Extent2D(uint32_t(_window->width()), uint32_t(_window->height()));
+			QSize size = _window->size();
+			auto ratio = _window->devicePixelRatio();
+			_surfaceExtent = vk::Extent2D(uint32_t(float(size.width()) * ratio + 0.5f), uint32_t(float(size.height()) * ratio + 0.5f));
 			_surfaceExtent.width = clamp(_surfaceExtent.width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
 			_surfaceExtent.height = clamp(_surfaceExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
 		}
+		cout << "New Qt window size in device independent pixels: " << _window->width() << "x" << _window->height()
+		     << ", in physical pixels: " << uint32_t(float(_window->width()) * _window->devicePixelRatio() + 0.5f)
+		     << "x" << uint32_t(float(_window->height()) * _window->devicePixelRatio() + 0.5f) << endl;
 
 		// do not allow swapchain creation and rendering when surface extent is 0,0;
 		// we will repeat the resize attempt after the next window resize
