@@ -51,7 +51,8 @@ if(WIN32)
 					--no-opengl-sw  # skip software OpenGL
 					--no-system-d3d-compiler  # skip D3D stuff
 					--no-svg  # skip svg support
-					$<TARGET_FILE_DIR:${APP_NAME}>)
+					$<TARGET_FILE_DIR:${APP_NAME}>
+					COMMENT "Deploying Qt related dependencies...")
 	elseif(${GUI_TYPE} STREQUAL "Qt5")
 		add_custom_command(TARGET ${APP_NAME}
 			POST_BUILD COMMAND "${QT5_WINDEPLOYQT_EXECUTABLE}"
@@ -59,6 +60,7 @@ if(WIN32)
 					--no-widgets  # skip Qt widgets
 					--no-opengl-sw  # skip software OpenGL
 					--no-angle  # skip software OpenGL (ANGLE)
-					$<TARGET_FILE_DIR:${APP_NAME}>)
+					$<TARGET_FILE_DIR:${APP_NAME}>
+					COMMENT "Deploying Qt related dependencies...")
 	endif()
 endif()

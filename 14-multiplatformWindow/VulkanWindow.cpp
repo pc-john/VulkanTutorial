@@ -1201,11 +1201,6 @@ bool QtRenderingWindow::event(QEvent* event)
 				vulkanWindow->doFrame();
 			return true;
 
-		case QEvent::Type::UpdateRequest:
-			if(isExposed())
-				vulkanWindow->scheduleFrame();
-			return true;
-
 		case QEvent::Type::Expose: {
 			cout<<"e";
 			bool r = QWindow::event(event);
@@ -1213,6 +1208,11 @@ bool QtRenderingWindow::event(QEvent* event)
 				vulkanWindow->scheduleFrame();
 			return r;
 		}
+
+		case QEvent::Type::UpdateRequest:
+			if(isExposed())
+				vulkanWindow->scheduleFrame();
+			return true;
 
 		case QEvent::Type::Resize: {
 			vulkanWindow->scheduleSwapchainResize();
