@@ -19,7 +19,6 @@ set(PACKAGES
     14-multiplatformWindow
     ff-lag
     ff-win32AndWaylandPerfection
-    ff-qtWindow
     ff-perfInfo
    )
 
