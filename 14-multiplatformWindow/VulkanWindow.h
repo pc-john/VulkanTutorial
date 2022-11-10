@@ -38,6 +38,7 @@ protected:
 	std::exception_ptr _wndProcException;
 	HINSTANCE _hInstance;
 	ATOM _windowClass = 0;
+	bool _framePending = true;
 
 	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_win32_surface" };
@@ -47,6 +48,7 @@ protected:
 	Display* _display = nullptr;
 	Window _window = 0;
 	Atom _wmDeleteMessage;
+	bool _framePending = true;
 	bool _visible = false;
 
 	static inline const std::vector<const char*> _requiredInstanceExtensions =
@@ -67,14 +69,15 @@ protected:
 	xdg_toplevel* _xdgTopLevel = nullptr;
 	zxdg_toplevel_decoration_v1* _decoration = nullptr;
 
-	// state
-	bool _running = true;
-
 	// listeners
 	wl_registry_listener _registryListener;
 	xdg_wm_base_listener _xdgWmBaseListener;
 	xdg_surface_listener _xdgSurfaceListener;
 	xdg_toplevel_listener _xdgToplevelListener;
+
+	// state
+	bool _running = true;
+	bool _framePending = true;
 
 	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_wayland_surface" };
@@ -82,11 +85,13 @@ protected:
 #elif defined(USE_PLATFORM_SDL)
 
 	SDL_Window* _window = nullptr;
+	bool _framePending = true;
 	bool _visible = false;
 
 #elif defined(USE_PLATFORM_GLFW)
 
 	GLFWwindow* _window = nullptr;
+	bool _framePending = true;
 	bool _visible = true;
 
 #elif defined(USE_PLATFORM_QT)
@@ -100,7 +105,6 @@ protected:
 
 #endif
 
-	bool _framePending = true;
 	std::function<FrameCallback> _frameCallback;
 	vk::Instance _instance;
 	vk::PhysicalDevice _physicalDevice;
