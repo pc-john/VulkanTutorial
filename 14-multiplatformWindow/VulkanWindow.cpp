@@ -1167,10 +1167,8 @@ void VulkanWindow::doFrame()
 		// do not allow swapchain creation and rendering when surface extent is 0,0;
 		// we will repeat the resize attempt after the next window resize
 		// (this happens on Win32 systems and may happen also on systems that use Xlib)
-		if(_surfaceExtent == vk::Extent2D(0,0)) {
-			_framePending = false;  // this will be rescheduled on the first window resize
-			return;
-		}
+		if(_surfaceExtent == vk::Extent2D(0,0))
+			return;  // skip frame rendering (new frame will be scheduled on the next window resize)
 
 		// recreate swapchain
 		_swapchainResizePending = false;
