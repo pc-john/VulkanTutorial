@@ -17,6 +17,7 @@ set(PACKAGES
     12-resizableWindow
     13-spinningTriangle
     14-multiplatformWindow
+    15-julia
     ff-lag
     ff-win32AndWaylandPerfection
     ff-perfInfo
