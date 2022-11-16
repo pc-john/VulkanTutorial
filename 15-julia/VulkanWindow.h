@@ -17,7 +17,6 @@
   struct GLFWwindow;
 #elif defined(USE_PLATFORM_QT)
   class QWindow;
-  class QVulkanInstance;
 #endif
 #include <vulkan/vulkan.hpp>
 #include <functional>
@@ -99,7 +98,6 @@ protected:
 	QWindow* _window = nullptr;
 	std::exception_ptr _thrownException;
 
-	static inline QVulkanInstance* _vulkanInstance = nullptr;
 	void doFrame();
 	friend class QtRenderingWindow;
 
@@ -118,6 +116,8 @@ protected:
 public:
 
 	static void init();
+	static void init(void* data);
+	static void init(int& argc, char* argv[]);
 	static void finalize() noexcept;
 
 	VulkanWindow() = default;

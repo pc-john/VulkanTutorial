@@ -89,6 +89,8 @@ public:
 // Qt global variables
 static std::aligned_storage<sizeof(QGuiApplication), alignof(QGuiApplication)>::type qGuiApplicationMemory;
 static QGuiApplication* qGuiApplication = nullptr;
+static std::aligned_storage<sizeof(QVulkanInstance), alignof(QVulkanInstance)>::type qVulkanInstanceMemory;
+static QVulkanInstance* qVulkanInstance = nullptr;
 static char emptyString[] = "";
 static char* emptyArg = &emptyString[0];
 static char** emptyArgv = &emptyArg;
@@ -200,8 +202,68 @@ void VulkanWindow::init()
 
 #elif defined(USE_PLATFORM_QT)
 
+	if(qGuiApplication)
+		return;
+
+	// construct QGuiApplication
 	qGuiApplication = reinterpret_cast<QGuiApplication*>(&qGuiApplicationMemory);
 	new(qGuiApplication) QGuiApplication(emptyArgc, emptyArgv);
+
+#endif
+}
+
+
+void VulkanWindow::init(void* data)
+{
+	// use data as pointer to
+	// tuple<QGuiApplication*,QVulkanInstance*>
+#if defined(USE_PLATFORM_QT)
+
+	if(qGuiApplication)
+		return;
+
+	// get objects from data parameter
+	if(data) {
+		auto& d = *reinterpret_cast<tuple<QGuiApplication*,QVulkanInstance*>*>(data);
+		qGuiApplication = get<0>(d);
+		qVulkanInstance = get<1>(d);
+	}
+
+	// construct QGuiApplication
+	// if still nullptr
+	if(qGuiApplication == nullptr) {
+		qGuiApplication = reinterpret_cast<QGuiApplication*>(&qGuiApplicationMemory);
+		new(qGuiApplication) QGuiApplication(emptyArgc, emptyArgv);
+	}
+
+#else
+
+	// on all other platforms,
+	// just perform init()
+	init();
+
+#endif
+}
+
+
+void VulkanWindow::init(int& argc, char* argv[])
+{
+	// use argc and argv
+	// for QGuiApplication initialization
+#if defined(USE_PLATFORM_QT)
+
+	if(qGuiApplication)
+		return;
+
+	// construct QGuiApplication
+	qGuiApplication = reinterpret_cast<QGuiApplication*>(&qGuiApplicationMemory);
+	new(qGuiApplication) QGuiApplication(argc, argv);
+
+#else
+
+	// on all other platforms,
+	// just perform init()
+	init();
 
 #endif
 }
@@ -255,11 +317,11 @@ void VulkanWindow::finalize() noexcept
 
 #elif defined(USE_PLATFORM_QT)
 
-	// delete QVulkanInstance
-	if(_vulkanInstance) {
-		delete _vulkanInstance;
-		_vulkanInstance = nullptr;
-	}
+	// delete QVulkanInstance object
+	// but only if we own it
+	if(qVulkanInstance == reinterpret_cast<QVulkanInstance*>(&qVulkanInstanceMemory))
+		qVulkanInstance->~QVulkanInstance();
+	qVulkanInstance = nullptr;
 
 	// destroy QGuiApplication object
 	// but only if we own it
@@ -661,17 +723,18 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 
 #elif defined(USE_PLATFORM_QT)
 
-	// init QVulkanInstance
-	if(_vulkanInstance == nullptr) {
-		_vulkanInstance = new QVulkanInstance;
-		_vulkanInstance->setVkInstance(instance);
-		_vulkanInstance->create();
+	// create QVulkanInstance
+	if(qVulkanInstance == nullptr) {
+		qVulkanInstance = reinterpret_cast<QVulkanInstance*>(&qVulkanInstanceMemory);
+		new(qVulkanInstance) QVulkanInstance;
+		qVulkanInstance->setVkInstance(instance);
+		qVulkanInstance->create();
 	}
 
 	// setup QtRenderingWindow
 	_window = new QtRenderingWindow(nullptr, this);
 	_window->setSurfaceType(QSurface::VulkanSurface);
-	_window->setVulkanInstance(_vulkanInstance);
+	_window->setVulkanInstance(qVulkanInstance);
 	_window->resize(surfaceExtent.width, surfaceExtent.height);
 	_window->show();
 
@@ -1292,10 +1355,10 @@ void VulkanWindow::doFrame()
 
 	// render scene
 #if (QT_VERSION >= QT_VERSION_CHECK(5, 15, 0))
-	_vulkanInstance->presentAboutToBeQueued(_window);
+	qVulkanInstance->presentAboutToBeQueued(_window);
 #endif
 	_frameCallback();
-	_vulkanInstance->presentQueued(_window);
+	qVulkanInstance->presentQueued(_window);
 }
 
 
