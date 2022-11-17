@@ -42,6 +42,28 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 		/opt/local/include
 	)
 
+	# message error level
+	if(${CMAKE_FIND_PACKAGE_NAME}_FIND_REQUIRED)
+		set(errorLevel FATAL_ERROR)
+	else()
+		set(errorLevel SEND_ERROR)
+	endif()
+
+	# check GLFW version
+	if(${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR AND EXISTS "${${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR}/GLFW/glfw3.h")
+		file(READ "${${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR}/GLFW/glfw3.h" fileContent)
+		string(REGEX MATCH "GLFW_VERSION_MAJOR[ ]+([0-9]*)" _ "${fileContent}")
+		set(major "${CMAKE_MATCH_1}")
+		string(REGEX MATCH "GLFW_VERSION_MINOR[ ]+([0-9]*)" _ "${fileContent}")
+		set(minor "${CMAKE_MATCH_1}")
+		if("${major}.${minor}" VERSION_LESS ${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSION})
+			string(REGEX MATCH "GLFW_VERSION_REVISION[ ]+([0-9]*)" _ "${fileContent}")
+			message(${errorLevel} "GLFW ${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSION} or newer was not found.\n"
+			        "Detected version: ${major}.${minor}.${CMAKE_MATCH_1}.\n")
+			return()
+		endif()
+	endif()
+
 	# find GLFW library
 	if(WIN32)
 		find_library(${CMAKE_FIND_PACKAGE_NAME}_LIBRARY
@@ -73,14 +95,21 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 	if(${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR AND ${CMAKE_FIND_PACKAGE_NAME}_LIBRARY)
 		set(${CMAKE_FIND_PACKAGE_NAME}_FOUND True)
 	else()
-		# generate error message by find_package and by message(FATAL_ERROR)
-		find_package(${CMAKE_FIND_PACKAGE_NAME} ${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSION} CONFIG)
-		message(FATAL_ERROR "Finding of package ${CMAKE_FIND_PACKAGE_NAME} failed. "
-		                    "Make sure it is installed, it is of the required version and either "
-		                    "(1) ${CMAKE_FIND_PACKAGE_NAME}_DIR is set to the directory of "
-		                    "${CMAKE_FIND_PACKAGE_NAME}Config.cmake and ${CMAKE_FIND_PACKAGE_NAME}-config.cmake "
-		                    "or (2) ${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR and ${CMAKE_FIND_PACKAGE_NAME}_LIBRARY "
-		                    "are set properly.")  # FATAL_ERROR will stop CMake processing
+		# generate error message
+		if(${CMAKE_FIND_PACKAGE_NAME}_CONSIDERED_VERSIONS)
+			message(${errorLevel} "GLFW ${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSION} or newer was not found.\n"
+			        "Considered versions: ${${CMAKE_FIND_PACKAGE_NAME}_CONSIDERED_VERSIONS}\n"
+			        "Considered configs: ${${CMAKE_FIND_PACKAGE_NAME}_CONSIDERED_CONFIGS}\n")
+		else()
+			message(${errorLevel} "Finding of package ${CMAKE_FIND_PACKAGE_NAME} failed. "
+			        "Make sure it is installed, it is of the version "
+			        "${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSION} or newer, and either "
+			        "(1) ${CMAKE_FIND_PACKAGE_NAME}_DIR is set to the directory of "
+			        "${CMAKE_FIND_PACKAGE_NAME}Config.cmake and ${CMAKE_FIND_PACKAGE_NAME}-config.cmake "
+			        "or (2) ${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR and "
+			        "${CMAKE_FIND_PACKAGE_NAME}_LIBRARY are set properly.")
+		endif()
+		return()
 	endif()
 
 	# target
