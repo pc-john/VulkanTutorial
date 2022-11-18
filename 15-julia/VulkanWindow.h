@@ -44,12 +44,12 @@ protected:
 
 #elif defined(USE_PLATFORM_XLIB)
 
-	Display* _display = nullptr;
 	Window _window = 0;
 	Atom _wmDeleteMessage;
 	bool _framePending = true;
 	bool _visible = false;
 
+	static inline Display* _display = nullptr;
 	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_xlib_surface" };
 

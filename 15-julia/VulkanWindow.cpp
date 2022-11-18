@@ -49,6 +49,12 @@ static wstring utf8toWString(const char* s)
 #endif
 
 
+// Xlib global variables
+#if defined(USE_PLATFORM_XLIB)
+static bool externalDisplayHandle;
+#endif
+
+
 // SDL global variables
 #if defined(USE_PLATFORM_SDL)
 static bool sdlInitialized = false;
@@ -180,6 +186,17 @@ void VulkanWindow::init()
 	if(!_windowClass)
 		throw runtime_error("Cannot register window class.");
 
+#elif defined(USE_PLATFORM_XLIB)
+
+	if(_display)
+		return;
+
+	// open X connection
+	_display = XOpenDisplay(nullptr);
+	if(_display == nullptr)
+		throw runtime_error("Can not open display. No X-server running or wrong DISPLAY variable.");
+	externalDisplayHandle = false;
+
 #elif defined(USE_PLATFORM_SDL)
 
 	// handle multiple init attempts
@@ -197,6 +214,7 @@ void VulkanWindow::init()
 #elif defined(USE_PLATFORM_GLFW)
 
 	// initialize GLFW
+	// (it is safe to call glfwInit() multiple times)
 	if(!glfwInit())
 		throwError("glfwInit");
 
@@ -215,9 +233,34 @@ void VulkanWindow::init()
 
 void VulkanWindow::init(void* data)
 {
+#if defined(USE_PLATFORM_XLIB)
+
+	// use data as Display* handle
+
+	if(_display)
+		return;
+
+	if(data) {
+
+		// use data as Display* handle
+		_display = reinterpret_cast<Display*>(data);
+		externalDisplayHandle = true;
+
+	}
+	else {
+
+		// open X connection
+		_display = XOpenDisplay(nullptr);
+		if(_display == nullptr)
+			throw runtime_error("Can not open display. No X-server running or wrong DISPLAY variable.");
+		externalDisplayHandle = false;
+
+	}
+
+#elif defined(USE_PLATFORM_QT)
+
 	// use data as pointer to
 	// tuple<QGuiApplication*,QVulkanInstance*>
-#if defined(USE_PLATFORM_QT)
 
 	if(qGuiApplication)
 		return;
@@ -288,6 +331,14 @@ void VulkanWindow::finalize() noexcept
 		_windowClass = 0;
 	}
 # endif
+
+#elif defined(USE_PLATFORM_XLIB)
+
+	if(_display) {
+		if(!externalDisplayHandle)
+			XCloseDisplay(_display);
+		_display = nullptr;
+	}
 
 #elif defined(USE_PLATFORM_SDL)
 
@@ -375,10 +426,6 @@ void VulkanWindow::destroy() noexcept
 	if(_window) {
 		XDestroyWindow(_display, _window);
 		_window = 0;
-	}
-	if(_display) {
-		XCloseDisplay(_display);
-		_display = nullptr;
 	}
 
 #elif defined(USE_PLATFORM_WAYLAND)
@@ -496,11 +543,6 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	return _surface;
 
 #elif defined(USE_PLATFORM_XLIB)
-
-	// open X connection
-	_display = XOpenDisplay(nullptr);
-	if(_display == nullptr)
-		throw runtime_error("Can not open display. No X-server running or wrong DISPLAY variable.");
 
 	// create window
 	XSetWindowAttributes attr;
