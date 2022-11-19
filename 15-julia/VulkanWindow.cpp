@@ -55,6 +55,12 @@ static bool externalDisplayHandle;
 #endif
 
 
+// Wayland global variables
+#if defined(USE_PLATFORM_WAYLAND)
+static bool externalDisplayHandle;
+#endif
+
+
 // SDL global variables
 #if defined(USE_PLATFORM_SDL)
 static bool sdlInitialized = false;
@@ -110,6 +116,10 @@ void VulkanWindow::init()
 {
 #if defined(USE_PLATFORM_WIN32)
 
+	// handle multiple init attempts
+	if(_windowClass)
+		return;
+
 	// window's message handling procedure
 	auto wndProc = [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) noexcept -> LRESULT {
 		switch(msg)
@@ -160,10 +170,6 @@ void VulkanWindow::init()
 		}
 	};
 
-	// handle multiple init attempts
-	if(_windowClass)
-		return;
-
 	// register window class with the first window
 	_hInstance = GetModuleHandle(NULL);
 	_windowClass =
@@ -196,6 +202,10 @@ void VulkanWindow::init()
 	if(_display == nullptr)
 		throw runtime_error("Can not open display. No X-server running or wrong DISPLAY variable.");
 	externalDisplayHandle = false;
+
+#elif defined(USE_PLATFORM_WAYLAND)
+
+	init(nullptr);
 
 #elif defined(USE_PLATFORM_SDL)
 
@@ -256,6 +266,67 @@ void VulkanWindow::init(void* data)
 		externalDisplayHandle = false;
 
 	}
+
+#elif defined(USE_PLATFORM_WAYLAND)
+
+	// use data as wl_display* handle
+
+	if(_display)
+		return;
+
+	if(data) {
+		_display = reinterpret_cast<wl_display*>(data);
+		externalDisplayHandle = true;
+	}
+	else {
+
+		// open Wayland connection
+		_display = wl_display_connect(nullptr);
+		if(_display == nullptr)
+			throw runtime_error("Cannot connect to Wayland display. No Wayland server is running or invalid WAYLAND_DISPLAY variable.");
+		externalDisplayHandle = false;
+
+	}
+
+	// registry listener
+	_registry = wl_display_get_registry(_display);
+	if(_registry == nullptr)
+		throw runtime_error("Cannot get Wayland registry object.");
+	_registryListener = {
+		.global =
+			[](void*, wl_registry* registry, uint32_t name, const char* interface, uint32_t version) {
+				if(strcmp(interface, wl_compositor_interface.name) == 0)
+					_compositor = static_cast<wl_compositor*>(
+						wl_registry_bind(registry, name, &wl_compositor_interface, 1));
+				else if(strcmp(interface, xdg_wm_base_interface.name) == 0)
+					_xdgWmBase = static_cast<xdg_wm_base*>(
+						wl_registry_bind(registry, name, &xdg_wm_base_interface, 1));
+				else if(strcmp(interface, zxdg_decoration_manager_v1_interface.name) == 0)
+					_zxdgDecorationManagerV1 = static_cast<zxdg_decoration_manager_v1*>(
+						wl_registry_bind(registry, name, &zxdg_decoration_manager_v1_interface, 1));
+			},
+		.global_remove =
+			[](void*, wl_registry*, uint32_t) {
+			},
+	};
+	if(wl_registry_add_listener(_registry, &_registryListener, nullptr))
+		throw runtime_error("wl_registry_add_listener() failed.");
+
+	// get and init global objects
+	if(wl_display_roundtrip(_display) == -1)
+		throw runtime_error("wl_display_roundtrip() failed.");
+	if(_compositor == nullptr)
+		throw runtime_error("Cannot get Wayland compositor object.");
+	if(_xdgWmBase == nullptr)
+		throw runtime_error("Cannot get Wayland xdg_wm_base object.");
+	_xdgWmBaseListener = {
+		.ping =
+			[](void*, xdg_wm_base* xdg, uint32_t serial) {
+				xdg_wm_base_pong(xdg, serial);
+			}
+	};
+	if(xdg_wm_base_add_listener(_xdgWmBase, &_xdgWmBaseListener, nullptr))
+		throw runtime_error("xdg_wm_base_add_listener() failed.");
 
 #elif defined(USE_PLATFORM_QT)
 
@@ -339,6 +410,22 @@ void VulkanWindow::finalize() noexcept
 			XCloseDisplay(_display);
 		_display = nullptr;
 	}
+
+#elif defined(USE_PLATFORM_WAYLAND)
+
+	if(_xdgWmBase) {
+		xdg_wm_base_destroy(_xdgWmBase);
+		_xdgWmBase = nullptr;
+	}
+	if(_display) {
+		if(!externalDisplayHandle)
+			wl_display_disconnect(_display);
+		_display = nullptr;
+	}
+	_registry = nullptr;
+	_compositor = nullptr;
+	_xdgWmBase = nullptr;
+	_zxdgDecorationManagerV1 = nullptr;
 
 #elif defined(USE_PLATFORM_SDL)
 
@@ -447,14 +534,6 @@ void VulkanWindow::destroy() noexcept
 		wl_surface_destroy(_wlSurface);
 		_wlSurface = nullptr;
 	}
-	if(_xdgWmBase) {
-		xdg_wm_base_destroy(_xdgWmBase);
-		_xdgWmBase = nullptr;
-	}
-	if(_display) {
-		wl_display_disconnect(_display);
-		_display = nullptr;
-	}
 
 #elif defined(USE_PLATFORM_SDL)
 
@@ -484,15 +563,11 @@ void VulkanWindow::destroy() noexcept
 
 vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title)
 {
+	// asserts
 #if defined(USE_PLATFORM_WIN32)
-
-	// VulkanWindow::init() had to be already called and _windowClass initialized
 	assert(_windowClass && "VulkanWindow was not initialized. Call VulkanWindow::init() before VulkanWindow::create()."); 
-
 #elif defined(USE_PLATFORM_SDL)
-
 	assert(sdlInitialized && "VulkanWindow was not initialized. Call VulkanWindow::init() before VulkanWindow::create()."); 
-
 #endif
 
 	// destroy any previous window data
@@ -579,53 +654,6 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	return _surface;
 
 #elif defined(USE_PLATFORM_WAYLAND)
-
-	// open Wayland connection
-	_display = wl_display_connect(nullptr);
-	if(_display == nullptr)
-		throw runtime_error("Cannot connect to Wayland display. No Wayland server is running or invalid WAYLAND_DISPLAY variable.");
-
-	// registry listener
-	_registry = wl_display_get_registry(_display);
-	if(_registry == nullptr)
-		throw runtime_error("Cannot get Wayland registry object.");
-	_compositor = nullptr;
-	_registryListener = {
-		.global =
-			[](void* data, wl_registry* registry, uint32_t name, const char* interface, uint32_t version) {
-				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(data);
-				if(strcmp(interface, wl_compositor_interface.name) == 0)
-					w->_compositor = static_cast<wl_compositor*>(
-						wl_registry_bind(registry, name, &wl_compositor_interface, 1));
-				else if(strcmp(interface, xdg_wm_base_interface.name) == 0)
-					w->_xdgWmBase = static_cast<xdg_wm_base*>(
-						wl_registry_bind(registry, name, &xdg_wm_base_interface, 1));
-				else if(strcmp(interface, zxdg_decoration_manager_v1_interface.name) == 0)
-					w->_zxdgDecorationManagerV1 = static_cast<zxdg_decoration_manager_v1*>(
-						wl_registry_bind(registry, name, &zxdg_decoration_manager_v1_interface, 1));
-			},
-		.global_remove =
-			[](void*, wl_registry*, uint32_t) {
-			},
-	};
-	if(wl_registry_add_listener(_registry, &_registryListener, this))
-		throw runtime_error("wl_registry_add_listener() failed.");
-
-	// get and init global objects
-	if(wl_display_roundtrip(_display) == -1)
-		throw runtime_error("wl_display_roundtrip() failed.");
-	if(_compositor == nullptr)
-		throw runtime_error("Cannot get Wayland compositor object.");
-	if(_xdgWmBase == nullptr)
-		throw runtime_error("Cannot get Wayland xdg_wm_base object.");
-	_xdgWmBaseListener = {
-		.ping =
-			[](void*, xdg_wm_base* xdg, uint32_t serial) {
-				xdg_wm_base_pong(xdg, serial);
-			}
-	};
-	if(xdg_wm_base_add_listener(_xdgWmBase, &_xdgWmBaseListener, nullptr))
-		throw runtime_error("xdg_wm_base_add_listener() failed.");
 
 	// create window
 	_wlSurface = wl_compositor_create_surface(_compositor);

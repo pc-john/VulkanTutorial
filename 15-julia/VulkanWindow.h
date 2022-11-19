@@ -55,13 +55,6 @@ protected:
 
 #elif defined(USE_PLATFORM_WAYLAND)
 
-	// globals
-	wl_display* _display = nullptr;
-	wl_registry* _registry;
-	wl_compositor* _compositor;
-	xdg_wm_base* _xdgWmBase = nullptr;
-	zxdg_decoration_manager_v1* _zxdgDecorationManagerV1;
-
 	// objects
 	wl_surface* _wlSurface = nullptr;
 	xdg_surface* _xdgSurface = nullptr;
@@ -69,14 +62,23 @@ protected:
 	zxdg_toplevel_decoration_v1* _decoration = nullptr;
 
 	// listeners
-	wl_registry_listener _registryListener;
-	xdg_wm_base_listener _xdgWmBaseListener;
 	xdg_surface_listener _xdgSurfaceListener;
 	xdg_toplevel_listener _xdgToplevelListener;
 
 	// state
 	bool _running = true;
 	bool _framePending = true;
+
+	// globals
+	static inline wl_display* _display = nullptr;
+	static inline wl_registry* _registry;
+	static inline wl_compositor* _compositor = nullptr;
+	static inline xdg_wm_base* _xdgWmBase = nullptr;
+	static inline zxdg_decoration_manager_v1* _zxdgDecorationManagerV1 = nullptr;
+
+	// global listeners
+	static inline wl_registry_listener _registryListener;
+	static inline xdg_wm_base_listener _xdgWmBaseListener;
 
 	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_wayland_surface" };
