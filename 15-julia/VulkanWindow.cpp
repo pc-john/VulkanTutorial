@@ -18,6 +18,8 @@
 # include <QGuiApplication>
 # include <QWindow>
 # include <QVulkanInstance>
+# include <filesystem>
+# include <fstream>
 #endif
 #include <vulkan/vulkan.hpp>
 #include <cstring>
@@ -103,10 +105,12 @@ static std::aligned_storage<sizeof(QGuiApplication), alignof(QGuiApplication)>::
 static QGuiApplication* qGuiApplication = nullptr;
 static std::aligned_storage<sizeof(QVulkanInstance), alignof(QVulkanInstance)>::type qVulkanInstanceMemory;
 static QVulkanInstance* qVulkanInstance = nullptr;
-static char emptyString[] = "";
-static char* emptyArg = &emptyString[0];
-static char** emptyArgv = &emptyArg;
-static int emptyArgc = 1;
+
+// alternative command line arguments
+// (if the user does not use VulkanWindow::init(argc, argv), we get these by various API functions)
+static vector<char> altArgData;
+static vector<char*> altArgv;
+static int altArgc;
 
 #endif
 
@@ -233,9 +237,26 @@ void VulkanWindow::init()
 	if(qGuiApplication)
 		return;
 
+	// get command line arguments
+	ifstream f("/proc/self/cmdline", ios::binary);
+	altArgData.clear();
+	int c = f.get();
+	while(f) {
+		altArgData.push_back(char(c));
+		c = f.get();
+	}
+	if(altArgData.size()>0 && altArgData.back()!='\0')
+		altArgData.push_back('\0');
+	altArgv.clear();
+	altArgv.push_back(&altArgData[0]);
+	for(int i=0,c=int(altArgData.size())-1; i<c; i++)
+		if(altArgData[i] == '\0')
+			altArgv.push_back(&altArgData[i+1]);
+	altArgc = altArgv.size();
+
 	// construct QGuiApplication
 	qGuiApplication = reinterpret_cast<QGuiApplication*>(&qGuiApplicationMemory);
-	new(qGuiApplication) QGuiApplication(emptyArgc, emptyArgv);
+	new(qGuiApplication) QGuiApplication(altArgc, altArgv.data());
 
 #endif
 }
@@ -344,11 +365,9 @@ void VulkanWindow::init(void* data)
 	}
 
 	// construct QGuiApplication
-	// if still nullptr
-	if(qGuiApplication == nullptr) {
-		qGuiApplication = reinterpret_cast<QGuiApplication*>(&qGuiApplicationMemory);
-		new(qGuiApplication) QGuiApplication(emptyArgc, emptyArgv);
-	}
+	// using VulkanWindow::init()
+	if(qGuiApplication == nullptr)
+		init();
 
 #else
 
@@ -1374,6 +1393,12 @@ const char* const* VulkanWindow::requiredExtensionNames()  { return requiredExte
 
 void VulkanWindow::mainLoop()
 {
+	cout << "DisplayName: " << qGuiApplication->applicationDisplayName().toStdString() << endl;
+	cout << "ApplicationName: " << qGuiApplication->applicationName().toStdString() << endl;
+	cout << "ApplicationVersion: " << qGuiApplication->applicationVersion().toStdString() << endl;
+	cout << "OrganizationDomain: " << qGuiApplication->organizationDomain().toStdString() << endl;
+	cout << "OrganizationName: " << qGuiApplication->organizationName().toStdString() << endl;
+
 	// callbacks need to be assigned
 	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
