@@ -106,11 +106,14 @@ static QGuiApplication* qGuiApplication = nullptr;
 static std::aligned_storage<sizeof(QVulkanInstance), alignof(QVulkanInstance)>::type qVulkanInstanceMemory;
 static QVulkanInstance* qVulkanInstance = nullptr;
 
+# if !defined(_WIN32)
 // alternative command line arguments
-// (if the user does not use VulkanWindow::init(argc, argv), we get these by various API functions)
-static vector<char> altArgData;
+// (if the user does not use VulkanWindow::init(argc, argv),
+// we get command line arguments by various API functions)
+static vector<char> altArgBuffer;
 static vector<char*> altArgv;
 static int altArgc;
+# endif
 
 #endif
 
@@ -237,26 +240,36 @@ void VulkanWindow::init()
 	if(qGuiApplication)
 		return;
 
+# if defined(_WIN32)
+
+	// construct QGuiApplication
+	qGuiApplication = reinterpret_cast<QGuiApplication*>(&qGuiApplicationMemory);
+	new(qGuiApplication) QGuiApplication(__argc, __argv);
+
+# else
+
 	// get command line arguments
 	ifstream f("/proc/self/cmdline", ios::binary);
-	altArgData.clear();
+	altArgBuffer.clear();
 	int c = f.get();
 	while(f) {
-		altArgData.push_back(char(c));
+		altArgBuffer.push_back(char(c));
 		c = f.get();
 	}
-	if(altArgData.size()>0 && altArgData.back()!='\0')
-		altArgData.push_back('\0');
+	if(altArgBuffer.size()==0 || altArgBuffer.back()!='\0')
+		altArgBuffer.push_back('\0');
 	altArgv.clear();
-	altArgv.push_back(&altArgData[0]);
-	for(int i=0,c=int(altArgData.size())-1; i<c; i++)
-		if(altArgData[i] == '\0')
-			altArgv.push_back(&altArgData[i+1]);
-	altArgc = altArgv.size();
+	altArgv.push_back(&altArgBuffer[0]);
+	for(int i=0,c=int(altArgBuffer.size())-1; i<c; i++)
+		if(altArgBuffer[i] == '\0')
+			altArgv.push_back(&altArgBuffer[i+1]);
+	altArgc = int(altArgv.size());
 
 	// construct QGuiApplication
 	qGuiApplication = reinterpret_cast<QGuiApplication*>(&qGuiApplicationMemory);
 	new(qGuiApplication) QGuiApplication(altArgc, altArgv.data());
+
+# endif
 
 #endif
 }

@@ -701,7 +701,7 @@ void App::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceCapabilitie
 
 void App::frame()
 {
-	cout << "x" << std::flush;
+	cout << "x" << flush;
 
 	// wait for previous frame rendering work
 	// if still not finished
