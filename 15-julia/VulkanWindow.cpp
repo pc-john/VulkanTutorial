@@ -264,6 +264,7 @@ void VulkanWindow::init()
 		if(altArgBuffer[i] == '\0')
 			altArgv.push_back(&altArgBuffer[i+1]);
 	altArgc = int(altArgv.size());
+	altArgv.push_back(nullptr);  // argv[argc] must be nullptr
 
 	// construct QGuiApplication
 	qGuiApplication = reinterpret_cast<QGuiApplication*>(&qGuiApplicationMemory);
