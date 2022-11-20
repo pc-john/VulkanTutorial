@@ -127,6 +127,13 @@ App::~App()
 	}
 
 	window.destroy();
+#if defined(USE_PLATFORM_XLIB)
+	// On Xlib, VulkanWindow::finalize() needs to be called before instance destroy to avoid crash.
+	// It is workaround for the known bug in libXext: https://gitlab.freedesktop.org/xorg/lib/libxext/-/issues/3,
+	// that crashes the application inside XCloseDisplay(). The problem seems to be present
+	// especially on Nvidia drivers (reproduced on versions 470.129.06 and 515.65.01, for example).
+	VulkanWindow::finalize();
+#endif
 	instance.destroy();
 }
 
