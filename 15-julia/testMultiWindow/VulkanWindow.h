@@ -28,6 +28,7 @@ public:
 
 	typedef void FrameCallback();
 	typedef void RecreateSwapchainCallback(const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent);
+	typedef void CloseCallback();
 
 protected:
 
@@ -98,7 +99,6 @@ protected:
 #elif defined(USE_PLATFORM_QT)
 
 	QWindow* _window = nullptr;
-	std::exception_ptr _thrownException;
 
 	void doFrame();
 	friend class QtRenderingWindow;
@@ -114,30 +114,51 @@ protected:
 	vk::Extent2D _surfaceExtent = vk::Extent2D(0,0);
 	bool _swapchainResizePending = true;
 	std::function<RecreateSwapchainCallback> _recreateSwapchainCallback;
+	std::function<CloseCallback> _closeCallback;
 
 public:
 
+	// initialization and finalization
 	static void init();
 	static void init(void* data);
 	static void init(int& argc, char* argv[]);
 	static void finalize() noexcept;
 
+	// construction and destruction
 	VulkanWindow() = default;
 	~VulkanWindow();
 	void destroy() noexcept;
 
+	// deleted constructors and operators
+	VulkanWindow(const VulkanWindow&) = delete;
+	VulkanWindow& operator=(const VulkanWindow&) = delete;
+
+	// general methods
 	vk::SurfaceKHR create(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title = "Vulkan window");
 	void setRecreateSwapchainCallback(std::function<RecreateSwapchainCallback>&& cb);
 	void setRecreateSwapchainCallback(const std::function<RecreateSwapchainCallback>& cb);
 	void setFrameCallback(std::function<FrameCallback>&& cb, vk::PhysicalDevice physicalDevice, vk::Device device);
 	void setFrameCallback(const std::function<FrameCallback>& cb, vk::PhysicalDevice physicalDevice, vk::Device device);
-	void mainLoop();
+	void setCloseCallback(std::function<CloseCallback>&& cb);
+	void setCloseCallback(const std::function<CloseCallback>& cb);
+	void show();
+	void hide();
+	void setVisible(bool value);
+	void renderFrame();
+	static void mainLoop();
+	static void exitMainLoop();
 
+	// getters
 	vk::SurfaceKHR surface() const;
 	vk::Extent2D surfaceExtent() const;
+	bool isVisible() const;
 
+	// schedule methods
 	void scheduleFrame();
 	void scheduleSwapchainResize();
+
+	// exception handling
+	static inline std::exception_ptr thrownException;
 
 	// required Vulkan Instance extensions
 	static const std::vector<const char*>& requiredExtensions();
@@ -154,6 +175,9 @@ inline void VulkanWindow::setRecreateSwapchainCallback(std::function<RecreateSwa
 inline void VulkanWindow::setRecreateSwapchainCallback(const std::function<RecreateSwapchainCallback>& cb)  { _recreateSwapchainCallback = cb; }
 inline void VulkanWindow::setFrameCallback(std::function<FrameCallback>&& cb, vk::PhysicalDevice physicalDevice, vk::Device device)  { _frameCallback = std::move(cb); _physicalDevice = physicalDevice; _device = device; }
 inline void VulkanWindow::setFrameCallback(const std::function<FrameCallback>& cb, vk::PhysicalDevice physicalDevice, vk::Device device)  { _frameCallback = cb; _physicalDevice = physicalDevice; _device = device; }
+inline void VulkanWindow::setCloseCallback(std::function<CloseCallback>&& cb)  { _closeCallback = move(cb); }
+inline void VulkanWindow::setCloseCallback(const std::function<CloseCallback>& cb)  { _closeCallback = cb; }
+inline void VulkanWindow::setVisible(bool value)  { if(value) show(); else hide(); }
 inline vk::SurfaceKHR VulkanWindow::surface() const  { return _surface; }
 inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return _surfaceExtent; }
 #if !defined(USE_PLATFORM_QT)

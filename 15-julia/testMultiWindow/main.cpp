@@ -19,6 +19,18 @@ static const uint32_t fsSpirv[] = {
 };
 
 
+// Window class
+class Window : public VulkanWindow {
+public:
+	vk::SurfaceKHR surface;
+	vk::SwapchainKHR swapchain;
+	vector<vk::ImageView> swapchainImageViews;
+	vector<vk::Framebuffer> framebuffers;
+	vk::Pipeline pipeline;
+	Window(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title = "Vulkan window") : surface(VulkanWindow::create(instance, surfaceExtent, title)) {}
+};
+
+
 // global application data
 class App {
 public:
@@ -27,8 +39,8 @@ public:
 	~App();
 
 	void init();
-	void recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent);
-	void frame();
+	void recreateSwapchain(Window& window, const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent);
+	void frame(Window& window);
 
 	// Vulkan instance must be destructed as the last Vulkan handle.
 	// It is probably good idea to destroy it after the display connection.
@@ -36,7 +48,7 @@ public:
 
 	// window needs to be destroyed after the swapchain
 	// This is required especially by Wayland.
-	VulkanWindow window;
+	list<Window> windowList;
 
 	// Vulkan variables, handles and objects
 	// (they need to be destructed in non-arbitrary order in the destructor)
@@ -48,9 +60,6 @@ public:
 	vk::Queue presentationQueue;
 	vk::SurfaceFormatKHR surfaceFormat;
 	vk::RenderPass renderPass;
-	vk::SwapchainKHR swapchain;
-	vector<vk::ImageView> swapchainImageViews;
-	vector<vk::Framebuffer> framebuffers;
 	vk::CommandPool commandPool;
 	vk::CommandBuffer commandBuffer;
 	vk::Semaphore imageAvailableSemaphore;
@@ -59,7 +68,6 @@ public:
 	vk::ShaderModule vsModule;
 	vk::ShaderModule fsModule;
 	vk::PipelineLayout pipelineLayout;
-	vk::Pipeline pipeline;
 
 	enum class FrameUpdateMode { OnDemand, Continuous, MaxFrameRate };
 	FrameUpdateMode frameUpdateMode = FrameUpdateMode::Continuous;
@@ -109,9 +117,16 @@ App::~App()
 			cout << "Failed because of Vulkan exception: " << e.what() << endl;
 		}
 
+		// destroy windows
+		for(auto& w : windowList) {
+			device.destroy(w.pipeline);
+			for(auto f : w.framebuffers)  device.destroy(f);
+			for(auto v : w.swapchainImageViews)  device.destroy(v);
+			device.destroy(w.swapchain);
+		}
+
 		// destroy handles
 		// (the handles are destructed in certain (not arbitrary) order)
-		device.destroy(pipeline);
 		device.destroy(pipelineLayout);
 		device.destroy(fsModule);
 		device.destroy(vsModule);
@@ -119,14 +134,13 @@ App::~App()
 		device.destroy(renderFinishedSemaphore);
 		device.destroy(imageAvailableSemaphore);
 		device.destroy(commandPool);
-		for(auto f : framebuffers)  device.destroy(f);
-		for(auto v : swapchainImageViews)  device.destroy(v);
-		device.destroy(swapchain);
 		device.destroy(renderPass);
 		device.destroy();
 	}
 
-	window.destroy();
+	// destroy VulkanWindow objects
+	windowList.clear();
+
 #if defined(USE_PLATFORM_XLIB)
 	// On Xlib, VulkanWindow::finalize() needs to be called before instance destroy to avoid crash.
 	// It is workaround for the known bug in libXext: https://gitlab.freedesktop.org/xorg/lib/libxext/-/issues/3,
@@ -162,8 +176,8 @@ void App::init()
 		);
 
 	// create surface
-	vk::SurfaceKHR surface =
-		window.create(instance, {1024, 768}, appName);
+	windowList.emplace_back(instance, vk::Extent2D{1024, 768}, appName);
+	windowList.emplace_back(instance, vk::Extent2D{1024, 768}, appName);
 
 	// find compatible devices
 	vector<vk::PhysicalDevice> deviceList = instance.enumeratePhysicalDevices();
@@ -185,7 +199,14 @@ void App::init()
 		for(uint32_t i=0, c=uint32_t(queueFamilyList.size()); i<c; i++) {
 
 			// test for presentation support
-			if(pd.getSurfaceSupportKHR(i, surface)) {
+			bool presentationSupport = true;
+			for(auto& w : windowList)
+				if(!pd.getSurfaceSupportKHR(i, w.surface)) {
+					presentationSupport = false;
+					break;
+				}
+
+			if(presentationSupport) {
 
 				// test for graphics operations support
 				if(queueFamilyList[i].queueFlags & vk::QueueFlagBits::eGraphics) {
@@ -283,7 +304,7 @@ void App::init()
 
 	// print surface formats
 	cout << "Surface formats:" << endl;
-	vector<vk::SurfaceFormatKHR> availableSurfaceFormats = physicalDevice.getSurfaceFormatsKHR(surface);
+	vector<vk::SurfaceFormatKHR> availableSurfaceFormats = physicalDevice.getSurfaceFormatsKHR(windowList.front().surface);
 	for(vk::SurfaceFormatKHR sf : availableSurfaceFormats)
 		cout << "   " << vk::to_string(sf.format) << ", color space: " << vk::to_string(sf.colorSpace) << endl;
 
@@ -310,6 +331,11 @@ void App::init()
 			throw std::runtime_error("Vulkan error: getSurfaceFormatsKHR() returned empty list.");
 		surfaceFormat = availableSurfaceFormats[0];
 	surfaceFormatFound:;
+	}
+	for(auto it=++windowList.begin(); it!=windowList.end(); it++) {
+		availableSurfaceFormats = physicalDevice.getSurfaceFormatsKHR(it->surface);
+		if(std::find(availableSurfaceFormats.begin(), availableSurfaceFormats.end(), surfaceFormat) == availableSurfaceFormats.end())
+			throw std::runtime_error("Vulkan error: Surface format chosen for the first window is not available in the second window.");
 	}
 	cout << "Using format:\n"
 	     << "   " << to_string(surfaceFormat.format) << ", color space: " << to_string(surfaceFormat.colorSpace) << endl;
@@ -440,15 +466,15 @@ void App::init()
 
 /** Recreate swapchain and pipeline callback method.
  *  The method is usually called after the window resize and on the application start. */
-void App::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent)
+void App::recreateSwapchain(Window& window, const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent)
 {
 	// clear resources
-	for(auto v : swapchainImageViews)  device.destroy(v);
-	swapchainImageViews.clear();
-	for(auto f : framebuffers)  device.destroy(f);
-	framebuffers.clear();
-	device.destroy(pipeline);
-	pipeline = nullptr;
+	for(auto v : window.swapchainImageViews)  device.destroy(v);
+	window.swapchainImageViews.clear();
+	for(auto f : window.framebuffers)  device.destroy(f);
+	window.framebuffers.clear();
+	device.destroy(window.pipeline);
+	window.pipeline = nullptr;
 
 	// print info
 	cout << "Recreating swapchain (extent: " << newSurfaceExtent.width << "x" << newSurfaceExtent.height
@@ -462,7 +488,7 @@ void App::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceCapabilitie
 		device.createSwapchainKHRUnique(
 			vk::SwapchainCreateInfoKHR(
 				vk::SwapchainCreateFlagsKHR(),  // flags
-				window.surface(),               // surface
+				window.surface,                 // surface
 				surfaceCapabilities.maxImageCount==0  // minImageCount
 					? max(requestedImageCount, surfaceCapabilities.minImageCount)
 					: clamp(requestedImageCount, surfaceCapabilities.minImageCount, surfaceCapabilities.maxImageCount),
@@ -492,17 +518,17 @@ void App::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceCapabilitie
 						return vk::PresentModeKHR::eFifo;
 					}(frameUpdateMode, physicalDevice, window),
 				VK_TRUE,  // clipped
-				swapchain  // oldSwapchain
+				window.swapchain  // oldSwapchain
 			)
 		);
-	device.destroy(swapchain);
-	swapchain = newSwapchain.release();
+	device.destroy(window.swapchain);
+	window.swapchain = newSwapchain.release();
 
 	// swapchain images and image views
-	vector<vk::Image> swapchainImages = device.getSwapchainImagesKHR(swapchain);
-	swapchainImageViews.reserve(swapchainImages.size());
+	vector<vk::Image> swapchainImages = device.getSwapchainImagesKHR(window.swapchain);
+	window.swapchainImageViews.reserve(swapchainImages.size());
 	for(vk::Image image : swapchainImages)
-		swapchainImageViews.emplace_back(
+		window.swapchainImageViews.emplace_back(
 			device.createImageView(
 				vk::ImageViewCreateInfo(
 					vk::ImageViewCreateFlags(),  // flags
@@ -522,15 +548,15 @@ void App::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceCapabilitie
 		);
 
 	// framebuffers
-	framebuffers.reserve(swapchainImages.size());
+	window.framebuffers.reserve(swapchainImages.size());
 	for(size_t i=0, c=swapchainImages.size(); i<c; i++)
-		framebuffers.emplace_back(
+		window.framebuffers.emplace_back(
 			device.createFramebuffer(
 				vk::FramebufferCreateInfo(
 					vk::FramebufferCreateFlags(),  // flags
 					renderPass,  // renderPass
 					1,  // attachmentCount
-					&swapchainImageViews[i],  // pAttachments
+					&window.swapchainImageViews[i],  // pAttachments
 					newSurfaceExtent.width,  // width
 					newSurfaceExtent.height,  // height
 					1  // layers
@@ -539,7 +565,7 @@ void App::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceCapabilitie
 		);
 
 	// pipeline
-	pipeline =
+	window.pipeline =
 		device.createGraphicsPipeline(
 			nullptr,  // pipelineCache
 			vk::GraphicsPipelineCreateInfo(
@@ -658,7 +684,7 @@ void App::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceCapabilitie
 }
 
 
-void App::frame()
+void App::frame(Window& window)
 {
 	cout << "x" << flush;
 
@@ -698,7 +724,7 @@ void App::frame()
 	uint32_t imageIndex;
 	r =
 		device.acquireNextImageKHR(
-			swapchain,                // swapchain
+			window.swapchain,         // swapchain
 			uint64_t(3e9),            // timeout (3s)
 			imageAvailableSemaphore,  // semaphore to signal
 			vk::Fence(nullptr),       // fence to signal
@@ -727,7 +753,7 @@ void App::frame()
 	commandBuffer.beginRenderPass(
 		vk::RenderPassBeginInfo(
 			renderPass,  // renderPass
-			framebuffers[imageIndex],  // framebuffer
+			window.framebuffers[imageIndex],  // framebuffer
 			vk::Rect2D(vk::Offset2D(0, 0), window.surfaceExtent()),  // renderArea
 			1,  // clearValueCount
 			&(const vk::ClearValue&)vk::ClearValue(  // pClearValues
@@ -738,7 +764,7 @@ void App::frame()
 	);
 
 	// rendering commands
-	commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);  // bind pipeline
+	commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, window.pipeline);  // bind pipeline
 	commandBuffer.draw(  // draw single triangle
 		4,  // vertexCount
 		1,  // instanceCount
@@ -770,7 +796,7 @@ void App::frame()
 		presentationQueue.presentKHR(
 			&(const vk::PresentInfoKHR&)vk::PresentInfoKHR(
 				1, &renderFinishedSemaphore,  // waitSemaphoreCount + pWaitSemaphores
-				1, &swapchain, &imageIndex,  // swapchainCount + pSwapchains + pImageIndices
+				1, &window.swapchain, &imageIndex,  // swapchainCount + pSwapchains + pImageIndices
 				nullptr  // pResults
 			)
 		);
@@ -799,20 +825,37 @@ int main(int argc, char* argv[])
 
 		App app(argc, argv);
 		app.init();
-		app.window.setRecreateSwapchainCallback(
-			bind(
-				&App::recreateSwapchain,
-				&app,
-				placeholders::_1,
-				placeholders::_2
-			)
-		);
-		app.window.setFrameCallback(
-			bind(&App::frame, &app),
-			app.physicalDevice,
-			app.device
-		);
-		app.window.mainLoop();
+		for(Window& w : app.windowList) {
+			w.setRecreateSwapchainCallback(
+				bind(
+					&App::recreateSwapchain,
+					&app,
+					ref(w),
+					placeholders::_1,
+					placeholders::_2
+				)
+			);
+			w.setFrameCallback(
+				bind(&App::frame, &app, ref(w)),
+				app.physicalDevice,
+				app.device
+			);
+			w.setCloseCallback(
+				bind(
+					[](Window& window, App& app){
+						window.hide();
+						for(Window& w : app.windowList)
+							if(w.isVisible())
+								return;
+						VulkanWindow::exitMainLoop();
+					},
+					ref(w),
+					ref(app)
+				)
+			);
+			w.show();
+		}
+		VulkanWindow::mainLoop();
 
 	// catch exceptions
 	} catch(vk::Error& e) {

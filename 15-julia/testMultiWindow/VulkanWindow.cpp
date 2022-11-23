@@ -1405,6 +1405,28 @@ uint32_t VulkanWindow::requiredExtensionCount()  { return uint32_t(requiredExten
 const char* const* VulkanWindow::requiredExtensionNames()  { return requiredExtensions().data(); }
 
 
+void VulkanWindow::show()
+{
+	// callbacks need to be assigned
+	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::show() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::show().");
+	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::show() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::show().");
+
+	_window->show();
+}
+
+
+void VulkanWindow::hide()
+{
+	_window->hide();
+}
+
+
+bool VulkanWindow::isVisible() const
+{
+	return _window->isVisible();
+}
+
+
 void VulkanWindow::mainLoop()
 {
 	cout << "DisplayName: " << qGuiApplication->applicationDisplayName().toStdString() << endl;
@@ -1413,15 +1435,17 @@ void VulkanWindow::mainLoop()
 	cout << "OrganizationDomain: " << qGuiApplication->organizationDomain().toStdString() << endl;
 	cout << "OrganizationName: " << qGuiApplication->organizationName().toStdString() << endl;
 
-	// callbacks need to be assigned
-	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
-	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
-
 	// call exec()
-	_thrownException = nullptr;
+	thrownException = nullptr;
 	QGuiApplication::exec();
-	if(_thrownException)  // rethrow the exception that we caught in QtRenderingWindow::event()
-		rethrow_exception(_thrownException);
+	if(thrownException)  // rethrow the exception that we caught in QtRenderingWindow::event()
+		rethrow_exception(thrownException);
+}
+
+
+void VulkanWindow::exitMainLoop()
+{
+	QGuiApplication::exit();
 }
 
 
@@ -1509,9 +1533,12 @@ bool QtRenderingWindow::event(QEvent* event)
 		// and this would make a problem as swapchain still exists and Vulkan
 		// requires the swapchain to be destroyed first)
 		case QEvent::Type::Close:
-			if(isVisible())
-				hide();
-			QGuiApplication::quit();
+			if(vulkanWindow->_closeCallback)
+				vulkanWindow->_closeCallback();
+			else {
+				vulkanWindow->hide();
+				VulkanWindow::exitMainLoop();
+			}
 			return true;
 
 		default:
@@ -1519,8 +1546,8 @@ bool QtRenderingWindow::event(QEvent* event)
 		}
 	}
 	catch(...) {
-		vulkanWindow->_thrownException = std::current_exception();
-		QGuiApplication::quit();
+		VulkanWindow::thrownException = std::current_exception();
+		QGuiApplication::exit();
 		return true;
 	}
 }
