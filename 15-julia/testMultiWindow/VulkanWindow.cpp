@@ -2,6 +2,7 @@
 #if defined(USE_PLATFORM_WIN32)
 # define NOMINMAX  // avoid the definition of min and max macros by windows.h
 # include <windows.h>
+# include <algorithm>
 # include <tchar.h>
 #elif defined(USE_PLATFORM_XLIB)
 # include <X11/Xutil.h>
@@ -29,8 +30,10 @@
 using namespace std;
 
 
+#if defined(USE_PLATFORM_WIN32)
+
 // Win32 utf8 string to wstring conversion
-#if defined(USE_PLATFORM_WIN32) && defined(_UNICODE)
+# if defined(_UNICODE)
 static wstring utf8toWString(const char* s)
 {
 	// get string lengths
@@ -48,6 +51,11 @@ static wstring utf8toWString(const char* s)
 		throw runtime_error("MultiByteToWideChar(): The function failed.");
 	return r;
 }
+# endif
+
+// list of windows waiting for frame rendering
+// (the windows have _framePendingState set to FramePendingState::Pending or TentativePending)
+static vector<VulkanWindow*> framePendingWindows;
 #endif
 
 
@@ -131,47 +139,144 @@ void VulkanWindow::init()
 	auto wndProc = [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) noexcept -> LRESULT {
 		switch(msg)
 		{
+			// erase background message
+			// (we ignore the message)
 			case WM_ERASEBKGND:
-				cout << "WM_ERASEBKGND message" << endl;
 				return 1;  // returning non-zero means that background should be considered erased
 
+			// paint the window message
+			// (we render the window content here)
 			case WM_PAINT: {
 
-				cout << "WM_PAINT message" << endl;
+				// render all windows in framePendingWindows list
+				// (if a window keeps its window area invalidated,
+				// WM_PAINT might be constantly received by this single window only,
+				// starving all other windows => we render all windows in framePendingWindows list)
+				VulkanWindow* window = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
+				bool windowProcessed = false;
+				for(size_t i=0; i<framePendingWindows.size(); ) {
+					
+					VulkanWindow* w = framePendingWindows[i];
+					if(w == window)
+						windowProcessed = true;
 
-				// set _framePending flag
-				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
-				w->_framePending = true;
+					// render frame
+					w->_framePendingState = FramePendingState::TentativePending;
+					w->renderFrame();
 
-				// validate window area
-				if(!ValidateRect(hwnd, NULL))
-					w->_wndProcException = make_exception_ptr(runtime_error("ValidateRect(): The function failed."));
+					// was frame scheduled again?
+					// (it might be rescheduled again in renderFrame())
+					if(w->_framePendingState == FramePendingState::TentativePending) {
+
+						// validate window area
+						if(!ValidateRect(w->_hwnd, NULL))
+							thrownException = make_exception_ptr(runtime_error("ValidateRect(): The function failed."));
+
+						// update state to no-frame-pending
+						w->_framePendingState = FramePendingState::NotPending;
+						if(framePendingWindows.size() == 1) {
+							framePendingWindows.clear();  // all iterators are invalidated
+							break;
+						}
+						else {
+							framePendingWindows[i] = framePendingWindows.back();
+							framePendingWindows.pop_back();  // end() iterator is invalidated
+							continue;
+						}
+					}
+					i++;
+
+				}
+
+				// if window was not in framePendingWindows, process it
+				if(!windowProcessed) {
+
+					// validate window area
+					if(!ValidateRect(hwnd, NULL))
+						thrownException = make_exception_ptr(runtime_error("ValidateRect(): The function failed."));
+
+					// render frame
+					// (_framePendingState is No, but scheduleFrame() might be called inside renderFrame())
+					window->renderFrame();
+
+				}
 
 				return 0;
 			}
 
-			case WM_SIZE: {
-				cout << "WM_SIZE message (" << LOWORD(lParam) << "x" << HIWORD(lParam) << ")" << endl;
-				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
-				w->_framePending = true;
-				w->_swapchainResizePending = true;
+			// left mouse button down on non-client window area message
+			// (application freeze for several hundred of milliseconds is workarounded here)
+			case WM_NCLBUTTONDOWN: {
+				// This is a workaround for window freeze for several hundred of milliseconds
+				// if you click on its title bar. The clicking on the title bar
+				// makes execution of DefWindowProc to not return for several hundreds of milliseconds,
+				// making the application frozen for this time period.
+				// Sending extra WM_MOUSEMOVE workarounds the problem.
+				POINT point;
+				GetCursorPos(&point);
+				ScreenToClient(hwnd, &point);
+				PostMessage(hwnd, WM_MOUSEMOVE, 0, point.x | point.y<<16);
 				return DefWindowProc(hwnd, msg, wParam, lParam);
 			}
 
+			// window resize message
+			// (we schedule swapchain resize here)
+			case WM_SIZE: {
+				cout << "WM_SIZE message (" << LOWORD(lParam) << "x" << HIWORD(lParam) << ")" << endl;
+				if(LOWORD(lParam) != 0 && HIWORD(lParam) != 0) {
+					VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
+					w->scheduleSwapchainResize();
+				}
+				return DefWindowProc(hwnd, msg, wParam, lParam);
+			}
+
+			// window show and hide message
+			// (we set _visible variable here)
+			case WM_SHOWWINDOW: {
+				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
+				w->_visible = wParam==TRUE;
+				return DefWindowProc(hwnd, msg, wParam, lParam);
+			}
+
+			// close window message
+			// (we call _closeCallback here if registered,
+			// otherwise we hide the window and schedule main loop exit)
 			case WM_CLOSE: {
 				cout << "WM_CLOSE message" << endl;
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
-				w->_hwnd = nullptr;
-				if(!DestroyWindow(hwnd))
-					w->_wndProcException = make_exception_ptr(runtime_error("DestroyWindow(): The function failed."));
+				if(w->_closeCallback)
+					w->_closeCallback();
+				else {
+					w->hide();
+					VulkanWindow::exitMainLoop();
+				}
 				return 0;
 			}
 
-			case WM_DESTROY:
-				cout << "WM_DESTROY message" << endl;
-				PostQuitMessage(0);
-				return 0;
+			// destroy window message
+			// (we make sure that the window is not in framePendingWindows list)
+			case WM_DESTROY: {
 
+				cout << "WM_DESTROY message" << endl;
+
+				// remove frame pending state
+				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
+				if(w->_framePendingState != FramePendingState::NotPending) {
+					w->_framePendingState = FramePendingState::NotPending;
+					if(framePendingWindows.size() != 1) {
+						for(size_t i=0; i<framePendingWindows.size(); i++)
+							if(framePendingWindows[i] == w) {
+								framePendingWindows[i] = framePendingWindows.back();
+								break;
+							}
+					}
+					framePendingWindows.pop_back();
+				}
+
+				return 0;
+			}
+
+			// all other messages are handled by standard DefWindowProc()
 			default:
 				return DefWindowProc(hwnd, msg, wParam, lParam);
 		}
@@ -636,9 +741,6 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	// store this pointer with the window data
 	SetWindowLongPtr(_hwnd, 0, (LONG_PTR)this);
 
-	// show window
-	ShowWindow(_hwnd, SW_SHOWDEFAULT);
-
 	// create surface
 	_surface =
 		instance.createWin32SurfaceKHR(
@@ -839,7 +941,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	_window->setSurfaceType(QSurface::VulkanSurface);
 	_window->setVulkanInstance(qVulkanInstance);
 	_window->resize(surfaceExtent.width, surfaceExtent.height);
-	_window->show();
+	_window->create();
 
 	// return Vulkan surface
 	_surface = QVulkanInstance::surfaceForWindow(_window);
@@ -851,77 +953,103 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 }
 
 
+void VulkanWindow::renderFrame()
+{
+	// recreate swapchain if requested
+	if(_swapchainResizePending) {
+
+		// make sure that we finished all the rendering
+		// (this is necessary for swapchain re-creation)
+		_device.waitIdle();
+
+		// get surface capabilities
+		// On Win32, currentExtent, minImageExtent and maxImageExtent of returned surfaceCapabilites are all equal.
+		// It means that we can create a new swapchain only with imageExtent being equal to the window size.
+		// The currentExtent might become 0,0 on this platform, for example, when the window is minimized.
+		// If the currentExtent is not 0,0, both width and height must be greater than 0.
+		vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
+
+		// zero size swapchain is not allowed,
+		// so we will repeat the resize attempt after the next window resize
+		if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0))
+			return;  // new frame will be scheduled on the next window resize
+
+		// recreate swapchain
+		_swapchainResizePending = false;
+		_surfaceExtent = surfaceCapabilities.currentExtent;
+		_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
+	}
+
+	// render scene
+	_frameCallback();
+}
+
+
 #if defined(USE_PLATFORM_WIN32)
 
 
-void VulkanWindow::mainLoop()
+void VulkanWindow::show()
 {
 	// callbacks need to be assigned
 	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
+	// show window
+	ShowWindow(_hwnd, SW_SHOW);
+}
+
+
+void VulkanWindow::hide()
+{
+	ShowWindow(_hwnd, SW_HIDE);
+}
+
+
+void VulkanWindow::mainLoop()
+{
 	// run Win32 event loop
 	MSG msg;
-	_wndProcException = nullptr;
-	while(true) {
+	BOOL r;
+	thrownException = nullptr;
+	while((r = GetMessage(&msg, NULL, 0, 0)) != 0) {
 
-		// handle all messages
-		while(PeekMessage(&msg, NULL, 0, 0, PM_REMOVE) != 0) {
+		// handle errors
+		if(r == -1)
+			throw runtime_error("GetMessage(): The function failed.");
 
-			// handle WM_QUIT
-			if(msg.message == WM_QUIT)
-				return;
+		// handle message
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
 
-			// handle message
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
+		// handle exceptions raised in window procedure
+		if(thrownException)
+			rethrow_exception(thrownException);
 
-			// handle exceptions raised in window procedure
-			if(_wndProcException)
-				rethrow_exception(_wndProcException);
-		}
-
-		// no frame pending?
-		if(!_framePending) {
-
-			// wait messages
-			if(WaitMessage() == 0)
-				throw runtime_error("WaitMessage() failed.");
-			
-			continue;
-		}
-
-		// recreate swapchain if requested
-		if(_swapchainResizePending) {
-
-			// make sure that we finished all the rendering
-			// (this is necessary for swapchain re-creation)
-			_device.waitIdle();
-
-			// get surface capabilities
-			// On Win32, currentExtent, minImageExtent and maxImageExtent of returned surfaceCapabilites are all equal.
-			// It means that we can create a new swapchain only with imageExtent being equal to the window size.
-			// The currentExtent might become 0,0 on this platform, for example, when the window is minimized.
-			// If the currentExtent is not 0,0, both width and height must be greater than 0.
-			vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
-
-			// zero size swapchain is not allowed,
-			// so we will repeat the resize attempt after the next window resize
-			if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0)) {
-				_framePending = false;  // this will be rescheduled on the first window resize
-				continue;
-			}
-
-			// recreate swapchain
-			_swapchainResizePending = false;
-			_surfaceExtent = surfaceCapabilities.currentExtent;
-			_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
-		}
-
-		// render scene
-		_framePending = false;
-		_frameCallback();
 	}
+}
+
+
+void VulkanWindow::exitMainLoop()
+{
+	PostQuitMessage(0);
+}
+
+
+void VulkanWindow::scheduleFrame()
+{
+	if(_framePendingState == FramePendingState::Pending)
+		return;
+
+	if(_framePendingState == FramePendingState::NotPending) {
+
+		// invalidate window content (this will cause WM_PAINT message to be sent) 
+		if(!InvalidateRect(_hwnd, NULL, FALSE))
+			throw runtime_error("InvalidateRect(): The function failed.");
+
+		framePendingWindows.push_back(this);
+	}
+
+	_framePendingState = FramePendingState::Pending;
 }
 
 

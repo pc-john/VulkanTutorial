@@ -35,8 +35,9 @@ protected:
 #if defined(USE_PLATFORM_WIN32)
 
 	HWND _hwnd = nullptr;
-	std::exception_ptr _wndProcException;
-	bool _framePending = true;
+	enum class FramePendingState { NotPending, Pending, TentativePending };
+	FramePendingState _framePendingState = FramePendingState::NotPending;
+	bool _visible = false;
 
 	static inline HINSTANCE _hInstance = 0;
 	static inline ATOM _windowClass = 0;
@@ -180,11 +181,14 @@ inline void VulkanWindow::setCloseCallback(const std::function<CloseCallback>& c
 inline void VulkanWindow::setVisible(bool value)  { if(value) show(); else hide(); }
 inline vk::SurfaceKHR VulkanWindow::surface() const  { return _surface; }
 inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return _surfaceExtent; }
-#if !defined(USE_PLATFORM_QT)
+#if defined(USE_PLATFORM_WIN32)
+inline bool VulkanWindow::isVisible() const  { return _visible; }
+#endif
+#if defined(USE_PLATFORM_QT) || defined(USE_PLATFORM_WIN32)
+inline void VulkanWindow::scheduleSwapchainResize()  { _swapchainResizePending = true; scheduleFrame(); }
+#else
 inline void VulkanWindow::scheduleFrame()  { _framePending = true; }
 inline void VulkanWindow::scheduleSwapchainResize()  { _swapchainResizePending = true; _framePending = true; }
-#else
-inline void VulkanWindow::scheduleSwapchainResize()  { _swapchainResizePending = true; scheduleFrame(); }
 #endif
 #if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_WAYLAND)
 inline const std::vector<const char*>& VulkanWindow::requiredExtensions()  { return _requiredInstanceExtensions; }
