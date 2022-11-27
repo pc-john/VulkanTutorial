@@ -94,6 +94,13 @@ static void checkError(const string& funcName)
 		throw runtime_error(string("VulkanWindow: ") + funcName + "() function failed. Error code: " +
 		                    to_string(errorCode) + ". Error string: " + errorString);
 }
+
+// bool indicating that application is running and it shall not leave main loop
+static bool running;
+
+// list of windows waiting for frame rendering
+// (the windows have _framePendingState set to FramePendingState::Pending or TentativePending)
+static vector<VulkanWindow*> framePendingWindows;
 #endif
 
 
@@ -886,6 +893,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 
 	// create window
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+	glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
 	_window = glfwCreateWindow(surfaceExtent.width, surfaceExtent.height, title, nullptr, nullptr);
 	if(_window == nullptr)
 		throwError("glfwCreateWindow");
@@ -895,35 +903,57 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	glfwSetWindowRefreshCallback(
 		_window,
 		[](GLFWwindow* window) {
-			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
-				glfwGetWindowUserPointer(window));
-			w->_framePending = true;
+			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
+			w->scheduleFrame();
 		}
 	);
 	glfwSetFramebufferSizeCallback(
 		_window,
 		[](GLFWwindow* window, int width, int height) {
-			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
-				glfwGetWindowUserPointer(window));
-			w->_framePending = true;
-			w->_swapchainResizePending = true;
+			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
+			w->scheduleSwapchainResize();
 		}
 	);
 	glfwSetWindowIconifyCallback(
 		_window,
 		[](GLFWwindow* window, int iconified) {
-			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
-				glfwGetWindowUserPointer(window));
-			w->_visible = iconified==GLFW_FALSE;
-			if(iconified == GLFW_FALSE)
-				w->_framePending = true;
+			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
+
+			w->_minimized = iconified;
+
+			if(w->_minimized)
+				// cancel pending frame, if any, on window minimalization
+				if(w->_framePendingState != FramePendingState::NotPending) {
+					w->_framePendingState = FramePendingState::NotPending;
+					for(size_t i=0; i<framePendingWindows.size(); i++)
+						if(framePendingWindows[i] == w) {
+							framePendingWindows[i] = framePendingWindows.back();
+							framePendingWindows.pop_back();
+							break;
+						}
+				}
+			else
+				// schedule frame on window un-minimalization
+				w->scheduleFrame();
+		}
+	);
+	glfwSetWindowCloseCallback(
+		_window,
+		[](GLFWwindow* window) {
+			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
+			if(w->_closeCallback)
+				w->_closeCallback();
+			else {
+				w->hide();
+				VulkanWindow::exitMainLoop();
+			}
 		}
 	);
 
 	// create surface
 	if(glfwCreateWindowSurface(instance, _window, nullptr, reinterpret_cast<VkSurfaceKHR*>(&_surface)) != VK_SUCCESS)
 		throwError("glfwCreateWindowSurface");
-	
+
 	return _surface;
 
 #elif defined(USE_PLATFORM_QT)
@@ -969,8 +999,19 @@ void VulkanWindow::renderFrame()
 		// If the currentExtent is not 0,0, both width and height must be greater than 0.
 		vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
 
+#if defined(USE_PLATFORM_GLFW)
+		// get surface size
+		// (0xffffffff values might be returned on Wayland)
+		if(surfaceCapabilities.currentExtent.width == 0xffffffff || surfaceCapabilities.currentExtent.height == 0xffffffff) {
+			glfwGetFramebufferSize(_window, reinterpret_cast<int*>(&surfaceCapabilities.currentExtent.width), reinterpret_cast<int*>(&surfaceCapabilities.currentExtent.height));
+			checkError("glfwGetFramebufferSize");
+			surfaceCapabilities.currentExtent.width = clamp(surfaceCapabilities.currentExtent.width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
+			surfaceCapabilities.currentExtent.height = clamp(surfaceCapabilities.currentExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
+		}
+#endif
+
 		// zero size swapchain is not allowed,
-		// so we will repeat the resize attempt after the next window resize
+		// so we will repeat the resize and rendering attempt after the next window resize
 		if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0))
 			return;  // new frame will be scheduled on the next window resize
 
@@ -1433,75 +1474,104 @@ uint32_t VulkanWindow::requiredExtensionCount()  { return uint32_t(requiredExten
 const char* const* VulkanWindow::requiredExtensionNames()  { return requiredExtensions().data(); }
 
 
-void VulkanWindow::mainLoop()
+void VulkanWindow::show()
 {
 	// callbacks need to be assigned
 	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
-	// main loop
-	while(!glfwWindowShouldClose(_window)) {
+	// show window
+	_visible = true;
+	glfwShowWindow(_window);
+	checkError("glfwShowWindow");
+	scheduleFrame();
+}
 
-		if(_framePending)
-		{
-			glfwPollEvents();
-			checkError("glfwPollEvents");
-		}
-		else
+
+void VulkanWindow::hide()
+{
+	// hide window
+	_visible = false;
+	glfwHideWindow(_window);
+	checkError("glfwHideWindow");
+
+	// cancel pending frame, if any, on window hide
+	if(_framePendingState != FramePendingState::NotPending) {
+		_framePendingState = FramePendingState::NotPending;
+		for(size_t i=0; i<framePendingWindows.size(); i++)
+			if(framePendingWindows[i] == this) {
+				framePendingWindows[i] = framePendingWindows.back();
+				framePendingWindows.pop_back();
+				break;
+			}
+	}
+}
+
+
+void VulkanWindow::mainLoop()
+{
+	// main loop
+	running = true;
+	do {
+
+		if(framePendingWindows.empty())
 		{
 			glfwWaitEvents();
 			checkError("glfwWaitEvents");
 		}
+		else
+		{
+			glfwPollEvents();
+			checkError("glfwPollEvents");
+		}
 
-		// render window
-		if(_framePending) {
+		// render all windows with _framePendingState set to Pending
+		for(size_t i=0; i<framePendingWindows.size(); ) {
 
-			// do not render invisible window
-			// (rendering will be re-triggered when window is made visible again)
-			if(!_visible) {
-				_framePending = false;
-				continue;
-			}
+			// render frame
+			VulkanWindow* w = framePendingWindows[i];
+			w->_framePendingState = FramePendingState::TentativePending;
+			w->renderFrame();
 
-			if(_swapchainResizePending) {
+			// was frame scheduled again?
+			// (it might be rescheduled again in renderFrame())
+			if(w->_framePendingState == FramePendingState::TentativePending) {
 
-				// make sure that we finished all the rendering
-				// (this is necessary for swapchain re-creation)
-				_device.waitIdle();
-
-				// get surface capabilities
-				vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
-
-				// get surface size
-				// (0xffffffff values might be returned on Wayland)
-				if(surfaceCapabilities.currentExtent.width != 0xffffffff && surfaceCapabilities.currentExtent.height != 0xffffffff)
-					_surfaceExtent = surfaceCapabilities.currentExtent;
-				else {
-					glfwGetFramebufferSize(_window, reinterpret_cast<int*>(&_surfaceExtent.width), reinterpret_cast<int*>(&_surfaceExtent.height));
-					_surfaceExtent.width = clamp(_surfaceExtent.width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
-					_surfaceExtent.height = clamp(_surfaceExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
+				// update state to no-frame-pending
+				w->_framePendingState = FramePendingState::NotPending;
+				if(framePendingWindows.size() == 1) {
+					framePendingWindows.clear();  // all iterators are invalidated
+					break;
 				}
-
-				// do not allow swapchain creation and rendering when surface extent is 0,0;
-				// we will repeat the resize attempt after the next window resize
-				// (this happens on Win32 systems and may happen also on systems that use Xlib)
-				if(_surfaceExtent == vk::Extent2D(0,0)) {
-					_framePending = false;  // this will be rescheduled on the first window resize
+				else {
+					framePendingWindows[i] = framePendingWindows.back();
+					framePendingWindows.pop_back();  // end() iterator is invalidated
 					continue;
 				}
-
-				// recreate swapchain
-				_swapchainResizePending = false;
-				_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
 			}
-
-			// render scene
-			_framePending = false;
-			_frameCallback();
+			i++;
 
 		}
 
-	}
+	} while(running);
+}
+
+
+void VulkanWindow::exitMainLoop()
+{
+	running = false;
+}
+
+
+void VulkanWindow::scheduleFrame()
+{
+	if(_framePendingState == FramePendingState::Pending)
+		return;
+
+	if(_framePendingState == FramePendingState::NotPending)
+		framePendingWindows.push_back(this);
+
+	_framePendingState = FramePendingState::Pending;
 }
 
 
