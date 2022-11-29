@@ -74,6 +74,8 @@ static bool externalDisplayHandle;
 // SDL global variables
 #if defined(USE_PLATFORM_SDL)
 static bool sdlInitialized = false;
+static bool running;
+static constexpr const char* windowPointerName = "VulkanWindow";
 #endif
 
 
@@ -878,10 +880,13 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 		title,  // title
 		SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,  // x,y
 		surfaceExtent.width, surfaceExtent.height,  // w,h
-		SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE  // flags
+		SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN  // flags
 	);
 	if(_window == nullptr)
 		throw runtime_error(string("VulkanWindow: SDL_CreateWindow() function failed. Error details: ") + SDL_GetError());
+
+	// set pointer to this
+	SDL_SetWindowData(_window, windowPointerName, this);
 
 	// create surface
 	if(!SDL_Vulkan_CreateSurface(_window, instance, reinterpret_cast<VkSurfaceKHR*>(&_surface)))
@@ -999,8 +1004,13 @@ void VulkanWindow::renderFrame()
 		// If the currentExtent is not 0,0, both width and height must be greater than 0.
 		vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
 
-#if defined(USE_PLATFORM_GLFW)
-		// get surface size
+#if defined(USE_PLATFORM_SDL)
+		// get surface size on SDL
+		SDL_Vulkan_GetDrawableSize(_window, reinterpret_cast<int*>(&surfaceCapabilities.currentExtent.width), reinterpret_cast<int*>(&surfaceCapabilities.currentExtent.height));
+		surfaceCapabilities.currentExtent.width = clamp(surfaceCapabilities.currentExtent.width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
+		surfaceCapabilities.currentExtent.height = clamp(surfaceCapabilities.currentExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
+#elif defined(USE_PLATFORM_GLFW)
+		// get surface size on GLFW
 		// (0xffffffff values might be returned on Wayland)
 		if(surfaceCapabilities.currentExtent.width == 0xffffffff || surfaceCapabilities.currentExtent.height == 0xffffffff) {
 			glfwGetFramebufferSize(_window, reinterpret_cast<int*>(&surfaceCapabilities.currentExtent.width), reinterpret_cast<int*>(&surfaceCapabilities.currentExtent.height));
@@ -1012,6 +1022,7 @@ void VulkanWindow::renderFrame()
 
 		// zero size swapchain is not allowed,
 		// so we will repeat the resize and rendering attempt after the next window resize
+		// (this may happen on Win32-based and Xlib-based systems, for instance)
 		if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0))
 			return;  // new frame will be scheduled on the next window resize
 
@@ -1334,106 +1345,141 @@ uint32_t VulkanWindow::requiredExtensionCount()  { return uint32_t(requiredExten
 const char* const* VulkanWindow::requiredExtensionNames()  { return requiredExtensions().data(); }
 
 
-void VulkanWindow::mainLoop()
+void VulkanWindow::show()
 {
 	// callbacks need to be assigned
 	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
+	// show window
+	// and set _visible flag immediately
+	SDL_ShowWindow(_window);
+	_visible = true;
+}
+
+
+void VulkanWindow::hide()
+{
+	// hide window
+	// and set _visible flag immediately
+	SDL_HideWindow(_window);
+	_visible = false;
+}
+
+
+void VulkanWindow::mainLoop()
+{
 	// main loop
 	SDL_Event event;
-	while(true) {
+	running = true;
+	do {
 
-		int haveEvents = SDL_PollEvent(&event);
-		if(!haveEvents)
-			if(_framePending && _visible)
-				goto skipMessageLoop;  // render frame
-			else
-				if(SDL_WaitEvent(&event) == 0)  // want for events
-					throw runtime_error(string("VulkanWindow: SDL_WaitEvent() function failed. Error details: ") + SDL_GetError());
+		// get event
+		// (wait for one if no events are in the queue yet)
+		if(SDL_WaitEvent(&event) == 0)  // want for events
+			throw runtime_error(string("VulkanWindow: SDL_WaitEvent() function failed. Error details: ") + SDL_GetError());
 
-		do {
-			switch(event.type) {
-			case SDL_WINDOWEVENT:
-				switch(event.window.event) {
+		// handle event
+		switch(event.type) {
+		case SDL_WINDOWEVENT:
+			switch(event.window.event) {
 
-				case SDL_WINDOWEVENT_EXPOSED:
-					cout << "Exposed event" << endl;
-					_framePending = true;
-					break;
+			case SDL_WINDOWEVENT_EXPOSED: {
+				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
+					SDL_GetWindowData(SDL_GetWindowFromID(event.window.windowID), windowPointerName));
+				w->_framePending = false;
+				if(w->_visible && !w->_minimized)
+					w->renderFrame();
+				break;
+			}
 
-				case SDL_WINDOWEVENT_SIZE_CHANGED:
-					cout << "Size changed event" << endl;
-					_framePending = true;
-					_swapchainResizePending = true;
-					break;
+			case SDL_WINDOWEVENT_SIZE_CHANGED: {
+				cout << "Size changed event" << endl;
+				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
+					SDL_GetWindowData(SDL_GetWindowFromID(event.window.windowID), windowPointerName));
+				w->scheduleSwapchainResize();
+				break;
+			}
 
-				case SDL_WINDOWEVENT_SHOWN:
-					cout << "Shown event" << endl;
-					_visible = true;
-					break;
+			case SDL_WINDOWEVENT_SHOWN: {
+				cout << "Shown event" << endl;
+				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
+					SDL_GetWindowData(SDL_GetWindowFromID(event.window.windowID), windowPointerName));
+				w->_visible = true;
+				w->scheduleFrame();
+				break;
+			}
 
-				case SDL_WINDOWEVENT_HIDDEN:
-					cout << "Hidden event" << endl;
-					_visible = false;
-					break;
+			case SDL_WINDOWEVENT_HIDDEN: {
+				cout << "Hidden event" << endl;
+				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
+					SDL_GetWindowData(SDL_GetWindowFromID(event.window.windowID), windowPointerName));
+				w->_visible = false;
+				break;
+			}
 
-				case SDL_WINDOWEVENT_MINIMIZED:
-					cout << "Minimized event" << endl;
-					_visible = false;
-					break;
+			case SDL_WINDOWEVENT_MINIMIZED: {
+				cout << "Minimized event" << endl;
+				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
+					SDL_GetWindowData(SDL_GetWindowFromID(event.window.windowID), windowPointerName));
+				w->_minimized = true;
+				break;
+			}
 
-				case SDL_WINDOWEVENT_RESTORED:
-					cout << "Restored event" << endl;
-					_visible = true;
-					break;
+			case SDL_WINDOWEVENT_RESTORED: {
+				cout << "Restored event" << endl;
+				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
+					SDL_GetWindowData(SDL_GetWindowFromID(event.window.windowID), windowPointerName));
+				w->_minimized = false;
+				w->scheduleFrame();
+				break;
+			}
 
+			case SDL_WINDOWEVENT_CLOSE: {
+				cout << "Close event" << endl;
+				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
+					SDL_GetWindowData(SDL_GetWindowFromID(event.window.windowID), windowPointerName));
+				if(w->_closeCallback)
+					w->_closeCallback();
+				else {
+					w->hide();
+					VulkanWindow::exitMainLoop();
 				}
 				break;
-
-			case SDL_QUIT:
-				return;
-			}
-		} while(SDL_PollEvent(&event));
-
-	skipMessageLoop:
-
-		// render window
-		if(_framePending && _visible) {
-
-			if(_swapchainResizePending) {
-
-				// make sure that we finished all the rendering
-				// (this is necessary for swapchain re-creation)
-				_device.waitIdle();
-
-				// get surface capabilities
-				vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
-
-				// get surface size
-				SDL_Vulkan_GetDrawableSize(_window, reinterpret_cast<int*>(&_surfaceExtent.width), reinterpret_cast<int*>(&_surfaceExtent.height));
-				_surfaceExtent.width = clamp(_surfaceExtent.width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
-				_surfaceExtent.height = clamp(_surfaceExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
-
-				// do not allow swapchain creation and rendering when surface extent is 0,0;
-				// we will repeat the resize attempt after the next window resize
-				// (this happens on Win32 systems and may happen also on systems that use Xlib)
-				if(_surfaceExtent == vk::Extent2D(0,0)) {
-					_framePending = false;  // this will be rescheduled on the first window resize
-					continue;
-				}
-
-				// recreate swapchain
-				_swapchainResizePending = false;
-				_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
 			}
 
-			// render scene
-			_framePending = false;
-			_frameCallback();
+			}
+			break;
 
+		case SDL_QUIT:
+			return;
 		}
-	}
+
+	} while(running);
+}
+
+
+void VulkanWindow::exitMainLoop()
+{
+	running = false;
+}
+
+
+void VulkanWindow::scheduleFrame()
+{
+	if(_framePending || !_visible || _minimized)
+		return;
+
+	_framePending = true;
+
+	SDL_Event e;
+	e.window.type = SDL_WINDOWEVENT;
+	e.window.timestamp = SDL_GetTicks();
+	e.window.windowID = SDL_GetWindowID(_window);
+	e.window.event = SDL_WINDOWEVENT_EXPOSED;
+	e.window.data1 = 0;
+	e.window.data2 = 0;
+	SDL_PushEvent(&e);
 }
 
 

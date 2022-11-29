@@ -90,6 +90,7 @@ protected:
 	SDL_Window* _window = nullptr;
 	bool _framePending = true;
 	bool _visible = false;
+	bool _minimized = false;
 
 #elif defined(USE_PLATFORM_GLFW)
 
@@ -183,10 +184,10 @@ inline void VulkanWindow::setCloseCallback(const std::function<CloseCallback>& c
 inline void VulkanWindow::setVisible(bool value)  { if(value) show(); else hide(); }
 inline vk::SurfaceKHR VulkanWindow::surface() const  { return _surface; }
 inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return _surfaceExtent; }
-#if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_GLFW)
+#if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_SDL) || defined(USE_PLATFORM_GLFW)
 inline bool VulkanWindow::isVisible() const  { return _visible; }
 #endif
-#if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_GLFW) || defined(USE_PLATFORM_QT)
+#if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_SDL) || defined(USE_PLATFORM_GLFW) || defined(USE_PLATFORM_QT)
 inline void VulkanWindow::scheduleSwapchainResize()  { _swapchainResizePending = true; scheduleFrame(); }
 #else
 inline void VulkanWindow::scheduleFrame()  { _framePending = true; }
