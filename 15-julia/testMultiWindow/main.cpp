@@ -843,11 +843,17 @@ int main(int argc, char* argv[])
 			w.setCloseCallback(
 				bind(
 					[](Window& window, App& app){
+#if 0
 						window.hide();
 						for(Window& w : app.windowList)
 							if(w.isVisible())
 								return;
 						VulkanWindow::exitMainLoop();
+#else
+						auto it = find_if(app.windowList.begin(), app.windowList.end(),
+						                  [&window](const Window& w){ return &window==&w; }); 
+						app.windowList.erase(it);
+#endif
 					},
 					ref(w),
 					ref(app)
