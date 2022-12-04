@@ -685,8 +685,43 @@ void VulkanWindow::destroy() noexcept
 #elif defined(USE_PLATFORM_SDL)
 
 	if(_window) {
+
+		// get windowID
+		auto windowID = SDL_GetWindowID(_window);
+		assert(windowID != 0 && "SDL_GetWindowID(): The function failed.");
+
+		// destroy window
 		SDL_DestroyWindow(_window);
 		_window = nullptr;
+
+		// get all events in the queue
+		SDL_PumpEvents();
+		vector<SDL_Event> buf(16);
+		while(true) {
+			int num = SDL_PeepEvents(&buf[buf.size()-16], 16, SDL_GETEVENT, SDL_FIRSTEVENT, SDL_LASTEVENT);
+			if(num < 0) {
+				assert(0 && "SDL_PeepEvents(): The function failed.");
+				break;
+			}
+			if(num == 16) {
+				buf.resize(buf.size() + 16);
+				continue;
+			}
+			buf.resize(buf.size() - 16 + num);
+			break;
+		};
+
+		// fill the queue again
+		// while skipping all events of deleted window
+		// (we need to skip those that are processed in VulkanWindow::mainLoop() because they might cause SIGSEGV)
+		for(SDL_Event& event : buf) {
+			if(event.type == SDL_WINDOWEVENT)
+				if(event.window.windowID == windowID)
+					continue;
+			int num = SDL_PeepEvents(&event, 1, SDL_ADDEVENT, SDL_FIRSTEVENT, SDL_LASTEVENT);
+			if(num != 1)
+				assert(0 && "SDL_PeepEvents(): The function failed.");
+		}
 	}
 
 #elif defined(USE_PLATFORM_GLFW)
@@ -1380,6 +1415,9 @@ void VulkanWindow::mainLoop()
 			throw runtime_error(string("VulkanWindow: SDL_WaitEvent() function failed. Error details: ") + SDL_GetError());
 
 		// handle event
+		// (Make sure that all event types (event.type) handled here, such as SDL_WINDOWEVENT,
+		// are removed from the queue in VulkanWindow::destroy().
+		// Otherwise we might receive events of already non-existing window.)
 		switch(event.type) {
 		case SDL_WINDOWEVENT:
 			switch(event.window.event) {
