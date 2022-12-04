@@ -340,8 +340,9 @@ void VulkanWindow::init()
 	sdlInitialized = true;
 
 	// set hints
-	SDL_SetHint(SDL_HINT_QUIT_ON_LAST_WINDOW_CLOSE, "0");  // do not send SDL_QUIT event when the last window closes; we shall leave main loop after VulkanWindow::exitMainLoop() is called
-	SDL_SetHint(SDL_HINT_VIDEO_ALLOW_SCREENSAVER, "1");    // allow screensaver
+	SDL_SetHint("SDL_QUIT_ON_LAST_WINDOW_CLOSE", "0");   // do not send SDL_QUIT event when the last window closes; we shall leave main loop
+	                                                     // after VulkanWindow::exitMainLoop() is called; hint supported since SDL 2.0.22
+	SDL_SetHint(SDL_HINT_VIDEO_ALLOW_SCREENSAVER, "1");  // allow screensaver
 
 #elif defined(USE_PLATFORM_GLFW)
 
