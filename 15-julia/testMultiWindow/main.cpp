@@ -851,9 +851,14 @@ int main(int argc, char* argv[])
 								return;
 						VulkanWindow::exitMainLoop();
 #else
+						// destroy window
 						auto it = find_if(app.windowList.begin(), app.windowList.end(),
 						                  [&window](const Window& w){ return &window==&w; }); 
 						app.windowList.erase(it);
+
+						// if no more windows, exit application
+						if(app.windowList.empty())
+							VulkanWindow::exitMainLoop();
 #endif
 					},
 					ref(w),

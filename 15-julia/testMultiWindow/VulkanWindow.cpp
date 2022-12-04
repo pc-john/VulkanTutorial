@@ -727,8 +727,21 @@ void VulkanWindow::destroy() noexcept
 #elif defined(USE_PLATFORM_GLFW)
 
 	if(_window) {
+
+		// destroy window
 		glfwDestroyWindow(_window);
 		_window = nullptr;
+
+		// cancel pending frame, if any
+		if(_framePendingState != FramePendingState::NotPending) {
+			_framePendingState = FramePendingState::NotPending;
+			for(size_t i=0; i<framePendingWindows.size(); i++)
+				if(framePendingWindows[i] == this) {
+					framePendingWindows[i] = framePendingWindows.back();
+					framePendingWindows.pop_back();
+					break;
+				}
+		}
 	}
 
 #elif defined(USE_PLATFORM_QT)
@@ -934,6 +947,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	// create window
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 	glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+	glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_FALSE);  // this prevents fail inside glfwShowWindow(): "Wayland: Focusing a window requires user interaction"; seen on glfw 3.3.8 and Kubuntu 22.10
 	_window = glfwCreateWindow(surfaceExtent.width, surfaceExtent.height, title, nullptr, nullptr);
 	if(_window == nullptr)
 		throwError("glfwCreateWindow");
@@ -982,7 +996,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 		[](GLFWwindow* window) {
 			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
 			if(w->_closeCallback)
-				w->_closeCallback();
+				w->_closeCallback();  // VulkanWindow object might be already destroyed when returning from the callback
 			else {
 				w->hide();
 				VulkanWindow::exitMainLoop();
@@ -1478,7 +1492,7 @@ void VulkanWindow::mainLoop()
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
 					SDL_GetWindowData(SDL_GetWindowFromID(event.window.windowID), windowPointerName));
 				if(w->_closeCallback)
-					w->_closeCallback();
+					w->_closeCallback();  // VulkanWindow object might be already destroyed when returning from the callback
 				else {
 					w->hide();
 					VulkanWindow::exitMainLoop();
