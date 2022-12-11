@@ -101,7 +101,6 @@ protected:
 
 	QWindow* _window = nullptr;
 
-	void doFrame();
 	friend class QtRenderingWindow;
 
 #endif

@@ -1065,19 +1065,32 @@ void VulkanWindow::renderFrame()
 		vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
 
 #if defined(USE_PLATFORM_SDL)
-		// get surface size on SDL
+		// get surface size using SDL
 		SDL_Vulkan_GetDrawableSize(_window, reinterpret_cast<int*>(&surfaceCapabilities.currentExtent.width), reinterpret_cast<int*>(&surfaceCapabilities.currentExtent.height));
-		surfaceCapabilities.currentExtent.width = clamp(surfaceCapabilities.currentExtent.width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
+		surfaceCapabilities.currentExtent.width  = clamp(surfaceCapabilities.currentExtent.width,  surfaceCapabilities.minImageExtent.width,  surfaceCapabilities.maxImageExtent.width);
 		surfaceCapabilities.currentExtent.height = clamp(surfaceCapabilities.currentExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
 #elif defined(USE_PLATFORM_GLFW)
-		// get surface size on GLFW
+		// get surface size using GLFW
 		// (0xffffffff values might be returned on Wayland)
 		if(surfaceCapabilities.currentExtent.width == 0xffffffff || surfaceCapabilities.currentExtent.height == 0xffffffff) {
 			glfwGetFramebufferSize(_window, reinterpret_cast<int*>(&surfaceCapabilities.currentExtent.width), reinterpret_cast<int*>(&surfaceCapabilities.currentExtent.height));
 			checkError("glfwGetFramebufferSize");
-			surfaceCapabilities.currentExtent.width = clamp(surfaceCapabilities.currentExtent.width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
+			surfaceCapabilities.currentExtent.width  = clamp(surfaceCapabilities.currentExtent.width,  surfaceCapabilities.minImageExtent.width,  surfaceCapabilities.maxImageExtent.width);
 			surfaceCapabilities.currentExtent.height = clamp(surfaceCapabilities.currentExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
 		}
+#elif defined(USE_PLATFORM_QT)
+		// get surface size using Qt
+		// (0xffffffff values might be returned on Wayland)
+		if(surfaceCapabilities.currentExtent.width == 0xffffffff || surfaceCapabilities.currentExtent.height == 0xffffffff) {
+			QSize size = _window->size();
+			auto ratio = _window->devicePixelRatio();
+			surfaceCapabilities.currentExtent = vk::Extent2D(uint32_t(float(size.width()) * ratio + 0.5f), uint32_t(float(size.height()) * ratio + 0.5f));
+			surfaceCapabilities.currentExtent.width  = clamp(surfaceCapabilities.currentExtent.width,  surfaceCapabilities.minImageExtent.width,  surfaceCapabilities.maxImageExtent.width);
+			surfaceCapabilities.currentExtent.height = clamp(surfaceCapabilities.currentExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
+		}
+		cout << "New Qt window size in device independent pixels: " << _window->width() << "x" << _window->height()
+		     << ", in physical pixels: " << surfaceCapabilities.currentExtent.width
+		     << "x" << surfaceCapabilities.currentExtent.height << endl;
 #endif
 
 		// zero size swapchain is not allowed,
@@ -1095,7 +1108,15 @@ void VulkanWindow::renderFrame()
 	}
 
 	// render scene
+#if !defined(USE_PLATFORM_QT)
 	_frameCallback();
+#else	
+# if (QT_VERSION >= QT_VERSION_CHECK(5, 15, 0))
+	qVulkanInstance->presentAboutToBeQueued(_window);
+# endif
+	_frameCallback();
+	qVulkanInstance->presentQueued(_window);
+#endif
 }
 
 
@@ -1764,52 +1785,6 @@ void VulkanWindow::exitMainLoop()
 }
 
 
-void VulkanWindow::doFrame()
-{
-	if(_swapchainResizePending) {
-
-		// make sure that we finished all the rendering
-		// (this is necessary for swapchain re-creation)
-		_device.waitIdle();
-
-		// get surface capabilities
-		vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
-
-		// get surface size
-		// (0xffffffff values might be returned on Wayland)
-		if(surfaceCapabilities.currentExtent.width != 0xffffffff && surfaceCapabilities.currentExtent.height != 0xffffffff)
-			_surfaceExtent = surfaceCapabilities.currentExtent;
-		else {
-			QSize size = _window->size();
-			auto ratio = _window->devicePixelRatio();
-			_surfaceExtent = vk::Extent2D(uint32_t(float(size.width()) * ratio + 0.5f), uint32_t(float(size.height()) * ratio + 0.5f));
-			_surfaceExtent.width = clamp(_surfaceExtent.width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width);
-			_surfaceExtent.height = clamp(_surfaceExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
-		}
-		cout << "New Qt window size in device independent pixels: " << _window->width() << "x" << _window->height()
-		     << ", in physical pixels: " << uint32_t(float(_window->width()) * _window->devicePixelRatio() + 0.5f)
-		     << "x" << uint32_t(float(_window->height()) * _window->devicePixelRatio() + 0.5f) << endl;
-
-		// do not allow swapchain creation and rendering when surface extent is 0,0;
-		// we will repeat the resize attempt after the next window resize
-		// (this happens on Win32 systems and may happen also on systems that use Xlib)
-		if(_surfaceExtent == vk::Extent2D(0,0))
-			return;  // skip frame rendering (new frame will be scheduled on the next window resize)
-
-		// recreate swapchain
-		_swapchainResizePending = false;
-		_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
-	}
-
-	// render scene
-#if (QT_VERSION >= QT_VERSION_CHECK(5, 15, 0))
-	qVulkanInstance->presentAboutToBeQueued(_window);
-#endif
-	_frameCallback();
-	qVulkanInstance->presentQueued(_window);
-}
-
-
 bool QtRenderingWindow::event(QEvent* event)
 {
 	try {
@@ -1822,7 +1797,7 @@ bool QtRenderingWindow::event(QEvent* event)
 			killTimer(timer);
 			timer = 0;
 			if(isExposed())
-				vulkanWindow->doFrame();
+				vulkanWindow->renderFrame();
 			return true;
 
 		case QEvent::Type::Expose: {
