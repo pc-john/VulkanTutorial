@@ -1,19 +1,8 @@
 #pragma once
 
-#if defined(USE_PLATFORM_WIN32)
-  typedef struct HWND__* HWND;
-  typedef struct HINSTANCE__* HINSTANCE;
-  typedef unsigned short ATOM;
-#elif defined(USE_PLATFORM_XLIB)
-#elif defined(USE_PLATFORM_WAYLAND)
+#if defined(USE_PLATFORM_WAYLAND)
   #include "xdg-shell-client-protocol.h"
   #include "xdg-decoration-client-protocol.h"
-#elif defined(USE_PLATFORM_SDL)
-  struct SDL_Window;
-#elif defined(USE_PLATFORM_GLFW)
-  struct GLFWwindow;
-#elif defined(USE_PLATFORM_QT)
-  class QWindow;
 #endif
 #include <vulkan/vulkan.hpp>
 #include <functional>
@@ -31,13 +20,13 @@ protected:
 
 #if defined(USE_PLATFORM_WIN32)
 
-	HWND _hwnd = nullptr;
+	struct HWND__* _hwnd = nullptr;  // struct HWND__* is used for HWND type on Win32
 	enum class FramePendingState { NotPending, Pending, TentativePending };
 	FramePendingState _framePendingState = FramePendingState::NotPending;
 	bool _visible = false;
 
-	static inline HINSTANCE _hInstance = 0;
-	static inline ATOM _windowClass = 0;
+	static inline struct HINSTANCE__* _hInstance = 0;  // struct HINSTANCE__* is used for HINSTANCE type on Win32
+	static inline unsigned short _windowClass = 0;  // unsigned short is used for ATOM type on Win32
 	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_win32_surface" };
 
@@ -84,14 +73,14 @@ protected:
 
 #elif defined(USE_PLATFORM_SDL)
 
-	SDL_Window* _window = nullptr;
+	struct SDL_Window* _window = nullptr;
 	bool _framePending = true;
 	bool _visible = false;
 	bool _minimized = false;
 
 #elif defined(USE_PLATFORM_GLFW)
 
-	GLFWwindow* _window = nullptr;
+	struct GLFWwindow* _window = nullptr;
 	enum class FramePendingState { NotPending, Pending, TentativePending };
 	FramePendingState _framePendingState = FramePendingState::NotPending;
 	bool _visible = true;
@@ -99,8 +88,7 @@ protected:
 
 #elif defined(USE_PLATFORM_QT)
 
-	QWindow* _window = nullptr;
-
+	class QWindow* _window = nullptr;
 	friend class QtRenderingWindow;
 
 #endif
