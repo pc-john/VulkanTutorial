@@ -28,7 +28,10 @@ public:
 	vector<vk::ImageView> swapchainImageViews;
 	vector<vk::Framebuffer> framebuffers;
 	vk::Pipeline pipeline;
-	Window(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title = "Vulkan window") : surface(VulkanWindow::create(instance, surfaceExtent, title)) {}
+
+	Window(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title = "Vulkan window")
+		: surface(VulkanWindow::create(instance, surfaceExtent, title)) {}
+	~Window();
 };
 
 
@@ -79,6 +82,27 @@ public:
 };
 
 
+Window::~Window()
+{
+	if(!_device)
+		return;
+
+	// wait for device idle state
+	// (to prevent errors during destruction of Vulkan resources)
+	try {
+		_device.waitIdle();
+	} catch(vk::Error& e) {
+		cout << "Failed because of Vulkan exception: " << e.what() << endl;
+	}
+
+	// destroy resources
+	_device.destroy(pipeline);
+	for(auto f : framebuffers)  _device.destroy(f);
+	for(auto v : swapchainImageViews)  _device.destroy(v);
+	_device.destroy(swapchain);
+}
+
+
 /// Construct application object
 App::App(int argc, char** argv)
 {
@@ -108,6 +132,9 @@ App::App(int argc, char** argv)
 
 App::~App()
 {
+	// destroy windows
+	windowList.clear();
+
 	if(device) {
 
 		// wait for device idle state
@@ -116,14 +143,6 @@ App::~App()
 			device.waitIdle();
 		} catch(vk::Error& e) {
 			cout << "Failed because of Vulkan exception: " << e.what() << endl;
-		}
-
-		// destroy windows
-		for(auto& w : windowList) {
-			device.destroy(w.pipeline);
-			for(auto f : w.framebuffers)  device.destroy(f);
-			for(auto v : w.swapchainImageViews)  device.destroy(v);
-			device.destroy(w.swapchain);
 		}
 
 		// destroy handles
@@ -138,9 +157,6 @@ App::~App()
 		device.destroy(renderPass);
 		device.destroy();
 	}
-
-	// destroy VulkanWindow objects
-	windowList.clear();
 
 #if defined(USE_PLATFORM_XLIB)
 	// On Xlib, VulkanWindow::finalize() needs to be called before instance destroy to avoid crash.
@@ -853,7 +869,7 @@ int main(int argc, char* argv[])
 #else
 						// destroy window
 						auto it = find_if(app.windowList.begin(), app.windowList.end(),
-						                  [&window](const Window& w){ return &window==&w; }); 
+						                  [&window](const Window& w){ return &window==&w; });
 						app.windowList.erase(it);
 
 						// if no more windows, exit application
