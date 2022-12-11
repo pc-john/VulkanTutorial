@@ -6,6 +6,7 @@
 # include <tchar.h>
 #elif defined(USE_PLATFORM_XLIB)
 # include <X11/Xutil.h>
+# include <map>
 #elif defined(USE_PLATFORM_WAYLAND)
 #elif defined(USE_PLATFORM_SDL)
 # include "SDL.h"
@@ -62,6 +63,8 @@ static vector<VulkanWindow*> framePendingWindows;
 // Xlib global variables
 #if defined(USE_PLATFORM_XLIB)
 static bool externalDisplayHandle;
+static map<Window, VulkanWindow*> vulkanWindowMap;
+static bool running;  // bool indicating that application is running and it shall not leave main loop
 #endif
 
 
@@ -324,6 +327,9 @@ void VulkanWindow::init()
 		throw runtime_error("Can not open display. No X-server running or wrong DISPLAY variable.");
 	externalDisplayHandle = false;
 
+	// get WM_DELETE_WINDOW atom
+	_wmDeleteMessage = XInternAtom(_display, "WM_DELETE_WINDOW", False);
+
 #elif defined(USE_PLATFORM_WAYLAND)
 
 	init(nullptr);
@@ -417,6 +423,9 @@ void VulkanWindow::init(void* data)
 		externalDisplayHandle = false;
 
 	}
+
+	// get WM_DELETE_WINDOW atom
+	_wmDeleteMessage = XInternAtom(_display, "WM_DELETE_WINDOW", False);
 
 #elif defined(USE_PLATFORM_WAYLAND)
 
@@ -558,6 +567,7 @@ void VulkanWindow::finalize() noexcept
 		if(!externalDisplayHandle)
 			XCloseDisplay(_display);
 		_display = nullptr;
+		vulkanWindowMap.clear();
 	}
 
 #elif defined(USE_PLATFORM_WAYLAND)
@@ -660,6 +670,7 @@ void VulkanWindow::destroy() noexcept
 
 	// release resources
 	if(_window) {
+		vulkanWindowMap.erase(_window);
 		XDestroyWindow(_display, _window);
 		_window = 0;
 	}
@@ -829,12 +840,10 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 			CWEventMask,  // valuemask
 			&attr  // attributes
 		);
+	if(vulkanWindowMap.emplace(_window, this).second == false)
+		throw runtime_error("Window already exists.");
 	XSetStandardProperties(_display, _window, title, title, None, NULL, 0, NULL);
-	_wmDeleteMessage = XInternAtom(_display, "WM_DELETE_WINDOW", False);
 	XSetWMProtocols(_display, _window, &_wmDeleteMessage, 1);
-
-	// show window
-	XMapWindow(_display, _window);
 
 	// create surface
 	_surface =
@@ -1049,7 +1058,7 @@ void VulkanWindow::renderFrame()
 		_device.waitIdle();
 
 		// get surface capabilities
-		// On Win32, currentExtent, minImageExtent and maxImageExtent of returned surfaceCapabilites are all equal.
+		// On Win32 and Xlib, currentExtent, minImageExtent and maxImageExtent of returned surfaceCapabilites are all equal.
 		// It means that we can create a new swapchain only with imageExtent being equal to the window size.
 		// The currentExtent might become 0,0 on this platform, for example, when the window is minimized.
 		// If the currentExtent is not 0,0, both width and height must be greater than 0.
@@ -1073,7 +1082,9 @@ void VulkanWindow::renderFrame()
 
 		// zero size swapchain is not allowed,
 		// so we will repeat the resize and rendering attempt after the next window resize
-		// (this may happen on Win32-based and Xlib-based systems, for instance)
+		// (this may happen on Win32-based and Xlib-based systems, for instance;
+		// in reality, it never happened on my KDE 5.80.0 (Kubuntu 21.04) and KDE 5.44.0 (Kubuntu 18.04.5)
+		// because window minimalizing just unmaps the window)
 		if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0))
 			return;  // new frame will be scheduled on the next window resize
 
@@ -1159,116 +1170,119 @@ void VulkanWindow::scheduleFrame()
 #elif defined(USE_PLATFORM_XLIB)
 
 
-void VulkanWindow::mainLoop()
+void VulkanWindow::show()
 {
 	// callbacks need to be assigned
 	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
+	// show window
+	XMapWindow(_display, _window);
+}
+
+
+void VulkanWindow::hide()
+{
+	XUnmapWindow(_display, _window);
+}
+
+
+void VulkanWindow::mainLoop()
+{
 	// run Xlib event loop
 	XEvent e;
-	while(true) {
+	running = true;
+	while(running) {
 
-		// get number of pending events
-		int numEvents = XPending(_display);
+		// get event
+		XNextEvent(_display, &e);
 
-		// handle zero events
-		if(numEvents == 0)
-			if(_framePending && _visible)
-				goto renderFrame;  // frame request -> render frame
-			else
-				numEvents = 1;  // no frame request -> wait for events in XNextEvent()
-
-		// process events
-		do {
-
-			for(int i=0; i<numEvents; i++) {
-
-				// get event
-				XNextEvent(_display, &e);
-
-				// expose event
-				if(e.type == Expose) {
-					cout << "Expose event" << endl;
-					_framePending = true;
-					continue;
-				}
-
-				// configure event
-				if(e.type == ConfigureNotify) {
-					if(e.xconfigure.width != _surfaceExtent.width || e.xconfigure.height != _surfaceExtent.height) {
-						cout << "Configure event " << e.xconfigure.width << "x" << e.xconfigure.height << endl;
-						_framePending = true;
-						_swapchainResizePending = true;
-					}
-					continue;
-				}
-
-				// map, unmap, obscured, unobscured
-				if(e.type==MapNotify || (e.type==VisibilityNotify && e.xvisibility.state!=VisibilityFullyObscured)) {
-					cout << "Window visible" << endl;
-					_visible = true;
-					_framePending = true;
-					continue;
-				}
-				if(e.type==UnmapNotify || (e.type==VisibilityNotify && e.xvisibility.state==VisibilityFullyObscured)) {
-					cout << "Window not visible" << endl;
-					_visible = false;
-					continue;
-				}
-
-				// handle window close
-				if(e.type==ClientMessage && ulong(e.xclient.data.l[0])==_wmDeleteMessage)
-					return;
-			}
-
-			// if more events came in the mean time, handle them as well
-			numEvents = XPending(_display);
-
-		} while(numEvents > 0);
-
-
-		// frame pending?
-		if(!_framePending || !_visible)
+		// get VulkanWindow
+		auto it = vulkanWindowMap.find(e.xany.window);
+		if(it == vulkanWindowMap.end())
 			continue;
+		VulkanWindow* w = it->second;
 
-		// render frame code starts with swapchain re-creation
-		renderFrame:
-
-		// recreate swapchain if requested
-		if(_swapchainResizePending) {
-
-			// make sure that we finished all the rendering
-			// (this is necessary for swapchain re-creation)
-			_device.waitIdle();
-
-			// get surface capabilities
-			// On Xlib, currentExtent, minImageExtent and maxImageExtent of returned surfaceCapabilites are all equal.
-			// It means that we can create a new swapchain only with imageExtent being equal to the window size.
-			// The currentExtent might become 0,0 on this platform, for example, when the window is minimized.
-			// If the currentExtent is not 0,0, both width and height must be greater than 0.
-			vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
-
-			// zero size swapchain is not allowed,
-			// so we will repeat the resize attempt after the next window resize
-			// (this never happened on my KDE 5.80.0 (Kubuntu 21.04) and KDE 5.44.0 (Kubuntu 18.04.5);
-			// window minimalizing just unmaps the window)
-			if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0)) {
-				_framePending = false;  // this will be rescheduled on the first window resize
-				continue;
-			}
-
-			// recreate swapchain
-			_swapchainResizePending = false;
-			_surfaceExtent = surfaceCapabilities.currentExtent;
-			_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
+		// expose event
+		if(e.type == Expose) {
+			w->_framePending = false;
+			w->renderFrame();
+			continue;
 		}
 
-		// render frame
-		_framePending = false;
-		_frameCallback();
+		// configure event
+		if(e.type == ConfigureNotify) {
+			if(e.xconfigure.width != w->_surfaceExtent.width || e.xconfigure.height != w->_surfaceExtent.height) {
+				cout << "Configure event " << e.xconfigure.width << "x" << e.xconfigure.height << endl;
+				w->scheduleSwapchainResize();
+			}
+			continue;
+		}
 
+		// map, unmap, obscured, unobscured
+		if(e.type == MapNotify ||
+			(e.type == VisibilityNotify && e.xvisibility.state != VisibilityFullyObscured))
+		{
+			cout << "Window visible" << endl;
+			w->_visible = true;
+			w->scheduleFrame();
+			continue;
+		}
+		if(e.type == UnmapNotify ||
+			(e.type == VisibilityNotify && e.xvisibility.state == VisibilityFullyObscured))
+		{
+			cout << "Window not visible" << endl;
+			w->_visible = false;
+			XEvent tmp;
+			while(XCheckWindowEvent(_display, w->_window, Expose, &tmp) == True);
+			w->_framePending = false;
+			continue;
+		}
+
+		// handle window close
+		if(e.type==ClientMessage && ulong(e.xclient.data.l[0])==_wmDeleteMessage) {
+			if(w->_closeCallback)
+				w->_closeCallback();  // VulkanWindow object might be already destroyed when returning from the callback
+			else {
+				w->hide();
+				VulkanWindow::exitMainLoop();
+			}
+			continue;
+		}
 	}
+}
+
+
+void VulkanWindow::exitMainLoop()
+{
+	running = false;
+}
+
+
+void VulkanWindow::scheduleFrame()
+{
+	if(_framePending || !_visible)
+		return;
+
+	_framePending = true;
+
+	XSendEvent(
+		_display,  // display
+		_window,  // w
+		False,  // propagate
+		ExposureMask,  // event_mask
+		(XEvent*)(&(const XExposeEvent&)  // event_send
+			XExposeEvent{
+				Expose,  // type
+				0,  // serial
+				True,  // send_event
+				_display,  // display
+				_window,  // window
+				0, 0,  // x, y
+				0, 0,  // width, height
+				0  // count
+			})
+	);
 }
 
 

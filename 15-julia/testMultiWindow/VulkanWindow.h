@@ -5,9 +5,6 @@
   typedef struct HINSTANCE__* HINSTANCE;
   typedef unsigned short ATOM;
 #elif defined(USE_PLATFORM_XLIB)
-  typedef struct _XDisplay Display;
-  typedef unsigned long Window;  // Window is XID type (X11/X.h) that is defined as unsigned long (or CARD32 but that does not apply to client applications; CARD32 might be used only when compiling X server sources)
-  typedef unsigned long Atom;  // in X11/X.h and X11/Xdefs.h
 #elif defined(USE_PLATFORM_WAYLAND)
   #include "xdg-shell-client-protocol.h"
   #include "xdg-decoration-client-protocol.h"
@@ -46,12 +43,12 @@ protected:
 
 #elif defined(USE_PLATFORM_XLIB)
 
-	Window _window = 0;
-	Atom _wmDeleteMessage;
+	unsigned long _window = 0;  // unsigned long is used for Window type in Xlib
 	bool _framePending = true;
 	bool _visible = false;
 
-	static inline Display* _display = nullptr;
+	static inline struct _XDisplay* _display = nullptr;  // struct _XDisplay is used for Display type in Xlib
+	static inline unsigned long _wmDeleteMessage;  // unsigned long is used for Atom type in Xlib
 	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_xlib_surface" };
 
@@ -187,11 +184,11 @@ inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return _surfaceExtent
 #if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_SDL) || defined(USE_PLATFORM_GLFW)
 inline bool VulkanWindow::isVisible() const  { return _visible; }
 #endif
-#if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_SDL) || defined(USE_PLATFORM_GLFW) || defined(USE_PLATFORM_QT)
-inline void VulkanWindow::scheduleSwapchainResize()  { _swapchainResizePending = true; scheduleFrame(); }
-#else
+#if defined(USE_PLATFORM_WAYLAND)
 inline void VulkanWindow::scheduleFrame()  { _framePending = true; }
 inline void VulkanWindow::scheduleSwapchainResize()  { _swapchainResizePending = true; _framePending = true; }
+#else
+inline void VulkanWindow::scheduleSwapchainResize()  { _swapchainResizePending = true; scheduleFrame(); }
 #endif
 #if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_WAYLAND)
 inline const std::vector<const char*>& VulkanWindow::requiredExtensions()  { return _requiredInstanceExtensions; }
