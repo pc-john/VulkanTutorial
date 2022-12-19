@@ -48,14 +48,16 @@ protected:
 	xdg_surface* _xdgSurface = nullptr;
 	xdg_toplevel* _xdgTopLevel = nullptr;
 	zxdg_toplevel_decoration_v1* _decoration = nullptr;
+	wl_callback* _scheduledFrameCallback = nullptr;
 
 	// listeners
 	xdg_surface_listener _xdgSurfaceListener;
 	xdg_toplevel_listener _xdgToplevelListener;
+	wl_callback_listener _frameListener;
 
 	// state
-	bool _running = true;
-	bool _framePending = true;
+	bool _forcedFrame = false;
+	std::string _title;
 
 	// globals
 	static inline wl_display* _display = nullptr;
@@ -168,15 +170,12 @@ inline void VulkanWindow::setCloseCallback(const std::function<CloseCallback>& c
 inline void VulkanWindow::setVisible(bool value)  { if(value) show(); else hide(); }
 inline vk::SurfaceKHR VulkanWindow::surface() const  { return _surface; }
 inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return _surfaceExtent; }
-#if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_SDL) || defined(USE_PLATFORM_GLFW)
+#if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_SDL) || defined(USE_PLATFORM_GLFW)
 inline bool VulkanWindow::isVisible() const  { return _visible; }
+#elif defined(USE_PLATFORM_WAYLAND)
+inline bool VulkanWindow::isVisible() const  { return _xdgTopLevel != nullptr; }
 #endif
-#if defined(USE_PLATFORM_WAYLAND)
-inline void VulkanWindow::scheduleFrame()  { _framePending = true; }
-inline void VulkanWindow::scheduleSwapchainResize()  { _swapchainResizePending = true; _framePending = true; }
-#else
 inline void VulkanWindow::scheduleSwapchainResize()  { _swapchainResizePending = true; scheduleFrame(); }
-#endif
 #if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_WAYLAND)
 inline const std::vector<const char*>& VulkanWindow::requiredExtensions()  { return _requiredInstanceExtensions; }
 inline std::vector<const char*>& VulkanWindow::appendRequiredExtensions(std::vector<const char*>& v)  { v.insert(v.end(), _requiredInstanceExtensions.begin(), _requiredInstanceExtensions.end()); return v; }

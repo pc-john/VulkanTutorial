@@ -71,6 +71,7 @@ static bool running;  // bool indicating that application is running and it shal
 // Wayland global variables
 #if defined(USE_PLATFORM_WAYLAND)
 static bool externalDisplayHandle;
+static bool running;  // bool indicating that application is running and it shall not leave main loop
 #endif
 
 
@@ -858,7 +859,10 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 
 #elif defined(USE_PLATFORM_WAYLAND)
 
-	// create window
+	// set window title
+	_title = title;
+
+	// create wl+xdg surface
 	_wlSurface = wl_compositor_create_surface(_compositor);
 	if(_wlSurface == nullptr)
 		throw runtime_error("wl_compositor_create_surface() failed.");
@@ -872,52 +876,29 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(data);
 				xdg_surface_ack_configure(xdgSurface, serial);
 				wl_surface_commit(w->_wlSurface);
+
+				// we need to explicitly generate frame
+				// the first frame otherwise the window is not shown
+				// and no frame callbacks will be delivered through _frameListener
+				if(w->_forcedFrame) {
+					w->_forcedFrame = false;
+					w->renderFrame();
+				}
 			},
 	};
 	if(xdg_surface_add_listener(_xdgSurface, &_xdgSurfaceListener, this))
 		throw runtime_error("xdg_surface_add_listener() failed.");
 
-	// init xdg toplevel
-	_xdgTopLevel = xdg_surface_get_toplevel(_xdgSurface);
-	if(_xdgTopLevel == nullptr)
-		throw runtime_error("xdg_surface_get_toplevel() failed.");
-	if(_zxdgDecorationManagerV1) {
-		_decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(_zxdgDecorationManagerV1, _xdgTopLevel);
-		zxdg_toplevel_decoration_v1_set_mode(_decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
-	}
-	xdg_toplevel_set_title(_xdgTopLevel, title);
-	_xdgToplevelListener = {
-		.configure =
-			[](void* data, xdg_toplevel* toplevel, int32_t width, int32_t height, wl_array*) -> void
+	// frame listener
+	_frameListener = {
+		.done =
+			[](void *data, wl_callback* cb, uint32_t time)
 			{
-				cout << "toplevel configure (width=" << width << ", height=" << height << ")" << endl;
-
-				// if width or height of the window changed,
-				// schedule swapchain resize and force new frame rendering
-				// (width and height of zero means that the compositor does not know the window dimension)
-				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(data);
-				if(width != w->_surfaceExtent.width && width != 0) {
-					w->_surfaceExtent.width = width;
-					if(height != w->_surfaceExtent.height && height != 0)
-						w->_surfaceExtent.height = height;
-					w->_framePending = true;
-					w->_swapchainResizePending = true;
-				}
-				else if(height != w->_surfaceExtent.height && height != 0) {
-					w->_surfaceExtent.height = height;
-					w->_framePending = true;
-					w->_swapchainResizePending = true;
-				}
-			},
-		.close =
-			[](void* data, xdg_toplevel* xdgTopLevel) {
-				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(data);
-				w->_running = false;
-			},
+				cout << "c" << flush;
+				reinterpret_cast<VulkanWindow*>(data)->_scheduledFrameCallback = nullptr;
+				reinterpret_cast<VulkanWindow*>(data)->renderFrame();
+			}
 	};
-	if(xdg_toplevel_add_listener(_xdgTopLevel, &_xdgToplevelListener, this))
-		throw runtime_error("xdg_toplevel_add_listener() failed.");
-	wl_surface_commit(_wlSurface);
 
 	// create surface
 	_surface =
@@ -1064,37 +1045,50 @@ void VulkanWindow::renderFrame()
 		// get surface capabilities
 		// On Win32 and Xlib, currentExtent, minImageExtent and maxImageExtent of returned surfaceCapabilites are all equal.
 		// It means that we can create a new swapchain only with imageExtent being equal to the window size.
-		// The currentExtent might become 0,0 on this platform, for example, when the window is minimized.
+		// The currentExtent might become 0,0 on Win32 and Xlib platform, for example, when the window is minimized.
 		// If the currentExtent is not 0,0, both width and height must be greater than 0.
+		// On Wayland, currentExtent might be 0xffffffff, 0xffffffff with the meaning that the window extent
+		// will be determined by the extent of the swapchain.
+		// Wayland's minImageExtent is 1,1 and maxImageExtent is the maximum supported surface size.
 		vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
 
-#if defined(USE_PLATFORM_SDL)
+#if defined(USE_PLATFORM_WIN32)
+		_surfaceExtent = surfaceCapabilities.currentExtent;
+#elif defined(USE_PLATFORM_XLIB)
+		_surfaceExtent = surfaceCapabilities.currentExtent;
+#elif defined(USE_PLATFORM_WAYLAND)
+		// do nothing here
+		// as _surfaceExtent is set in _xdgToplevelListener's configure callback
+#elif defined(USE_PLATFORM_SDL)
 		// get surface size using SDL
-		SDL_Vulkan_GetDrawableSize(_window, reinterpret_cast<int*>(&surfaceCapabilities.currentExtent.width), reinterpret_cast<int*>(&surfaceCapabilities.currentExtent.height));
-		surfaceCapabilities.currentExtent.width  = clamp(surfaceCapabilities.currentExtent.width,  surfaceCapabilities.minImageExtent.width,  surfaceCapabilities.maxImageExtent.width);
-		surfaceCapabilities.currentExtent.height = clamp(surfaceCapabilities.currentExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
+		SDL_Vulkan_GetDrawableSize(_window, reinterpret_cast<int*>(&_surfaceExtent.width), reinterpret_cast<int*>(&_surfaceExtent.height));
+		_surfaceExtent.width  = clamp(_surfaceExtent.width,  surfaceCapabilities.minImageExtent.width,  surfaceCapabilities.maxImageExtent.width);
+		_surfaceExtent.height = clamp(_surfaceExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
 #elif defined(USE_PLATFORM_GLFW)
 		// get surface size using GLFW
 		// (0xffffffff values might be returned on Wayland)
-		if(surfaceCapabilities.currentExtent.width == 0xffffffff || surfaceCapabilities.currentExtent.height == 0xffffffff) {
-			glfwGetFramebufferSize(_window, reinterpret_cast<int*>(&surfaceCapabilities.currentExtent.width), reinterpret_cast<int*>(&surfaceCapabilities.currentExtent.height));
+		if(surfaceCapabilities.currentExtent.width != 0xffffffff && surfaceCapabilities.currentExtent.height != 0xffffffff)
+			_surfaceExtent = surfaceCapabilities.currentExtent;
+		else {
+			glfwGetFramebufferSize(_window, reinterpret_cast<int*>(&_surfaceExtent.width), reinterpret_cast<int*>(&_surfaceExtent.height));
 			checkError("glfwGetFramebufferSize");
-			surfaceCapabilities.currentExtent.width  = clamp(surfaceCapabilities.currentExtent.width,  surfaceCapabilities.minImageExtent.width,  surfaceCapabilities.maxImageExtent.width);
-			surfaceCapabilities.currentExtent.height = clamp(surfaceCapabilities.currentExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
+			_surfaceExtent.width  = clamp(_surfaceExtent.width,  surfaceCapabilities.minImageExtent.width,  surfaceCapabilities.maxImageExtent.width);
+			_surfaceExtent.height = clamp(_surfaceExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
 		}
 #elif defined(USE_PLATFORM_QT)
 		// get surface size using Qt
 		// (0xffffffff values might be returned on Wayland)
-		if(surfaceCapabilities.currentExtent.width == 0xffffffff || surfaceCapabilities.currentExtent.height == 0xffffffff) {
+		if(surfaceCapabilities.currentExtent.width != 0xffffffff && surfaceCapabilities.currentExtent.height != 0xffffffff)
+			_surfaceExtent = surfaceCapabilities.currentExtent;
+		else {
 			QSize size = _window->size();
 			auto ratio = _window->devicePixelRatio();
-			surfaceCapabilities.currentExtent = vk::Extent2D(uint32_t(float(size.width()) * ratio + 0.5f), uint32_t(float(size.height()) * ratio + 0.5f));
-			surfaceCapabilities.currentExtent.width  = clamp(surfaceCapabilities.currentExtent.width,  surfaceCapabilities.minImageExtent.width,  surfaceCapabilities.maxImageExtent.width);
-			surfaceCapabilities.currentExtent.height = clamp(surfaceCapabilities.currentExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
+			_surfaceExtent = vk::Extent2D(uint32_t(float(size.width()) * ratio + 0.5f), uint32_t(float(size.height()) * ratio + 0.5f));
+			_surfaceExtent.width  = clamp(_surfaceExtent.width,  surfaceCapabilities.minImageExtent.width,  surfaceCapabilities.maxImageExtent.width);
+			_surfaceExtent.height = clamp(_surfaceExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
 		}
 		cout << "New Qt window size in device independent pixels: " << _window->width() << "x" << _window->height()
-		     << ", in physical pixels: " << surfaceCapabilities.currentExtent.width
-		     << "x" << surfaceCapabilities.currentExtent.height << endl;
+		     << ", in physical pixels: " << _surfaceExtent.width << "x" << _surfaceExtent.height << endl;
 #endif
 
 		// zero size swapchain is not allowed,
@@ -1102,19 +1096,18 @@ void VulkanWindow::renderFrame()
 		// (this may happen on Win32-based and Xlib-based systems, for instance;
 		// in reality, it never happened on my KDE 5.80.0 (Kubuntu 21.04) and KDE 5.44.0 (Kubuntu 18.04.5)
 		// because window minimalizing just unmaps the window)
-		if(surfaceCapabilities.currentExtent == vk::Extent2D(0,0))
+		if(_surfaceExtent == vk::Extent2D(0,0))
 			return;  // new frame will be scheduled on the next window resize
 
 		// recreate swapchain
 		_swapchainResizePending = false;
-		_surfaceExtent = surfaceCapabilities.currentExtent;
 		_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
 	}
 
 	// render scene
 #if !defined(USE_PLATFORM_QT)
 	_frameCallback();
-#else	
+#else
 # if (QT_VERSION >= QT_VERSION_CHECK(5, 15, 0))
 	qVulkanInstance->presentAboutToBeQueued(_window);
 # endif
@@ -1223,6 +1216,7 @@ void VulkanWindow::mainLoop()
 		XNextEvent(_display, &e);
 
 		// get VulkanWindow
+		// (we use std::map because per-window data using XGetWindowProperty() would require X-server roundtrip)
 		auto it = vulkanWindowMap.find(e.xany.window);
 		if(it == vulkanWindowMap.end())
 			continue;
@@ -1314,72 +1308,124 @@ void VulkanWindow::scheduleFrame()
 #elif defined(USE_PLATFORM_WAYLAND)
 
 
-void VulkanWindow::mainLoop()
+void VulkanWindow::show()
 {
 	// callbacks need to be assigned
 	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
+	// check for already shown window
+	if(_xdgTopLevel)
+		return;
+
+	// show window
+	// (create xdg toplevel)
+	_xdgTopLevel = xdg_surface_get_toplevel(_xdgSurface);
+	if(_xdgTopLevel == nullptr)
+		throw runtime_error("xdg_surface_get_toplevel() failed.");
+	if(_zxdgDecorationManagerV1) {
+		_decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(_zxdgDecorationManagerV1, _xdgTopLevel);
+		zxdg_toplevel_decoration_v1_set_mode(_decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+	}
+	xdg_toplevel_set_title(_xdgTopLevel, _title.c_str());
+	_xdgToplevelListener = {
+		.configure =
+			[](void* data, xdg_toplevel* toplevel, int32_t width, int32_t height, wl_array*) -> void
+			{
+				cout << "toplevel configure (width=" << width << ", height=" << height << ")" << endl;
+
+				// if width or height of the window changed,
+				// schedule swapchain resize and force new frame rendering
+				// (width and height of zero means that the compositor does not know the window dimension)
+				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(data);
+				if(width != w->_surfaceExtent.width && width != 0) {
+					w->_surfaceExtent.width = width;
+					if(height != w->_surfaceExtent.height && height != 0)
+						w->_surfaceExtent.height = height;
+					w->scheduleSwapchainResize();
+				}
+				else if(height != w->_surfaceExtent.height && height != 0) {
+					w->_surfaceExtent.height = height;
+					w->scheduleSwapchainResize();
+				}
+			},
+		.close =
+			[](void* data, xdg_toplevel* xdgTopLevel) {
+				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(data);
+				if(w->_closeCallback)
+					w->_closeCallback();  // VulkanWindow object might be already destroyed when returning from the callback
+				else {
+					w->hide();
+					VulkanWindow::exitMainLoop();
+				}
+			},
+	};
+	if(xdg_toplevel_add_listener(_xdgTopLevel, &_xdgToplevelListener, this))
+		throw runtime_error("xdg_toplevel_add_listener() failed.");
+	wl_surface_commit(_wlSurface);
+	_forcedFrame = true;
+}
+
+
+void VulkanWindow::hide()
+{
+	// destroy xdg toplevel
+	// and associated objects
+	_forcedFrame = false;
+	if(_scheduledFrameCallback) {
+		wl_callback_destroy(_scheduledFrameCallback);
+		_scheduledFrameCallback = nullptr;
+	}
+	if(_decoration) {
+		zxdg_toplevel_decoration_v1_destroy(_decoration);
+		_decoration = nullptr;
+	}
+	if(_xdgTopLevel) {
+		xdg_toplevel_destroy(_xdgTopLevel);
+		_xdgTopLevel = nullptr;
+	}
+}
+
+
+void VulkanWindow::mainLoop()
+{
 	// flush outgoing buffers
 	cout << "Entering main loop." << endl;
 	if(wl_display_flush(_display) == -1)
 		throw runtime_error("wl_display_flush() failed.");
 
 	// main loop
-	while(_running) {
+	running = true;
+	while(running) {
 
 		// dispatch events
-		if(!_framePending)
-		{
-			// dispatch events with blocking
-			if(wl_display_dispatch(_display) == -1)  // it blocks if there are no events
-				throw runtime_error("wl_display_dispatch() failed.");
-		}
-		else
-		{
-			// dispatch events without blocking
-			while(wl_display_prepare_read(_display) != 0)
-				if(wl_display_dispatch_pending(_display) == -1)
-					throw runtime_error("wl_display_dispatch_pending() failed.");
-			if(wl_display_flush(_display) == -1)
-				throw runtime_error("wl_display_flush() failed.");
-			if(wl_display_read_events(_display) == -1)
-				throw runtime_error("wl_display_read_events() failed.");
-			if(wl_display_dispatch_pending(_display) == -1)
-				throw runtime_error("wl_display_dispatch_pending() failed.");
-		}
+		if(wl_display_dispatch(_display) == -1)  // it blocks if there are no events
+			throw runtime_error("wl_display_dispatch() failed.");
 
 		// flush outgoing buffers
 		if(wl_display_flush(_display) == -1)
 			throw runtime_error("wl_display_flush() failed.");
 
-		if(!_framePending)
-			continue;
-
-		// recreate swapchain if requested
-		if(_swapchainResizePending) {
-
-			// make sure that we finished all the rendering
-			// (this is necessary for swapchain re-creation)
-			_device.waitIdle();
-
-			// get surface capabilities
-			// On Wayland, currentExtent is 0xffffffff, 0xffffffff with the meaning that the window extent
-			// will be determined by the extent of the swapchain,
-			// minImageExtent is 1,1 and maxImageExtent is the maximum supported surface size.
-			vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
-
-			// recreate swapchain
-			_swapchainResizePending = false;
-			_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
-		}
-
-		// render frame
-		_framePending = false;
-		_frameCallback();
-
 	}
 	cout << "Main loop left." << endl;
+}
+
+
+void VulkanWindow::exitMainLoop()
+{
+	running = false;
+}
+
+
+void VulkanWindow::scheduleFrame()
+{
+	if(_scheduledFrameCallback)
+		return;
+
+	cout << "s" << flush;
+	_scheduledFrameCallback = wl_surface_frame(_wlSurface);
+	wl_callback_add_listener(_scheduledFrameCallback, &_frameListener, this);
+	wl_surface_commit(_wlSurface);
 }
 
 
