@@ -866,7 +866,7 @@ int main(int argc, char* argv[])
 							if(w.isVisible())
 								return;
 						VulkanWindow::exitMainLoop();
-#else
+#elif 0
 						// destroy window
 						auto it = find_if(app.windowList.begin(), app.windowList.end(),
 						                  [&window](const Window& w){ return &window==&w; });
@@ -875,6 +875,27 @@ int main(int argc, char* argv[])
 						// if no more windows, exit application
 						if(app.windowList.empty())
 							VulkanWindow::exitMainLoop();
+#else
+						static int counter = app.windowList.size();
+						if(counter > 0) {
+							counter--;
+							window.hide();
+						}
+						if(counter == 0) {
+							counter = -1;
+							for(auto& w : app.windowList)
+								w.show();
+							return;
+						}
+						if(counter < 0) {
+							auto it = find_if(app.windowList.begin(), app.windowList.end(),
+							                  [&window](const Window& w){ return &window==&w; });
+							app.windowList.erase(it);
+
+							// if no more windows, exit application
+							if(app.windowList.empty())
+								VulkanWindow::exitMainLoop();
+						}
 #endif
 					},
 					ref(w),
