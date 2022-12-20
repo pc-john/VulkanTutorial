@@ -57,6 +57,19 @@ static wstring utf8toWString(const char* s)
 // list of windows waiting for frame rendering
 // (the windows have _framePendingState set to FramePendingState::Pending or TentativePending)
 static vector<VulkanWindow*> framePendingWindows;
+
+// remove VulkanWindow from framePendingWindows; VulkanWindow MUST be in framePendingWindows 
+static void removeFromFramePendingWindows(VulkanWindow* w)
+{
+	if(framePendingWindows.size() != 1) {
+		for(size_t i=0; i<framePendingWindows.size(); i++)
+			if(framePendingWindows[i] == w) {
+				framePendingWindows[i] = framePendingWindows.back();
+				break;
+			}
+	}
+	framePendingWindows.pop_back();
+}
 #endif
 
 
@@ -248,6 +261,27 @@ void VulkanWindow::init()
 			case WM_SHOWWINDOW: {
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				w->_visible = wParam==TRUE;
+				if(w->_visible == false) {
+
+					// store frame pending state
+					w->_hiddenWindowFramePending = w->_framePendingState == FramePendingState::Pending;
+
+					// cancel frame pending state
+					if(w->_framePendingState == FramePendingState::Pending) {
+						w->_framePendingState = FramePendingState::NotPending;
+						removeFromFramePendingWindows(w);
+					}
+
+				}
+				else {
+
+					// restore frame pending state
+					if(w->_hiddenWindowFramePending) {
+						w->_framePendingState = FramePendingState::Pending;
+						framePendingWindows.push_back(w);
+					}
+
+				}
 				return DefWindowProc(hwnd, msg, wParam, lParam);
 			}
 
@@ -276,14 +310,7 @@ void VulkanWindow::init()
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				if(w->_framePendingState != FramePendingState::NotPending) {
 					w->_framePendingState = FramePendingState::NotPending;
-					if(framePendingWindows.size() != 1) {
-						for(size_t i=0; i<framePendingWindows.size(); i++)
-							if(framePendingWindows[i] == w) {
-								framePendingWindows[i] = framePendingWindows.back();
-								break;
-							}
-					}
-					framePendingWindows.pop_back();
+					removeFromFramePendingWindows(w);
 				}
 
 				return 0;

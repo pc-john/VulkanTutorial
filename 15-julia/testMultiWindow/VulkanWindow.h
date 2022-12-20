@@ -24,6 +24,7 @@ protected:
 	enum class FramePendingState { NotPending, Pending, TentativePending };
 	FramePendingState _framePendingState = FramePendingState::NotPending;
 	bool _visible = false;
+	bool _hiddenWindowFramePending = false;
 
 	static inline struct HINSTANCE__* _hInstance = 0;  // struct HINSTANCE__* is used for HINSTANCE type on Win32
 	static inline unsigned short _windowClass = 0;  // unsigned short is used for ATOM type on Win32

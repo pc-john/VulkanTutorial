@@ -876,15 +876,20 @@ int main(int argc, char* argv[])
 						if(app.windowList.empty())
 							VulkanWindow::exitMainLoop();
 #else
-						static int counter = app.windowList.size();
+						static int counter = int(app.windowList.size());
 						if(counter > 0) {
 							counter--;
 							window.hide();
+							if(window.isVisible())
+								throw runtime_error("VulkanWindow::hide() does not work properly.");
 						}
 						if(counter == 0) {
 							counter = -1;
-							for(auto& w : app.windowList)
+							for(auto& w : app.windowList) {
 								w.show();
+								if(!w.isVisible())
+									throw runtime_error("VulkanWindow::show() does not work properly.");
+							}
 							return;
 						}
 						if(counter < 0) {
@@ -903,6 +908,14 @@ int main(int argc, char* argv[])
 				)
 			);
 			w.show();
+#if 1
+			if(!w.isVisible())
+				throw runtime_error("VulkanWindow::show() does not work properly.");
+			w.hide();
+			if(w.isVisible())
+				throw runtime_error("VulkanWindow::hide() does not work properly.");
+			w.show();
+#endif
 		}
 		VulkanWindow::mainLoop();
 
