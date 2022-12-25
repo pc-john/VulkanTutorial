@@ -1572,7 +1572,11 @@ void VulkanWindow::mainLoop()
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
 					SDL_GetWindowData(SDL_GetWindowFromID(event.window.windowID), windowPointerName));
 				w->_visible = true;
-				w->scheduleFrame();
+				w->_minimized = false;
+				if(w->_hiddenWindowFramePending) {
+					w->_hiddenWindowFramePending = false;
+					w->scheduleFrame();
+				}
 				break;
 			}
 
@@ -1581,6 +1585,10 @@ void VulkanWindow::mainLoop()
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
 					SDL_GetWindowData(SDL_GetWindowFromID(event.window.windowID), windowPointerName));
 				w->_visible = false;
+				if(w->_framePending) {
+					w->_hiddenWindowFramePending = true;
+					w->_framePending = false;
+				}
 				break;
 			}
 
@@ -1589,6 +1597,10 @@ void VulkanWindow::mainLoop()
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
 					SDL_GetWindowData(SDL_GetWindowFromID(event.window.windowID), windowPointerName));
 				w->_minimized = true;
+				if(w->_framePending) {
+					w->_hiddenWindowFramePending = true;
+					w->_framePending = false;
+				}
 				break;
 			}
 
@@ -1597,7 +1609,10 @@ void VulkanWindow::mainLoop()
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
 					SDL_GetWindowData(SDL_GetWindowFromID(event.window.windowID), windowPointerName));
 				w->_minimized = false;
-				w->scheduleFrame();
+				if(w->_hiddenWindowFramePending) {
+					w->_hiddenWindowFramePending = false;
+					w->scheduleFrame();
+				}
 				break;
 			}
 
@@ -1636,8 +1651,14 @@ void VulkanWindow::exitMainLoop()
 
 void VulkanWindow::scheduleFrame()
 {
-	if(_framePending || !_visible || _minimized)
+	if(_framePending)
 		return;
+
+	// handle invisible and minimized window
+	if(_visible==false || _minimized) {
+		_hiddenWindowFramePending = true;
+		return;
+	}
 
 	_framePending = true;
 

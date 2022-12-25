@@ -78,6 +78,7 @@ protected:
 
 	struct SDL_Window* _window = nullptr;
 	bool _framePending = true;
+	bool _hiddenWindowFramePending = false;
 	bool _visible = false;
 	bool _minimized = false;
 
