@@ -1845,13 +1845,13 @@ void VulkanWindow::show()
 	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::show() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::show().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::show() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::show().");
 
-	_window->show();
+	_window->setVisible(true);
 }
 
 
 void VulkanWindow::hide()
 {
-	_window->hide();
+	_window->setVisible(false);
 }
 
 
