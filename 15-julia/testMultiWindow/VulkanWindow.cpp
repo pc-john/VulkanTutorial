@@ -1222,12 +1222,14 @@ void VulkanWindow::show()
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
 	// show window
+	_visible = true;
 	XMapWindow(_display, _window);
 }
 
 
 void VulkanWindow::hide()
 {
+	_visible = false;
 	XUnmapWindow(_display, _window);
 }
 
