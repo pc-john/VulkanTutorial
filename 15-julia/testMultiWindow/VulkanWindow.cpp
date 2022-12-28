@@ -1307,9 +1307,13 @@ void VulkanWindow::mainLoop()
 		VulkanWindow* w = it->second;
 
 		// expose event
-		if(e.type == Expose) {
+		if(e.type == Expose)
+		{
+			// remove all other Expose events
 			XEvent tmp;
 			while(XCheckTypedWindowEvent(_display, w->_window, Expose, &tmp) == True);
+
+			// perform rendering
 			w->_framePending = false;
 			w->renderFrame();
 			continue;
