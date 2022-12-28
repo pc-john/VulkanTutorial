@@ -355,8 +355,9 @@ void VulkanWindow::init()
 		throw runtime_error("Can not open display. No X-server running or wrong DISPLAY variable.");
 	externalDisplayHandle = false;
 
-	// get WM_DELETE_WINDOW atom
+	// get atoms
 	_wmDeleteMessage = XInternAtom(_display, "WM_DELETE_WINDOW", False);
+	_wmStateProperty = XInternAtom(_display, "WM_STATE", False);
 
 #elif defined(USE_PLATFORM_WAYLAND)
 
@@ -454,6 +455,7 @@ void VulkanWindow::init(void* data)
 
 	// get WM_DELETE_WINDOW atom
 	_wmDeleteMessage = XInternAtom(_display, "WM_DELETE_WINDOW", False);
+	_wmStateProperty = XInternAtom(_display, "WM_STATE", False);
 
 #elif defined(USE_PLATFORM_WAYLAND)
 
@@ -1221,16 +1223,69 @@ void VulkanWindow::show()
 	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
+	if(_visible)
+		return;
+
 	// show window
 	_visible = true;
+	_fullyObscured = false;
 	XMapWindow(_display, _window);
+	if(_hiddenWindowMinimized == false)
+		scheduleFrame();
+	else {
+		_hiddenWindowMinimized = false;
+		XIconifyWindow(_display, _window, XDefaultScreen(_display));
+	}
 }
 
 
 void VulkanWindow::hide()
 {
+	if(!_visible)
+		return;
+
 	_visible = false;
-	XUnmapWindow(_display, _window);
+	_fullyObscured = true;
+	updateHiddenWindowMinimized();
+
+	// unmap window and hide taskbar icon
+	XWithdrawWindow(_display, _window, XDefaultScreen(_display));
+
+	// delete all Expose events and cancel any pending frames
+	XEvent tmp;
+	while(XCheckTypedWindowEvent(_display, _window, Expose, &tmp) == True);
+	_framePending = false;
+}
+
+
+void VulkanWindow::updateHiddenWindowMinimized()
+{
+	// update _hiddenWindowMinimized
+	// (it contains minimize state of the window before it is hidden)
+	unsigned char* data;
+	Atom actualType;
+	int actualFormat;
+	unsigned long itemsRead;
+	unsigned long bytesAfter;
+	if(XGetWindowProperty(
+			_display,  // display
+			_window,  // window
+			_wmStateProperty,  // property
+			0, 1,  // long_offset, long_length
+			False,  // delete
+			_wmStateProperty, // req_type
+			&actualType,  // actual_type_return
+			&actualFormat,  // actual_format_return
+			&itemsRead,  // nitems_return
+			&bytesAfter,  // bytes_after_return
+			&data  // prop_return
+		) == Success && itemsRead > 0)
+	{
+		_hiddenWindowMinimized = (*reinterpret_cast<unsigned*>(data) == 3);
+		XFree(data);
+	}
+	else
+		_hiddenWindowMinimized = false;
 }
 
 
@@ -1268,23 +1323,46 @@ void VulkanWindow::mainLoop()
 		}
 
 		// map, unmap, obscured, unobscured
-		if(e.type == MapNotify ||
-			(e.type == VisibilityNotify && e.xvisibility.state != VisibilityFullyObscured))
+		if(e.type == MapNotify)
 		{
-			cout << "Window visible" << endl;
+			cout<<"MapNotify"<<endl;
+			if(w->_visible)
+				continue;
 			w->_visible = true;
+			w->_fullyObscured = false;
 			w->scheduleFrame();
 			continue;
 		}
-		if(e.type == UnmapNotify ||
-			(e.type == VisibilityNotify && e.xvisibility.state == VisibilityFullyObscured))
+		if(e.type == UnmapNotify)
 		{
-			cout << "Window not visible" << endl;
+			cout<<"UnmapNotify"<<endl;
+			if(w->_visible == false)
+				continue;
 			w->_visible = false;
+			w->_fullyObscured = true;
+			w->updateHiddenWindowMinimized();
+
 			XEvent tmp;
-			while(XCheckWindowEvent(_display, w->_window, Expose, &tmp) == True);
+			while(XCheckTypedWindowEvent(_display, w->_window, Expose, &tmp) == True);
 			w->_framePending = false;
 			continue;
+		}
+		if(e.type == VisibilityNotify) {
+			if(e.xvisibility.state != VisibilityFullyObscured)
+			{
+				cout << "Window not fully obscured" << endl;
+				w->_fullyObscured = false;
+				w->scheduleFrame();
+				continue;
+			}
+			else {
+				cout << "Window fully obscured" << endl;
+				w->_fullyObscured = true;
+				XEvent tmp;
+				while(XCheckTypedWindowEvent(_display, w->_window, Expose, &tmp) == True);
+				w->_framePending = false;
+				continue;
+			}
 		}
 
 		// handle window close
@@ -1309,7 +1387,7 @@ void VulkanWindow::exitMainLoop()
 
 void VulkanWindow::scheduleFrame()
 {
-	if(_framePending || !_visible)
+	if(_framePending || !_visible || _fullyObscured)
 		return;
 
 	_framePending = true;
