@@ -1308,6 +1308,8 @@ void VulkanWindow::mainLoop()
 
 		// expose event
 		if(e.type == Expose) {
+			XEvent tmp;
+			while(XCheckTypedWindowEvent(_display, w->_window, Expose, &tmp) == True);
 			w->_framePending = false;
 			w->renderFrame();
 			continue;
