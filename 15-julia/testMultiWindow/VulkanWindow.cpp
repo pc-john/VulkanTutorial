@@ -856,7 +856,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 
 	// create window
 	XSetWindowAttributes attr;
-	attr.event_mask = ExposureMask | StructureNotifyMask | VisibilityChangeMask;
+	attr.event_mask = ExposureMask | StructureNotifyMask | VisibilityChangeMask | PropertyChangeMask;
 	_window =
 		XCreateWindow(
 			_display,  // display
@@ -1231,12 +1231,10 @@ void VulkanWindow::show()
 	_iconVisible = true;
 	_fullyObscured = false;
 	XMapWindow(_display, _window);
-	if(_hiddenWindowMinimized == false)
-		scheduleFrame();
-	else {
-		_hiddenWindowMinimized = false;
+	if(_minimized)
 		XIconifyWindow(_display, _window, XDefaultScreen(_display));
-	}
+	else
+		scheduleFrame();
 }
 
 
@@ -1248,7 +1246,9 @@ void VulkanWindow::hide()
 	_visible = false;
 	_iconVisible = false;
 	_fullyObscured = true;
-	updateHiddenWindowMinimized();
+
+	// update _minimized
+	updateMinimized();
 
 	// unmap window and hide taskbar icon
 	XWithdrawWindow(_display, _window, XDefaultScreen(_display));
@@ -1260,10 +1260,9 @@ void VulkanWindow::hide()
 }
 
 
-void VulkanWindow::updateHiddenWindowMinimized()
+void VulkanWindow::updateMinimized()
 {
-	// update _hiddenWindowMinimized
-	// (it contains minimize state of the window before it is hidden)
+	// read the new value of WM_STATE property
 	unsigned char* data;
 	Atom actualType;
 	int actualFormat;
@@ -1283,11 +1282,12 @@ void VulkanWindow::updateHiddenWindowMinimized()
 			&data  // prop_return
 		) == Success && itemsRead > 0)
 	{
-		_hiddenWindowMinimized = (*reinterpret_cast<unsigned*>(data) == 3);
+		cout << "New WM_STATE: " << *reinterpret_cast<unsigned*>(data) << endl;
+		_minimized = *reinterpret_cast<unsigned*>(data) == 3;
 		XFree(data);
 	}
 	else
-		_hiddenWindowMinimized = false;
+		cout << "WM_STATE reading failed" << endl;
 }
 
 
@@ -1348,7 +1348,6 @@ void VulkanWindow::mainLoop()
 				continue;
 			w->_visible = false;
 			w->_fullyObscured = true;
-			w->updateHiddenWindowMinimized();
 
 			XEvent tmp;
 			while(XCheckTypedWindowEvent(_display, w->_window, Expose, &tmp) == True);
@@ -1371,6 +1370,13 @@ void VulkanWindow::mainLoop()
 				w->_framePending = false;
 				continue;
 			}
+		}
+
+		// minimize state
+		if(e.type == PropertyNotify) {
+			if(e.xproperty.atom == _wmStateProperty && e.xproperty.state == PropertyNewValue)
+				w->updateMinimized();
+			continue;
 		}
 
 		// handle window close

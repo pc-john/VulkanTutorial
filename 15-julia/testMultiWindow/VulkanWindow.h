@@ -38,7 +38,7 @@ protected:
 	bool _visible = false;
 	bool _fullyObscured = false;
 	bool _iconVisible = false;
-	bool _hiddenWindowMinimized = false;
+	bool _minimized = false;
 
 	static inline struct _XDisplay* _display = nullptr;  // struct _XDisplay is used for Display type in Xlib
 	static inline unsigned long _wmDeleteMessage;  // unsigned long is used for Atom type in Xlib
@@ -46,7 +46,7 @@ protected:
 	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_xlib_surface" };
 
-	void updateHiddenWindowMinimized();
+	void updateMinimized();
 
 #elif defined(USE_PLATFORM_WAYLAND)
 
