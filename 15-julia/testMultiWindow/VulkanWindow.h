@@ -37,6 +37,7 @@ protected:
 	bool _framePending = true;
 	bool _visible = false;
 	bool _fullyObscured = false;
+	bool _iconVisible = false;
 	bool _hiddenWindowMinimized = false;
 
 	static inline struct _XDisplay* _display = nullptr;  // struct _XDisplay is used for Display type in Xlib

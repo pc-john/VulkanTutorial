@@ -1228,6 +1228,7 @@ void VulkanWindow::show()
 
 	// show window
 	_visible = true;
+	_iconVisible = true;
 	_fullyObscured = false;
 	XMapWindow(_display, _window);
 	if(_hiddenWindowMinimized == false)
@@ -1241,10 +1242,11 @@ void VulkanWindow::show()
 
 void VulkanWindow::hide()
 {
-	if(!_visible)
+	if(!_visible && !_iconVisible)
 		return;
 
 	_visible = false;
+	_iconVisible = false;
 	_fullyObscured = true;
 	updateHiddenWindowMinimized();
 
