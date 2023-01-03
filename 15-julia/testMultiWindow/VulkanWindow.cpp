@@ -891,32 +891,10 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	// set window title
 	_title = title;
 
-	// create wl+xdg surface
+	// create wl surface
 	_wlSurface = wl_compositor_create_surface(_compositor);
 	if(_wlSurface == nullptr)
 		throw runtime_error("wl_compositor_create_surface() failed.");
-	_xdgSurface = xdg_wm_base_get_xdg_surface(_xdgWmBase, _wlSurface);
-	if(_xdgSurface == nullptr)
-		throw runtime_error("xdg_wm_base_get_xdg_surface() failed.");
-	_xdgSurfaceListener = {
-		.configure =
-			[](void* data, xdg_surface* xdgSurface, uint32_t serial) {
-				cout << "surface configure" << endl;
-				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(data);
-				xdg_surface_ack_configure(xdgSurface, serial);
-				wl_surface_commit(w->_wlSurface);
-
-				// we need to explicitly generate frame
-				// the first frame otherwise the window is not shown
-				// and no frame callbacks will be delivered through _frameListener
-				if(w->_forcedFrame) {
-					w->_forcedFrame = false;
-					w->renderFrame();
-				}
-			},
-	};
-	if(xdg_surface_add_listener(_xdgSurface, &_xdgSurfaceListener, this))
-		throw runtime_error("xdg_surface_add_listener() failed.");
 
 	// frame listener
 	_frameListener = {
@@ -1436,11 +1414,34 @@ void VulkanWindow::show()
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
 	// check for already shown window
-	if(_xdgTopLevel)
+	if(_xdgSurface)
 		return;
 
-	// show window
-	// (create xdg toplevel)
+	// create xdg surface
+	_xdgSurface = xdg_wm_base_get_xdg_surface(_xdgWmBase, _wlSurface);
+	if(_xdgSurface == nullptr)
+		throw runtime_error("xdg_wm_base_get_xdg_surface() failed.");
+	_xdgSurfaceListener = {
+		.configure =
+			[](void* data, xdg_surface* xdgSurface, uint32_t serial) {
+				cout << "surface configure" << endl;
+				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(data);
+				xdg_surface_ack_configure(xdgSurface, serial);
+				wl_surface_commit(w->_wlSurface);
+
+				// we need to explicitly generate frame
+				// the first frame otherwise the window is not shown
+				// and no frame callbacks will be delivered through _frameListener
+				if(w->_forcedFrame) {
+					w->_forcedFrame = false;
+					w->renderFrame();
+				}
+			},
+	};
+	if(xdg_surface_add_listener(_xdgSurface, &_xdgSurfaceListener, this))
+		throw runtime_error("xdg_surface_add_listener() failed.");
+
+	// create xdg toplevel
 	_xdgTopLevel = xdg_surface_get_toplevel(_xdgSurface);
 	if(_xdgTopLevel == nullptr)
 		throw runtime_error("xdg_surface_get_toplevel() failed.");
@@ -1485,6 +1486,7 @@ void VulkanWindow::show()
 		throw runtime_error("xdg_toplevel_add_listener() failed.");
 	wl_surface_commit(_wlSurface);
 	_forcedFrame = true;
+	_swapchainResizePending = true;
 }
 
 
@@ -1504,6 +1506,12 @@ void VulkanWindow::hide()
 	if(_xdgTopLevel) {
 		xdg_toplevel_destroy(_xdgTopLevel);
 		_xdgTopLevel = nullptr;
+	}
+	if(_xdgSurface) {
+		xdg_surface_destroy(_xdgSurface);
+		_xdgSurface = nullptr;
+		wl_surface_attach(_wlSurface, nullptr, 0, 0);
+		wl_surface_commit(_wlSurface);
 	}
 }
 
