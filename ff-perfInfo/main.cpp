@@ -18,6 +18,9 @@ static const uint32_t doublePrecisionSpirv[] = {
 static const uint32_t halfPrecisionSpirv[] = {
 #include "halfPrecision.comp.spv"
 };
+static const uint32_t singlePrecisionDoubleDispatchSpirv[] = {
+#include "singlePrecision-doubleDispatch.comp.spv"
+};
 
 
 // vk::Instance
@@ -293,7 +296,7 @@ int main(int argc, char* argv[])
 			vk::Queue computeQueue = device->getQueue(computeQueueFamily, 0);
 
 			// shader modules
-			array<vk::UniqueShaderModule, 3> shaders;
+			array<vk::UniqueShaderModule, 4> shaders;
 			shaders[0] =
 				device->createShaderModuleUnique(
 					vk::ShaderModuleCreateInfo(
@@ -302,20 +305,30 @@ int main(int argc, char* argv[])
 						singlePrecisionSpirv  // pCode
 					)
 				);
-			shaders[1] =
+			if(doublePrecisionSupported)
+				shaders[1] =
+					device->createShaderModuleUnique(
+						vk::ShaderModuleCreateInfo(
+							{},  // flags
+							sizeof(doublePrecisionSpirv),  // code size
+							doublePrecisionSpirv  // pCode
+						)
+					);
+			if(halfPrecisionSupported)
+				shaders[2] =
+					device->createShaderModuleUnique(
+						vk::ShaderModuleCreateInfo(
+							{},  // flags
+							sizeof(halfPrecisionSpirv),  // code size
+							halfPrecisionSpirv  // pCode
+						)
+					);
+			shaders[3] =
 				device->createShaderModuleUnique(
 					vk::ShaderModuleCreateInfo(
 						{},  // flags
-						sizeof(doublePrecisionSpirv),  // code size
-						doublePrecisionSpirv  // pCode
-					)
-				);
-			shaders[2] =
-				device->createShaderModuleUnique(
-					vk::ShaderModuleCreateInfo(
-						{},  // flags
-						sizeof(halfPrecisionSpirv),  // code size
-						halfPrecisionSpirv  // pCode
+						sizeof(singlePrecisionDoubleDispatchSpirv),  // code size
+						singlePrecisionDoubleDispatchSpirv  // pCode
 					)
 				);
 
@@ -350,23 +363,24 @@ int main(int argc, char* argv[])
 				);
 
 			// create pipeline
-			array<vk::UniquePipeline, 3> pipelines;
-			for(size_t i=0; i<3; i++)
-				pipelines[i] =
-					device->createComputePipelineUnique(
-						nullptr,  // pipelineCache
-						vk::ComputePipelineCreateInfo(
-							{},  // flags
-							vk::PipelineShaderStageCreateInfo(  // stage
+			array<vk::UniquePipeline, 4> pipelines;
+			for(size_t i=0; i<pipelines.size(); i++)
+				if(shaders[i])
+					pipelines[i] =
+						device->createComputePipelineUnique(
+							nullptr,  // pipelineCache
+							vk::ComputePipelineCreateInfo(
 								{},  // flags
-								vk::ShaderStageFlagBits::eCompute,  // stage
-								shaders[i].get(),  // module
-								"main",  // pName
-								nullptr  // pSpecializationInfo
-							),
-							pipelineLayout.get()  // layout
-						)
-					).value;
+								vk::PipelineShaderStageCreateInfo(  // stage
+									{},  // flags
+									vk::ShaderStageFlagBits::eCompute,  // stage
+									shaders[i].get(),  // module
+									"main",  // pName
+									nullptr  // pSpecializationInfo
+								),
+								pipelineLayout.get()  // layout
+							)
+						).value;
 
 			// buffer
 			vk::UniqueBuffer buffer =
@@ -477,12 +491,14 @@ int main(int argc, char* argv[])
 					vk::CommandBufferAllocateInfo(
 						commandPool.get(),                 // commandPool
 						vk::CommandBufferLevel::ePrimary,  // level
-						3                                  // commandBufferCount
+						4                                  // commandBufferCount
 					)
 				);
 
 			// record command buffers
-			for(size_t i=0; i<3; i++) {
+			for(size_t i=0; i<4; i++) {
+				if(!pipelines[i])
+					continue;
 				commandBuffers[i]->begin(
 					vk::CommandBufferBeginInfo(
 						{},  // flags
@@ -526,7 +542,7 @@ int main(int argc, char* argv[])
 			// perform tests
 			array<uint64_t, 2> timestamps;
 			uint64_t finishTS;
-			for(size_t i=0; i<3; i++)
+			for(size_t i=0; i<4; i++)
 			{
 				// test supported?
 				if(i==1 && !doublePrecisionSupported) {
@@ -579,7 +595,7 @@ int main(int argc, char* argv[])
 					// finishTS
 					// make it 1 second from start of the measurement
 					if(bestTsDelta == UINT64_MAX) {
-						array<double, 3> measurementTimes = { 1e9, 3e8, 3e8 };
+						array<double, 4> measurementTimes = { 1e9, 3e8, 3e8, 1e9 };
 						finishTS = uint64_t(measurementTimes[i]/timestampPeriod_ns) + timestamps[0];
 					}
 
@@ -589,7 +605,7 @@ int main(int argc, char* argv[])
 						bestTsDelta = tsDelta;
 
 					if(printTimes) {
-						cout << array{"      Single", "      Double", "      Half"}[i] << " precision test took "
+						cout << array{"      Single", "      Double", "      Half", "      Single (double dispatch)"}[i] << " precision test took "
 						     << double(tsDelta) * timestampPeriod_ns * 1e-6 << "ms which translates to ";
 						double numInstructions = (i!=1 ? 20000. : 5000.) * 128 * 100 * 100;
 						cout << numInstructions / (double(tsDelta) * timestampPeriod_ns * 1e-9) * 1e-9 << " GFLOPS" << endl;
@@ -597,7 +613,7 @@ int main(int argc, char* argv[])
 
 				} while(timestamps[1] < finishTS);
 
-				cout << array{"   GFLOPS single precision: ", "   GFLOPS double precision: ", "   GFLOPS half precision: " }[i];
+				cout << array{"   GFLOPS single precision: ", "   GFLOPS double precision: ", "   GFLOPS half precision: ", "   GFLOPS single precision (double dispatch): "}[i];
 				double numInstructions = (i!=1 ? 20000. : 5000.) * 128 * 100 * 100;
 				cout << numInstructions / (double(bestTsDelta) * timestampPeriod_ns * 1e-9) * 1e-9 << endl;
 			}

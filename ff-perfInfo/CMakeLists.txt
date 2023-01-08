@@ -13,6 +13,7 @@ set(APP_SHADERS
     singlePrecision.comp
     doublePrecision.comp
     halfPrecision.comp
+    singlePrecision-doubleDispatch.comp
    )
 
 # target
