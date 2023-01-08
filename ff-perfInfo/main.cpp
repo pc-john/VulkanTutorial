@@ -28,6 +28,7 @@ static const uint32_t singlePrecisionDoubleDispatchSpirv[] = {
 static vk::UniqueInstance instance;
 
 // general variables
+static bool longTest = false;
 static bool printTimes = false;
 
 
@@ -42,10 +43,13 @@ int main(int argc, char* argv[])
 		for(int i=1; i<argc; i++)
 			if(strcmp(argv[i], "-t") == 0)
 				printTimes = true;
+			else if(strcmp(argv[i], "--long") == 0 || strcmp(argv[i], "-l") == 0)
+				longTest = true;
 			else {
 				if(strcmp(argv[i], "--help") != 0 && strcmp(argv[i], "-h") != 0)
 					cout << "Unrecognized option: " << argv[i] << endl;
 				cout << appName << " usage:\n"
+						"   --long:  perform long test\n"
 						"   --help or -h:  usage information\n"
 						"   -t:  print times and details of performance measurements" << endl;
 				exit(99);
@@ -595,8 +599,9 @@ int main(int argc, char* argv[])
 					// finishTS
 					// make it 1 second from start of the measurement
 					if(bestTsDelta == UINT64_MAX) {
-						array<double, 4> measurementTimes = { 1e9, 3e8, 3e8, 1e9 };
-						finishTS = uint64_t(measurementTimes[i]/timestampPeriod_ns) + timestamps[0];
+						constexpr const array<double, 4> measurementTimes = { 1e9, 3e8, 3e8, 1e9 };
+						double measurementTime = measurementTimes[i] * (longTest ? 10. : 1.);
+						finishTS = uint64_t(measurementTime/timestampPeriod_ns) + timestamps[0];
 					}
 
 					// timestamps delta
