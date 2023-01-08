@@ -64,6 +64,7 @@ protected:
 
 	// state
 	bool _forcedFrame = false;
+	vk::Extent2D _normalSize;
 	std::string _title;
 
 	// globals
@@ -181,7 +182,7 @@ inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return _surfaceExtent
 #if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_SDL) || defined(USE_PLATFORM_GLFW)
 inline bool VulkanWindow::isVisible() const  { return _visible; }
 #elif defined(USE_PLATFORM_WAYLAND)
-inline bool VulkanWindow::isVisible() const  { return _xdgTopLevel != nullptr; }
+inline bool VulkanWindow::isVisible() const  { return _xdgSurface != nullptr; }
 #endif
 inline void VulkanWindow::scheduleSwapchainResize()  { _swapchainResizePending = true; scheduleFrame(); }
 #if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_WAYLAND)
