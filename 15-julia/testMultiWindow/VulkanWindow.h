@@ -12,9 +12,10 @@
 class VulkanWindow {
 public:
 
-	typedef void FrameCallback();
-	typedef void RecreateSwapchainCallback(const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent);
-	typedef void CloseCallback();
+	typedef void FrameCallback(VulkanWindow& window);
+	typedef void RecreateSwapchainCallback(VulkanWindow& window,
+		const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent);
+	typedef void CloseCallback(VulkanWindow& window);
 
 protected:
 

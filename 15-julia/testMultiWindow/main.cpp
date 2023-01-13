@@ -43,8 +43,9 @@ public:
 	~App();
 
 	void init();
-	void recreateSwapchain(Window& window, const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent);
-	void frame(Window& window);
+	void recreateSwapchain(VulkanWindow& window,
+		const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent);
+	void frame(VulkanWindow& window);
 
 	// Vulkan instance must be destructed as the last Vulkan handle.
 	// It is probably good idea to destroy it after the display connection.
@@ -483,8 +484,10 @@ void App::init()
 
 /** Recreate swapchain and pipeline callback method.
  *  The method is usually called after the window resize and on the application start. */
-void App::recreateSwapchain(Window& window, const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent)
+void App::recreateSwapchain(VulkanWindow& w, const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent)
 {
+	Window& window = static_cast<Window&>(w);
+
 	// clear resources
 	for(auto v : window.swapchainImageViews)  device.destroy(v);
 	window.swapchainImageViews.clear();
@@ -701,8 +704,9 @@ void App::recreateSwapchain(Window& window, const vk::SurfaceCapabilitiesKHR& su
 }
 
 
-void App::frame(Window& window)
+void App::frame(VulkanWindow& w)
 {
+	Window& window = static_cast<Window&>(w);
 	cout << "x" << flush;
 
 	// wait for previous frame rendering work
@@ -847,19 +851,19 @@ int main(int argc, char* argv[])
 				bind(
 					&App::recreateSwapchain,
 					&app,
-					ref(w),
 					placeholders::_1,
-					placeholders::_2
+					placeholders::_2,
+					placeholders::_3
 				)
 			);
 			w.setFrameCallback(
-				bind(&App::frame, &app, ref(w)),
+				bind(&App::frame, &app, placeholders::_1),
 				app.physicalDevice,
 				app.device
 			);
 			w.setCloseCallback(
 				bind(
-					[](Window& window, App& app){
+					[](VulkanWindow& window, App& app){
 #if 0
 						window.hide();
 						for(Window& w : app.windowList)
@@ -903,7 +907,7 @@ int main(int argc, char* argv[])
 						}
 #endif
 					},
-					ref(w),
+					placeholders::_1,
 					ref(app)
 				)
 			);

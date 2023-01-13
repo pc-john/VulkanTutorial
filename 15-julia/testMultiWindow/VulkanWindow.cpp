@@ -1108,17 +1108,17 @@ void VulkanWindow::renderFrame()
 
 		// recreate swapchain
 		_swapchainResizePending = false;
-		_recreateSwapchainCallback(surfaceCapabilities, _surfaceExtent);
+		_recreateSwapchainCallback(*this, surfaceCapabilities, _surfaceExtent);
 	}
 
 	// render scene
 #if !defined(USE_PLATFORM_QT)
-	_frameCallback();
+	_frameCallback(*this);
 #else
 # if (QT_VERSION >= QT_VERSION_CHECK(5, 15, 0))
 	qVulkanInstance->presentAboutToBeQueued(_window);
 # endif
-	_frameCallback();
+	_frameCallback(*this);
 	qVulkanInstance->presentQueued(_window);
 #endif
 }
@@ -1360,7 +1360,7 @@ void VulkanWindow::mainLoop()
 		// handle window close
 		if(e.type==ClientMessage && ulong(e.xclient.data.l[0])==_wmDeleteMessage) {
 			if(w->_closeCallback)
-				w->_closeCallback();  // VulkanWindow object might be already destroyed when returning from the callback
+				w->_closeCallback(*w);  // VulkanWindow object might be already destroyed when returning from the callback
 			else {
 				w->hide();
 				VulkanWindow::exitMainLoop();
