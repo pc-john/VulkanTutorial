@@ -195,7 +195,7 @@ void VulkanWindow::init()
 					if(w->_framePendingState == FramePendingState::TentativePending) {
 
 						// validate window area
-						if(!ValidateRect(w->_hwnd, NULL))
+						if(!ValidateRect(HWND(w->_hwnd), NULL))
 							thrownException = make_exception_ptr(runtime_error("ValidateRect(): The function failed."));
 
 						// update state to no-frame-pending
@@ -332,7 +332,7 @@ void VulkanWindow::init()
 				wndProc,             // lpfnWndProc
 				0,                   // cbClsExtra
 				sizeof(LONG_PTR),    // cbWndExtra
-				_hInstance,          // hInstance
+				HINSTANCE(_hInstance),  // hInstance
 				LoadIcon(NULL, IDI_APPLICATION),  // hIcon
 				LoadCursor(NULL, IDC_ARROW),  // hCursor
 				NULL,                // hbrBackground
@@ -585,7 +585,7 @@ void VulkanWindow::finalize() noexcept
 	}
 # else
 	if(_windowClass) {
-		if(!UnregisterClass(MAKEINTATOM(_windowClass), _hInstance))
+		if(!UnregisterClass(MAKEINTATOM(_windowClass), HINSTANCE(_hInstance)))
 			assert(0 && "UnregisterClass(): The function failed.");
 		_windowClass = 0;
 	}
@@ -690,7 +690,7 @@ void VulkanWindow::destroy() noexcept
 	assert(_windowClass && "VulkanWindow::destroy(): Window class does not exist. "
 		                   "Did you called VulkanWindow::finalize() prematurely?");
 	if(_hwnd) {
-		if(!DestroyWindow(_hwnd))
+		if(!DestroyWindow(HWND(_hwnd)))
 			assert(0 && "DestroyWindow(): The function failed.");
 		_hwnd = nullptr;
 	}
@@ -812,7 +812,7 @@ VulkanWindow::VulkanWindow(VulkanWindow&& other)
 
 	// update pointers to this object
 	if(_hwnd)
-		SetWindowLongPtr(_hwnd, 0, (LONG_PTR)this);
+		SetWindowLongPtr(HWND(_hwnd), 0, LONG_PTR(this));
 	for(VulkanWindow*& w : framePendingWindows)
 		if(w == &other) {
 			w = this;
@@ -907,7 +907,7 @@ VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
 
 	// update pointers to this object
 	if(_hwnd)
-		SetWindowLongPtr(_hwnd, 0, (LONG_PTR)this);
+		SetWindowLongPtr(HWND(_hwnd), 0, LONG_PTR(this));
 	for(VulkanWindow*& w : framePendingWindows)
 		if(w == &other) {
 			w = this;
@@ -1028,21 +1028,21 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 			WS_OVERLAPPEDWINDOW,  // dwStyle
 			CW_USEDEFAULT, CW_USEDEFAULT,  // x,y
 			surfaceExtent.width, surfaceExtent.height,  // width, height
-			NULL, NULL, _hInstance, NULL  // hWndParent, hMenu, hInstance, lpParam
+			NULL, NULL, HINSTANCE(_hInstance), NULL  // hWndParent, hMenu, hInstance, lpParam
 		);
 	if(_hwnd == NULL)
 		throw runtime_error("Cannot create window.");
 
 	// store this pointer with the window data
-	SetWindowLongPtr(_hwnd, 0, (LONG_PTR)this);
+	SetWindowLongPtr(HWND(_hwnd), 0, LONG_PTR(this));
 
 	// create surface
 	_surface =
 		instance.createWin32SurfaceKHR(
 			vk::Win32SurfaceCreateInfoKHR(
 				vk::Win32SurfaceCreateFlagsKHR(),  // flags
-				_hInstance,  // hinstance
-				_hwnd  // hwnd
+				HINSTANCE(_hInstance),  // hinstance
+				HWND(_hwnd)  // hwnd
 			)
 		);
 	return _surface;
@@ -1351,7 +1351,7 @@ void VulkanWindow::show()
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
 	// show window
-	ShowWindow(_hwnd, SW_SHOW);
+	ShowWindow(HWND(_hwnd), SW_SHOW);
 }
 
 
@@ -1361,7 +1361,7 @@ void VulkanWindow::hide()
 	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
 
 	// hide window
-	ShowWindow(_hwnd, SW_HIDE);
+	ShowWindow(HWND(_hwnd), SW_HIDE);
 }
 
 
@@ -1406,7 +1406,7 @@ void VulkanWindow::scheduleFrame()
 	if(_framePendingState == FramePendingState::NotPending) {
 
 		// invalidate window content (this will cause WM_PAINT message to be sent) 
-		if(!InvalidateRect(_hwnd, NULL, FALSE))
+		if(!InvalidateRect(HWND(_hwnd), NULL, FALSE))
 			throw runtime_error("InvalidateRect(): The function failed.");
 
 		framePendingWindows.push_back(this);

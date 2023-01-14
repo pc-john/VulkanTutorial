@@ -21,14 +21,14 @@ protected:
 
 #if defined(USE_PLATFORM_WIN32)
 
-	struct HWND__* _hwnd = nullptr;  // struct HWND__* is used for HWND type on Win32
+	void* _hwnd = nullptr;  // void* is used instead of HWND type to avoid #include <windows.h>
 	enum class FramePendingState { NotPending, Pending, TentativePending };
 	FramePendingState _framePendingState;
 	bool _visible;
 	bool _hiddenWindowFramePending;
 
-	static inline struct HINSTANCE__* _hInstance = 0;  // struct HINSTANCE__* is used for HINSTANCE type on Win32
-	static inline unsigned short _windowClass = 0;  // unsigned short is used for ATOM type on Win32
+	static inline void* _hInstance = 0;  // void* is used instead of HINSTANCE type to avoid #include <windows.h>
+	static inline uint16_t _windowClass = 0;  // uint16_t is used instead of ATOM type to avoid #include <windows.h>
 	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_win32_surface" };
 
