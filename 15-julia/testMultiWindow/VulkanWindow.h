@@ -35,11 +35,11 @@ protected:
 #elif defined(USE_PLATFORM_XLIB)
 
 	unsigned long _window = 0;  // unsigned long is used for Window type in Xlib
-	bool _framePending = true;
-	bool _visible = false;
-	bool _fullyObscured = false;
-	bool _iconVisible = false;
-	bool _minimized = false;
+	bool _framePending;
+	bool _visible;
+	bool _fullyObscured;
+	bool _iconVisible;
+	bool _minimized;
 
 	static inline struct _XDisplay* _display = nullptr;  // struct _XDisplay is used for Display type in Xlib
 	static inline unsigned long _wmDeleteMessage;  // unsigned long is used for Atom type in Xlib

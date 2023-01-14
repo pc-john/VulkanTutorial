@@ -819,6 +819,21 @@ VulkanWindow::VulkanWindow(VulkanWindow&& other)
 			break;
 		}
 
+#elif defined(USE_PLATFORM_XLIB)
+
+	// move Xlib members
+	_window = other._window;
+	other._window = 0;
+	_framePending = other._framePending;
+	_visible = other._visible;
+	_fullyObscured = other._fullyObscured;
+	_iconVisible = other._iconVisible;
+	_minimized = other._minimized;
+
+	// update pointers to this object
+	if(_window != 0)
+		vulkanWindowMap[_window] = this;
+
 #elif defined(USE_PLATFORM_SDL)
 
 	// move SDL members
@@ -898,6 +913,21 @@ VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
 			w = this;
 			break;
 		}
+
+#elif defined(USE_PLATFORM_XLIB)
+
+	// move Xlib members
+	_window = other._window;
+	other._window = 0;
+	_framePending = other._framePending;
+	_visible = other._visible;
+	_fullyObscured = other._fullyObscured;
+	_iconVisible = other._iconVisible;
+	_minimized = other._minimized;
+
+	// update pointers to this object
+	if(_window != 0)
+		vulkanWindowMap[_window] = this;
 
 #elif defined(USE_PLATFORM_SDL)
 
@@ -1018,6 +1048,13 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	return _surface;
 
 #elif defined(USE_PLATFORM_XLIB)
+
+	// init variables
+	_framePending = true;
+	_visible = false;
+	_fullyObscured = false;
+	_iconVisible = false;
+	_minimized = false;
 
 	// create window
 	XSetWindowAttributes attr;
@@ -1384,7 +1421,8 @@ void VulkanWindow::scheduleFrame()
 
 void VulkanWindow::show()
 {
-	// callbacks need to be assigned
+	// asserts for valid usage
+	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
 	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
@@ -1405,6 +1443,9 @@ void VulkanWindow::show()
 
 void VulkanWindow::hide()
 {
+	// assert for valid usage
+	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
+
 	if(!_visible && !_iconVisible)
 		return;
 
@@ -1566,6 +1607,9 @@ void VulkanWindow::exitMainLoop()
 
 void VulkanWindow::scheduleFrame()
 {
+	// assert for valid usage
+	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
+
 	if(_framePending || !_visible || _fullyObscured)
 		return;
 
