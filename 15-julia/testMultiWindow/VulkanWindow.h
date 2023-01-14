@@ -23,9 +23,9 @@ protected:
 
 	struct HWND__* _hwnd = nullptr;  // struct HWND__* is used for HWND type on Win32
 	enum class FramePendingState { NotPending, Pending, TentativePending };
-	FramePendingState _framePendingState = FramePendingState::NotPending;
-	bool _visible = false;
-	bool _hiddenWindowFramePending = false;
+	FramePendingState _framePendingState;
+	bool _visible;
+	bool _hiddenWindowFramePending;
 
 	static inline struct HINSTANCE__* _hInstance = 0;  // struct HINSTANCE__* is used for HINSTANCE type on Win32
 	static inline unsigned short _windowClass = 0;  // unsigned short is used for ATOM type on Win32
@@ -85,18 +85,18 @@ protected:
 #elif defined(USE_PLATFORM_SDL)
 
 	struct SDL_Window* _window = nullptr;
-	bool _framePending = true;
-	bool _hiddenWindowFramePending = false;
-	bool _visible = false;
-	bool _minimized = false;
+	bool _framePending;
+	bool _hiddenWindowFramePending;
+	bool _visible;
+	bool _minimized;
 
 #elif defined(USE_PLATFORM_GLFW)
 
 	struct GLFWwindow* _window = nullptr;
 	enum class FramePendingState { NotPending, Pending, TentativePending };
-	FramePendingState _framePendingState = FramePendingState::NotPending;
-	bool _visible = true;
-	bool _minimized = false;
+	FramePendingState _framePendingState;
+	bool _visible;
+	bool _minimized;
 
 #elif defined(USE_PLATFORM_QT)
 
@@ -126,8 +126,10 @@ public:
 
 	// construction and destruction
 	VulkanWindow() = default;
+	VulkanWindow(VulkanWindow&& other);
 	~VulkanWindow();
 	void destroy() noexcept;
+	VulkanWindow& operator=(VulkanWindow&& rhs) noexcept;
 
 	// deleted constructors and operators
 	VulkanWindow(const VulkanWindow&) = delete;

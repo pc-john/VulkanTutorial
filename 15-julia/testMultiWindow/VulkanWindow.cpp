@@ -292,7 +292,7 @@ void VulkanWindow::init()
 				cout << "WM_CLOSE message" << endl;
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				if(w->_closeCallback)
-					w->_closeCallback();  // VulkanWindow object might be already destroyed when returning from the callback
+					w->_closeCallback(*w);  // VulkanWindow object might be already destroyed when returning from the callback
 				else {
 					w->hide();
 					VulkanWindow::exitMainLoop();
@@ -799,9 +799,169 @@ void VulkanWindow::destroy() noexcept
 }
 
 
+VulkanWindow::VulkanWindow(VulkanWindow&& other)
+{
+#if defined(USE_PLATFORM_WIN32)
+
+	// move Win32 members
+	_hwnd = other._hwnd;
+	other._hwnd = nullptr;
+	_framePendingState = other._framePendingState;
+	_visible = other._visible;
+	_hiddenWindowFramePending = other._hiddenWindowFramePending;
+
+	// update pointers to this object
+	if(_hwnd)
+		SetWindowLongPtr(_hwnd, 0, (LONG_PTR)this);
+	for(VulkanWindow*& w : framePendingWindows)
+		if(w == &other) {
+			w = this;
+			break;
+		}
+
+#elif defined(USE_PLATFORM_SDL)
+
+	// move SDL members
+	_window = other._window;
+	other._window = nullptr;
+	_framePending = other._framePending;
+	_hiddenWindowFramePending = other._hiddenWindowFramePending;
+	_visible = other._visible;
+	_minimized = other._minimized;
+
+	// update pointer to this object
+	if(_window)
+		SDL_SetWindowData(_window, windowPointerName, this);
+
+#elif defined(USE_PLATFORM_GLFW)
+
+	// move GLFW members
+	_window = other._window;
+	other._window = nullptr;
+	_framePendingState = other._framePendingState;
+	_visible = other._visible;
+	_minimized = other._minimized;
+
+	// update pointers to this object
+	if(_window)
+		glfwSetWindowUserPointer(_window, this);
+	for(VulkanWindow*& w : framePendingWindows)
+		if(w == &other) {
+			w = this;
+			break;
+		}
+
+#elif defined(USE_PLATFORM_QT)
+
+	// move Qt members
+	_window = other._window;
+	if(_window) {
+		other._window = nullptr;
+		static_cast<QtRenderingWindow*>(_window)->vulkanWindow = this;
+	}
+
+#endif
+
+	// move members
+	_frameCallback = move(other._frameCallback);
+	_instance = move(other._instance);
+	_physicalDevice = move(other._physicalDevice);
+	_device = move(other._device);
+	_surface = other._surface;
+	other._surface = nullptr;
+	_surfaceExtent = other._surfaceExtent;
+	_swapchainResizePending = other._swapchainResizePending;
+	_recreateSwapchainCallback = move(other._recreateSwapchainCallback);
+	_closeCallback = move(other._closeCallback);
+}
+
+
+VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
+{
+	// destroy previous content
+	destroy();
+
+#if defined(USE_PLATFORM_WIN32)
+
+	// move Win32 members
+	_hwnd = other._hwnd;
+	other._hwnd = nullptr;
+	_framePendingState = other._framePendingState;
+	_visible = other._visible;
+	_hiddenWindowFramePending = other._hiddenWindowFramePending;
+
+	// update pointers to this object
+	if(_hwnd)
+		SetWindowLongPtr(_hwnd, 0, (LONG_PTR)this);
+	for(VulkanWindow*& w : framePendingWindows)
+		if(w == &other) {
+			w = this;
+			break;
+		}
+
+#elif defined(USE_PLATFORM_SDL)
+
+	// move SDL members
+	_window = other._window;
+	other._window = nullptr;
+	_framePending = other._framePending;
+	_hiddenWindowFramePending = other._hiddenWindowFramePending;
+	_visible = other._visible;
+	_minimized = other._minimized;
+
+	// set pointer to this
+	if(_window)
+		SDL_SetWindowData(_window, windowPointerName, this);
+
+#elif defined(USE_PLATFORM_GLFW)
+
+	// move GLFW members
+	_window = other._window;
+	other._window = nullptr;
+	_framePendingState = other._framePendingState;
+	_visible = other._visible;
+	_minimized = other._minimized;
+
+	// update pointers to this object
+	if(_window)
+		glfwSetWindowUserPointer(_window, this);
+	for(VulkanWindow*& w : framePendingWindows)
+		if(w == &other) {
+			w = this;
+			break;
+		}
+
+#elif defined(USE_PLATFORM_QT)
+
+	// move Qt members
+	_window = other._window;
+	if(_window) {
+		other._window = nullptr;
+		static_cast<QtRenderingWindow*>(_window)->vulkanWindow = this;
+	}
+
+#endif
+
+	// move members
+	_frameCallback = move(other._frameCallback);
+	_instance = move(other._instance);
+	_physicalDevice = move(other._physicalDevice);
+	_device = move(other._device);
+	_surface = other._surface;
+	other._surface = nullptr;
+	_surfaceExtent = other._surfaceExtent;
+	_swapchainResizePending = other._swapchainResizePending;
+	_recreateSwapchainCallback = move(other._recreateSwapchainCallback);
+	_closeCallback = move(other._closeCallback);
+
+	return *this;
+}
+
+
 vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title)
 {
-	// asserts
+	// asserts for valid usage
+	assert(instance && "The parameter instance must not be null.");
 #if defined(USE_PLATFORM_WIN32)
 	assert(_windowClass && "VulkanWindow was not initialized. Call VulkanWindow::init() before VulkanWindow::create()."); 
 #elif defined(USE_PLATFORM_SDL)
@@ -819,6 +979,11 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	_surfaceExtent = surfaceExtent;
 
 #if defined(USE_PLATFORM_WIN32)
+
+	// init variables
+	_framePendingState = FramePendingState::NotPending;
+	_visible = false;
+	_hiddenWindowFramePending = false;
 
 	// create window
 	_hwnd =
@@ -922,6 +1087,12 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 
 #elif defined(USE_PLATFORM_SDL)
 
+	// init variables
+	_framePending = true;
+	_hiddenWindowFramePending = false;
+	_visible = false;
+	_minimized = false;
+
 	// create Vulkan window
 	_window = SDL_CreateWindow(
 		title,  // title
@@ -942,6 +1113,11 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	return _surface;
 
 #elif defined(USE_PLATFORM_GLFW)
+
+	// init variables
+	_framePendingState = FramePendingState::NotPending;
+	_visible = true;
+	_minimized = false;
 
 	// create window
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -999,7 +1175,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 		[](GLFWwindow* window) {
 			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
 			if(w->_closeCallback)
-				w->_closeCallback();  // VulkanWindow object might be already destroyed when returning from the callback
+				w->_closeCallback(*w);  // VulkanWindow object might be already destroyed when returning from the callback
 			else {
 				w->hide();
 				VulkanWindow::exitMainLoop();
@@ -1042,6 +1218,9 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 
 void VulkanWindow::renderFrame()
 {
+	// assert for valid usage
+	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
+
 	// recreate swapchain if requested
 	if(_swapchainResizePending) {
 
@@ -1129,7 +1308,8 @@ void VulkanWindow::renderFrame()
 
 void VulkanWindow::show()
 {
-	// callbacks need to be assigned
+	// asserts for valid usage
+	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
 	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
@@ -1140,6 +1320,10 @@ void VulkanWindow::show()
 
 void VulkanWindow::hide()
 {
+	// assert for valid usage
+	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
+
+	// hide window
 	ShowWindow(_hwnd, SW_HIDE);
 }
 
@@ -1176,6 +1360,9 @@ void VulkanWindow::exitMainLoop()
 
 void VulkanWindow::scheduleFrame()
 {
+	// assert for valid usage
+	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
+
 	if(_framePendingState == FramePendingState::Pending)
 		return;
 
@@ -1612,7 +1799,8 @@ const char* const* VulkanWindow::requiredExtensionNames()  { return requiredExte
 
 void VulkanWindow::show()
 {
-	// callbacks need to be assigned
+	// asserts for valid usage
+	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
 	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
@@ -1625,6 +1813,9 @@ void VulkanWindow::show()
 
 void VulkanWindow::hide()
 {
+	// assert for valid usage
+	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
+
 	// hide window
 	// and set _visible flag immediately
 	SDL_HideWindow(_window);
@@ -1723,7 +1914,7 @@ void VulkanWindow::mainLoop()
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
 					SDL_GetWindowData(SDL_GetWindowFromID(event.window.windowID), windowPointerName));
 				if(w->_closeCallback)
-					w->_closeCallback();  // VulkanWindow object might be already destroyed when returning from the callback
+					w->_closeCallback(*w);  // VulkanWindow object might be already destroyed when returning from the callback
 				else {
 					w->hide();
 					VulkanWindow::exitMainLoop();
@@ -1753,6 +1944,9 @@ void VulkanWindow::exitMainLoop()
 
 void VulkanWindow::scheduleFrame()
 {
+	// assert for valid usage
+	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
+
 	if(_framePending)
 		return;
 
@@ -1814,7 +2008,8 @@ const char* const* VulkanWindow::requiredExtensionNames()  { return requiredExte
 
 void VulkanWindow::show()
 {
-	// callbacks need to be assigned
+	// asserts for valid usage
+	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
 	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
@@ -1828,6 +2023,9 @@ void VulkanWindow::show()
 
 void VulkanWindow::hide()
 {
+	// assert for valid usage
+	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
+
 	// hide window
 	_visible = false;
 	glfwHideWindow(_window);
@@ -1903,6 +2101,9 @@ void VulkanWindow::exitMainLoop()
 
 void VulkanWindow::scheduleFrame()
 {
+	// assert for valid usage
+	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
+
 	if(_framePendingState == FramePendingState::Pending)
 		return;
 
@@ -1943,16 +2144,22 @@ const char* const* VulkanWindow::requiredExtensionNames()  { return requiredExte
 
 void VulkanWindow::show()
 {
-	// callbacks need to be assigned
+	// asserts for valid usage
+	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
 	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::show() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::show().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::show() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::show().");
 
+	// show window
 	_window->setVisible(true);
 }
 
 
 void VulkanWindow::hide()
 {
+	// assert for valid usage
+	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
+
+	// hide window
 	_window->setVisible(false);
 }
 
@@ -1965,12 +2172,6 @@ bool VulkanWindow::isVisible() const
 
 void VulkanWindow::mainLoop()
 {
-	cout << "DisplayName: " << qGuiApplication->applicationDisplayName().toStdString() << endl;
-	cout << "ApplicationName: " << qGuiApplication->applicationName().toStdString() << endl;
-	cout << "ApplicationVersion: " << qGuiApplication->applicationVersion().toStdString() << endl;
-	cout << "OrganizationDomain: " << qGuiApplication->organizationDomain().toStdString() << endl;
-	cout << "OrganizationName: " << qGuiApplication->organizationName().toStdString() << endl;
-
 	// call exec()
 	thrownException = nullptr;
 	QGuiApplication::exec();
@@ -2024,7 +2225,7 @@ bool QtRenderingWindow::event(QEvent* event)
 		// requires the swapchain to be destroyed first)
 		case QEvent::Type::Close:
 			if(vulkanWindow->_closeCallback)
-				vulkanWindow->_closeCallback();  // VulkanWindow object might be already destroyed when returning from the callback
+				vulkanWindow->_closeCallback(*vulkanWindow);  // VulkanWindow object might be already destroyed when returning from the callback
 			else {
 				vulkanWindow->hide();
 				VulkanWindow::exitMainLoop();
@@ -2045,6 +2246,10 @@ bool QtRenderingWindow::event(QEvent* event)
 
 void VulkanWindow::scheduleFrame()
 {
+	// assert for valid usage
+	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
+
+	// start zero timeout timer
 	QtRenderingWindow* w = static_cast<QtRenderingWindow*>(_window);
 	if(w->timer == 0) {
 		w->timer = _window->startTimer(0);

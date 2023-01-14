@@ -2,7 +2,6 @@
 #include <algorithm>
 #include <chrono>
 #include <iostream>
-#include <list>
 
 using namespace std;
 
@@ -30,9 +29,54 @@ public:
 	vk::Pipeline pipeline;
 
 	Window(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title = "Vulkan window")
-		: surface(VulkanWindow::create(instance, surfaceExtent, title)) {}
-	~Window();
+		: VulkanWindow()
+		, surface(VulkanWindow::create(instance, surfaceExtent, title)) {}
+	Window(Window&& other) noexcept : VulkanWindow(move(other))  {
+		surface = other.surface;
+		swapchain = other.swapchain; other.swapchain = nullptr;
+		swapchainImageViews = move(other.swapchainImageViews);
+		framebuffers = move(other.framebuffers);
+		pipeline = other.pipeline; other.pipeline = nullptr;
+	}
+	~Window()  { destroyMembers(); }
+	Window& operator=(Window&& other) noexcept {
+		destroyMembers();
+		VulkanWindow::operator=(move(other));
+		surface = other.surface;
+		swapchain = other.swapchain; other.swapchain = nullptr;
+		swapchainImageViews = move(other.swapchainImageViews);
+		framebuffers = move(other.framebuffers);
+		pipeline = other.pipeline; other.pipeline = nullptr;
+		return *this;
+	}
+protected:
+	void destroyMembers() noexcept;  // destroys only members of this object; not any parent class members
 };
+
+
+void Window::destroyMembers() noexcept
+{
+	if(!_device)
+		return;
+
+	// wait for device idle state
+	// (to prevent errors during destruction of Vulkan resources)
+	try {
+		_device.waitIdle();
+	} catch(vk::Error& e) {
+		cout << "Failed because of Vulkan exception: " << e.what() << endl;
+	}
+
+	// destroy resources
+	_device.destroy(pipeline);
+	pipeline = nullptr;
+	for(auto f : framebuffers)  _device.destroy(f);
+	framebuffers.clear();
+	for(auto v : swapchainImageViews)  _device.destroy(v);
+	swapchainImageViews.clear();
+	_device.destroy(swapchain);
+	swapchain = nullptr;
+}
 
 
 // global application data
@@ -53,7 +97,7 @@ public:
 
 	// window needs to be destroyed after the swapchain
 	// This is required especially by Wayland.
-	list<Window> windowList;
+	vector<Window> windowList;
 
 	// Vulkan variables, handles and objects
 	// (they need to be destructed in non-arbitrary order in the destructor)
@@ -81,27 +125,6 @@ public:
 	chrono::high_resolution_clock::time_point fpsStartTime;
 
 };
-
-
-Window::~Window()
-{
-	if(!_device)
-		return;
-
-	// wait for device idle state
-	// (to prevent errors during destruction of Vulkan resources)
-	try {
-		_device.waitIdle();
-	} catch(vk::Error& e) {
-		cout << "Failed because of Vulkan exception: " << e.what() << endl;
-	}
-
-	// destroy resources
-	_device.destroy(pipeline);
-	for(auto f : framebuffers)  _device.destroy(f);
-	for(auto v : swapchainImageViews)  _device.destroy(v);
-	_device.destroy(swapchain);
-}
 
 
 /// Construct application object
@@ -194,8 +217,18 @@ void App::init()
 		);
 
 	// create surface
-	windowList.emplace_back(instance, vk::Extent2D{1024, 768}, appName);
-	windowList.emplace_back(instance, vk::Extent2D{1024, 768}, appName);
+	windowList.emplace_back(instance, vk::Extent2D{800, 600}, appName);
+	windowList.emplace_back(instance, vk::Extent2D{800, 600}, appName);
+
+	// test for non-initialized window and for move constructors
+	{
+		VulkanWindow tmp1;
+		VulkanWindow tmp2;
+		VulkanWindow tmp3;
+		tmp3 = move(tmp2);
+		vector<VulkanWindow> windowVector;
+		windowVector.emplace_back();
+	}
 
 	// find compatible devices
 	vector<vk::PhysicalDevice> deviceList = instance.enumeratePhysicalDevices();
@@ -882,12 +915,24 @@ int main(int argc, char* argv[])
 #else
 						static int counter = int(app.windowList.size());
 						if(counter > 0) {
+
+							// test of hide()
 							counter--;
 							window.hide();
 							if(window.isVisible())
 								throw runtime_error("VulkanWindow::hide() does not work properly.");
+
+							// test of move operators, doing windowList order reverse
+							vector<Window> tmp;
+							while(app.windowList.size() > 0) {
+								tmp.push_back(move(app.windowList.back()));
+								app.windowList.pop_back();
+							}
+							app.windowList.swap(tmp);
 						}
 						if(counter == 0) {
+
+							// test of show()
 							counter = -1;
 							for(auto& w : app.windowList) {
 								w.show();
@@ -897,8 +942,12 @@ int main(int argc, char* argv[])
 							return;
 						}
 						if(counter < 0) {
+
+							// delete window
 							auto it = find_if(app.windowList.begin(), app.windowList.end(),
 							                  [&window](const Window& w){ return &window==&w; });
+							if(it == app.windowList.end())
+								throw runtime_error("Window is not in the window list.");
 							app.windowList.erase(it);
 
 							// if no more windows, exit application
@@ -911,6 +960,8 @@ int main(int argc, char* argv[])
 					ref(app)
 				)
 			);
+
+			// test of hide()/show()/isVisible()
 			w.show();
 #if 1
 			if(!w.isVisible())
@@ -921,6 +972,8 @@ int main(int argc, char* argv[])
 			w.show();
 #endif
 		}
+
+		// main loop
 		VulkanWindow::mainLoop();
 
 	// catch exceptions
