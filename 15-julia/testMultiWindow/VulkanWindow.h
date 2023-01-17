@@ -1,9 +1,5 @@
 #pragma once
 
-#if defined(USE_PLATFORM_WAYLAND)
-  #include "xdg-shell-client-protocol.h"
-  #include "xdg-decoration-client-protocol.h"
-#endif
 #include <vulkan/vulkan.hpp>
 #include <functional>
 
@@ -52,32 +48,25 @@ protected:
 #elif defined(USE_PLATFORM_WAYLAND)
 
 	// objects
-	wl_surface* _wlSurface = nullptr;
-	xdg_surface* _xdgSurface = nullptr;
-	xdg_toplevel* _xdgTopLevel = nullptr;
-	zxdg_toplevel_decoration_v1* _decoration = nullptr;
-	wl_callback* _scheduledFrameCallback = nullptr;
+	struct wl_surface* _wlSurface = nullptr;
+	struct xdg_surface* _xdgSurface = nullptr;
+	struct xdg_toplevel* _xdgTopLevel = nullptr;
+	struct zxdg_toplevel_decoration_v1* _decoration = nullptr;
+	struct wl_callback* _scheduledFrameCallback = nullptr;
 
-	// listeners
-	xdg_surface_listener _xdgSurfaceListener;
-	xdg_toplevel_listener _xdgToplevelListener;
-	wl_callback_listener _frameListener;
+	// wl and xdg listeners
+	struct WaylandListeners* _listeners = nullptr;
 
 	// state
-	bool _forcedFrame = false;
-	vk::Extent2D _normalSize;
+	bool _forcedFrame;
 	std::string _title;
 
 	// globals
-	static inline wl_display* _display = nullptr;
-	static inline wl_registry* _registry;
-	static inline wl_compositor* _compositor = nullptr;
-	static inline xdg_wm_base* _xdgWmBase = nullptr;
-	static inline zxdg_decoration_manager_v1* _zxdgDecorationManagerV1 = nullptr;
-
-	// global listeners
-	static inline wl_registry_listener _registryListener;
-	static inline xdg_wm_base_listener _xdgWmBaseListener;
+	static inline struct wl_display* _display = nullptr;
+	static inline struct wl_registry* _registry;
+	static inline struct wl_compositor* _compositor = nullptr;
+	static inline struct xdg_wm_base* _xdgWmBase = nullptr;
+	static inline struct zxdg_decoration_manager_v1* _zxdgDecorationManagerV1 = nullptr;
 
 	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_wayland_surface" };
@@ -172,7 +161,6 @@ public:
 
 
 // inline methods
-inline VulkanWindow::~VulkanWindow()  { destroy(); }
 inline void VulkanWindow::setRecreateSwapchainCallback(std::function<RecreateSwapchainCallback>&& cb)  { _recreateSwapchainCallback = move(cb); }
 inline void VulkanWindow::setRecreateSwapchainCallback(const std::function<RecreateSwapchainCallback>& cb)  { _recreateSwapchainCallback = cb; }
 inline void VulkanWindow::setFrameCallback(std::function<FrameCallback>&& cb, vk::PhysicalDevice physicalDevice, vk::Device device)  { _frameCallback = std::move(cb); _physicalDevice = physicalDevice; _device = device; }

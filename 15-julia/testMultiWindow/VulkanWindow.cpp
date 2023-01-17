@@ -8,6 +8,8 @@
 # include <X11/Xutil.h>
 # include <map>
 #elif defined(USE_PLATFORM_WAYLAND)
+# include "xdg-shell-client-protocol.h"
+# include "xdg-decoration-client-protocol.h"
 #elif defined(USE_PLATFORM_SDL)
 # include "SDL.h"
 # include "SDL_vulkan.h"
@@ -85,6 +87,18 @@ static bool running;  // bool indicating that application is running and it shal
 #if defined(USE_PLATFORM_WAYLAND)
 static bool externalDisplayHandle;
 static bool running;  // bool indicating that application is running and it shall not leave main loop
+
+// listeners
+struct WaylandListeners {
+	VulkanWindow* vulkanWindow;
+	xdg_surface_listener xdgSurfaceListener;
+	xdg_toplevel_listener xdgToplevelListener;
+	wl_callback_listener frameListener;
+};
+
+// global listeners
+static wl_registry_listener _registryListener;
+static xdg_wm_base_listener _xdgWmBaseListener;
 #endif
 
 
@@ -661,6 +675,16 @@ void VulkanWindow::finalize() noexcept
 
 
 
+VulkanWindow::~VulkanWindow()
+{
+	destroy();
+
+#if defined(USE_PLATFORM_WAYLAND)
+	delete _listeners;
+#endif
+}
+
+
 void VulkanWindow::destroy() noexcept
 {
 	// destroy surface
@@ -708,6 +732,10 @@ void VulkanWindow::destroy() noexcept
 #elif defined(USE_PLATFORM_WAYLAND)
 
 	// release resources
+	if(_scheduledFrameCallback) {
+		wl_callback_destroy(_scheduledFrameCallback);
+		_scheduledFrameCallback = nullptr;
+	}
 	if(_decoration) {
 		zxdg_toplevel_decoration_v1_destroy(_decoration);
 		_decoration = nullptr;
@@ -834,6 +862,27 @@ VulkanWindow::VulkanWindow(VulkanWindow&& other)
 	if(_window != 0)
 		vulkanWindowMap[_window] = this;
 
+#elif defined(USE_PLATFORM_WAYLAND)
+
+	// move Wayland members
+	_wlSurface = other._wlSurface;
+	other._wlSurface = nullptr;
+	_xdgSurface = other._xdgSurface;
+	other._xdgSurface = nullptr;
+	_xdgTopLevel = other._xdgTopLevel;
+	other._xdgTopLevel = nullptr;
+	_decoration = other._decoration;
+	other._decoration = nullptr;
+	_scheduledFrameCallback = other._scheduledFrameCallback;
+	other._scheduledFrameCallback = nullptr;
+	_listeners = other._listeners;
+	if(_listeners) {
+		other._listeners = nullptr;
+		_listeners->vulkanWindow = this;
+	}
+	_forcedFrame = other._forcedFrame;
+	_title = move(other._title);
+
 #elif defined(USE_PLATFORM_SDL)
 
 	// move SDL members
@@ -929,6 +978,29 @@ VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
 	if(_window != 0)
 		vulkanWindowMap[_window] = this;
 
+#elif defined(USE_PLATFORM_WAYLAND)
+
+	// move Wayland members
+	_wlSurface = other._wlSurface;
+	other._wlSurface = nullptr;
+	_xdgSurface = other._xdgSurface;
+	other._xdgSurface = nullptr;
+	_xdgTopLevel = other._xdgTopLevel;
+	other._xdgTopLevel = nullptr;
+	_decoration = other._decoration;
+	other._decoration = nullptr;
+	_scheduledFrameCallback = other._scheduledFrameCallback;
+	other._scheduledFrameCallback = nullptr;
+	WaylandListeners* tmp = _listeners;
+	_listeners = other._listeners;
+	other._listeners = tmp;
+	if(_listeners)
+		_listeners->vulkanWindow = this;
+	if(other._listeners)
+		other._listeners->vulkanWindow = &other;
+	_forcedFrame = other._forcedFrame;
+	_title = move(other._title);
+
 #elif defined(USE_PLATFORM_SDL)
 
 	// move SDL members
@@ -993,9 +1065,13 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	// asserts for valid usage
 	assert(instance && "The parameter instance must not be null.");
 #if defined(USE_PLATFORM_WIN32)
-	assert(_windowClass && "VulkanWindow was not initialized. Call VulkanWindow::init() before VulkanWindow::create()."); 
+	assert(_windowClass && "VulkanWindow class was not initialized. Call VulkanWindow::init() before VulkanWindow::create().");
+#elif defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_WAYLAND)
+	assert(_display && "VulkanWindow class was not initialized. Call VulkanWindow::init() before VulkanWindow::create().");
 #elif defined(USE_PLATFORM_SDL)
-	assert(sdlInitialized && "VulkanWindow was not initialized. Call VulkanWindow::init() before VulkanWindow::create()."); 
+	assert(sdlInitialized && "VulkanWindow class was not initialized. Call VulkanWindow::init() before VulkanWindow::create().");
+#elif defined(USE_PLATFORM_QT)
+	assert(qGuiApplication && "VulkanWindow class was not initialized. Call VulkanWindow::init() before VulkanWindow::create().");
 #endif
 
 	// destroy any previous window data
@@ -1090,8 +1166,13 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 
 #elif defined(USE_PLATFORM_WAYLAND)
 
-	// set window title
+	// init variables
+	_forcedFrame = false;
 	_title = title;
+	if(!_listeners) {
+		 _listeners = new WaylandListeners;
+		 _listeners->vulkanWindow = this;
+	}
 
 	// create wl surface
 	_wlSurface = wl_compositor_create_surface(_compositor);
@@ -1099,13 +1180,14 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 		throw runtime_error("wl_compositor_create_surface() failed.");
 
 	// frame listener
-	_frameListener = {
+	_listeners->frameListener = {
 		.done =
 			[](void *data, wl_callback* cb, uint32_t time)
 			{
 				cout << "c" << flush;
-				reinterpret_cast<VulkanWindow*>(data)->_scheduledFrameCallback = nullptr;
-				reinterpret_cast<VulkanWindow*>(data)->renderFrame();
+				VulkanWindow* w = reinterpret_cast<WaylandListeners*>(data)->vulkanWindow;
+				w->_scheduledFrameCallback = nullptr;
+				w->renderFrame();
 			}
 	};
 
@@ -1281,7 +1363,7 @@ void VulkanWindow::renderFrame()
 		_surfaceExtent = surfaceCapabilities.currentExtent;
 #elif defined(USE_PLATFORM_WAYLAND)
 		// do nothing here
-		// as _surfaceExtent is set in _xdgToplevelListener's configure callback
+		// because _surfaceExtent is set in _xdgToplevelListener's configure callback
 #elif defined(USE_PLATFORM_SDL)
 		// get surface size using SDL
 		SDL_Vulkan_GetDrawableSize(_window, reinterpret_cast<int*>(&_surfaceExtent.width), reinterpret_cast<int*>(&_surfaceExtent.height));
@@ -1640,7 +1722,8 @@ void VulkanWindow::scheduleFrame()
 
 void VulkanWindow::show()
 {
-	// callbacks need to be assigned
+	// asserts for valid usage
+	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
 	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
@@ -1652,11 +1735,11 @@ void VulkanWindow::show()
 	_xdgSurface = xdg_wm_base_get_xdg_surface(_xdgWmBase, _wlSurface);
 	if(_xdgSurface == nullptr)
 		throw runtime_error("xdg_wm_base_get_xdg_surface() failed.");
-	_xdgSurfaceListener = {
+	_listeners->xdgSurfaceListener = {
 		.configure =
 			[](void* data, xdg_surface* xdgSurface, uint32_t serial) {
 				cout << "surface configure" << endl;
-				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(data);
+				VulkanWindow* w = reinterpret_cast<WaylandListeners*>(data)->vulkanWindow;
 				xdg_surface_ack_configure(xdgSurface, serial);
 				wl_surface_commit(w->_wlSurface);
 
@@ -1669,7 +1752,7 @@ void VulkanWindow::show()
 				}
 			},
 	};
-	if(xdg_surface_add_listener(_xdgSurface, &_xdgSurfaceListener, this))
+	if(xdg_surface_add_listener(_xdgSurface, &_listeners->xdgSurfaceListener, _listeners))
 		throw runtime_error("xdg_surface_add_listener() failed.");
 
 	// create xdg toplevel
@@ -1681,7 +1764,7 @@ void VulkanWindow::show()
 		zxdg_toplevel_decoration_v1_set_mode(_decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 	}
 	xdg_toplevel_set_title(_xdgTopLevel, _title.c_str());
-	_xdgToplevelListener = {
+	_listeners->xdgToplevelListener = {
 		.configure =
 			[](void* data, xdg_toplevel* toplevel, int32_t width, int32_t height, wl_array*) -> void
 			{
@@ -1690,30 +1773,30 @@ void VulkanWindow::show()
 				// if width or height of the window changed,
 				// schedule swapchain resize and force new frame rendering
 				// (width and height of zero means that the compositor does not know the window dimension)
-				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(data);
-				if(width != w->_surfaceExtent.width && width != 0) {
+				VulkanWindow* w = reinterpret_cast<WaylandListeners*>(data)->vulkanWindow;
+				if(uint32_t(width) != w->_surfaceExtent.width && width != 0) {
 					w->_surfaceExtent.width = width;
-					if(height != w->_surfaceExtent.height && height != 0)
+					if(uint32_t(height) != w->_surfaceExtent.height && height != 0)
 						w->_surfaceExtent.height = height;
 					w->scheduleSwapchainResize();
 				}
-				else if(height != w->_surfaceExtent.height && height != 0) {
+				else if(uint32_t(height) != w->_surfaceExtent.height && height != 0) {
 					w->_surfaceExtent.height = height;
 					w->scheduleSwapchainResize();
 				}
 			},
 		.close =
 			[](void* data, xdg_toplevel* xdgTopLevel) {
-				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(data);
+				VulkanWindow* w = reinterpret_cast<WaylandListeners*>(data)->vulkanWindow;
 				if(w->_closeCallback)
-					w->_closeCallback();  // VulkanWindow object might be already destroyed when returning from the callback
+					w->_closeCallback(*w);  // VulkanWindow object might be already destroyed when returning from the callback
 				else {
 					w->hide();
 					VulkanWindow::exitMainLoop();
 				}
 			},
 	};
-	if(xdg_toplevel_add_listener(_xdgTopLevel, &_xdgToplevelListener, this))
+	if(xdg_toplevel_add_listener(_xdgTopLevel, &_listeners->xdgToplevelListener, _listeners))
 		throw runtime_error("xdg_toplevel_add_listener() failed.");
 	wl_surface_commit(_wlSurface);
 	_forcedFrame = true;
@@ -1723,6 +1806,9 @@ void VulkanWindow::show()
 
 void VulkanWindow::hide()
 {
+	// assert for valid usage
+	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
+
 	// destroy xdg toplevel
 	// and associated objects
 	_forcedFrame = false;
@@ -1779,12 +1865,15 @@ void VulkanWindow::exitMainLoop()
 
 void VulkanWindow::scheduleFrame()
 {
+	// assert for valid usage
+	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
+
 	if(_scheduledFrameCallback)
 		return;
 
 	cout << "s" << flush;
 	_scheduledFrameCallback = wl_surface_frame(_wlSurface);
-	wl_callback_add_listener(_scheduledFrameCallback, &_frameListener, this);
+	wl_callback_add_listener(_scheduledFrameCallback, &_listeners->frameListener, _listeners);
 	wl_surface_commit(_wlSurface);
 }
 
