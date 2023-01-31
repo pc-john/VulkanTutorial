@@ -2,14 +2,6 @@
 #include <algorithm>
 #include <chrono>
 #include <iostream>
-#if defined(USE_PLATFORM_SDL)
-# include "SDL.h"
-#elif defined(USE_PLATFORM_GLFW)
-# define GLFW_INCLUDE_NONE  // do not include OpenGL headers
-# include <GLFW/glfw3.h>
-#elif defined(USE_PLATFORM_QT)
-# include <QGuiApplication>
-#endif
 
 using namespace std;
 
@@ -35,17 +27,9 @@ public:
 	~App();
 
 	void init();
-	void recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent);
-	void frame();
-
-
-#if defined(USE_PLATFORM_SDL)
-	bool sdlInitialized = false;
-#elif defined(USE_PLATFORM_QT)
-	// QGuiApplication needs to be constructed before Vulkan Instance.
-	// The reason is that we need to call QGuiApplication::platformName and to get list of required Vulkan Instance extensions.
-	QGuiApplication qtApp;
-#endif
+	void recreateSwapchain(VulkanWindow& window,
+		const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent);
+	void frame(VulkanWindow& window);
 
 	// Vulkan instance must be destructed as the last Vulkan handle.
 	// It is probably good idea to destroy it after the display connection.
@@ -89,9 +73,6 @@ public:
 
 /// Construct application object
 App::App(int argc, char** argv)
-#if defined(USE_PLATFORM_QT)
-	: qtApp(argc, argv)
-#endif
 {
 	// process command-line arguments
 	for(int i=1; i<argc; i++)
@@ -147,42 +128,21 @@ App::~App()
 	}
 
 	window.destroy();
-	instance.destroy();
-
-#if defined(USE_PLATFORM_SDL)
-	// finalize SDL
-	if(sdlInitialized) {
-		SDL_QuitSubSystem(SDL_INIT_VIDEO);
-		SDL_Quit();
-	}
-#elif defined(USE_PLATFORM_GLFW)
-	// finalize GLFW
-	// (it is safe to call glfwTerminate() even if GLFW was not initialized)
-	glfwTerminate();
-	const char* errorString;
-	int errorCode = glfwGetError(&errorString);
-	if(errorCode != GLFW_NO_ERROR)
-		cout << "App error: glfwTerminate() function failed. Error code: 0x"
-		     << hex << errorCode << ". Error string: " << errorString << endl;
+#if defined(USE_PLATFORM_XLIB)
+	// On Xlib, VulkanWindow::finalize() needs to be called before instance destroy to avoid crash.
+	// It is workaround for the known bug in libXext: https://gitlab.freedesktop.org/xorg/lib/libxext/-/issues/3,
+	// that crashes the application inside XCloseDisplay(). The problem seems to be present
+	// especially on Nvidia drivers (reproduced on versions 470.129.06 and 515.65.01, for example).
+	VulkanWindow::finalize();
 #endif
+	instance.destroy();
 }
 
 
 void App::init()
 {
-#if defined(USE_PLATFORM_SDL)
-	// initialize SDL
-	if(SDL_InitSubSystem(SDL_INIT_VIDEO) != 0)
-		throw runtime_error(string("SDL_InitSubSystem(SDL_INIT_VIDEO) function failed. Error details: ") + SDL_GetError());
-	sdlInitialized = true;
-#elif defined(USE_PLATFORM_GLFW)
-	// initialize GLFW
-	if(!glfwInit()) {
-		const char* errorString;
-		int errorCode = glfwGetError(&errorString);
-		throw runtime_error(string("glfwInit() function failed. Error code: ") + to_string(errorCode) + ". Error string: " + errorString);
-	}
-#endif
+	// init VulkanWindow
+	VulkanWindow::init();
 
 	// Vulkan instance
 	instance =
@@ -204,7 +164,7 @@ void App::init()
 
 	// create surface
 	vk::SurfaceKHR surface =
-		window.init(instance, {1024, 768}, appName);
+		window.create(instance, {1024, 768}, appName);
 
 	// find compatible devices
 	vector<vk::PhysicalDevice> deviceList = instance.enumeratePhysicalDevices();
@@ -481,7 +441,7 @@ void App::init()
 
 /** Recreate swapchain and pipeline callback method.
  *  The method is usually called after the window resize and on the application start. */
-void App::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent)
+void App::recreateSwapchain(VulkanWindow&, const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent)
 {
 	// clear resources
 	for(auto v : swapchainImageViews)  device.destroy(v);
@@ -699,7 +659,7 @@ void App::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceCapabilitie
 }
 
 
-void App::frame()
+void App::frame(VulkanWindow&)
 {
 	cout << "x" << flush;
 
@@ -781,7 +741,7 @@ void App::frame()
 	// rendering commands
 	commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);  // bind pipeline
 	commandBuffer.draw(  // draw single triangle
-		3,  // vertexCount
+		4,  // vertexCount
 		1,  // instanceCount
 		0,  // firstVertex
 		uint32_t(frameID)  // firstInstance
@@ -845,14 +805,16 @@ int main(int argc, char* argv[])
 				&App::recreateSwapchain,
 				&app,
 				placeholders::_1,
-				placeholders::_2
+				placeholders::_2,
+				placeholders::_3
 			)
 		);
 		app.window.setFrameCallback(
-			bind(&App::frame, &app),
+			bind(&App::frame, &app, placeholders::_1),
 			app.physicalDevice,
 			app.device
 		);
+		app.window.show();
 		app.window.mainLoop();
 
 	// catch exceptions
@@ -864,5 +826,6 @@ int main(int argc, char* argv[])
 		cout << "Failed because of unspecified exception." << endl;
 	}
 
+	VulkanWindow::finalize();
 	return 0;
 }
