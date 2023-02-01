@@ -27,8 +27,9 @@ public:
 	~App();
 
 	void init();
-	void recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent);
-	void frame();
+	void recreateSwapchain(VulkanWindow& window,
+		const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent);
+	void frame(VulkanWindow& window);
 
 	// Vulkan instance must be destructed as the last Vulkan handle.
 	// It is probably good idea to destroy it after the display connection.
@@ -440,7 +441,8 @@ void App::init()
 
 /** Recreate swapchain and pipeline callback method.
  *  The method is usually called after the window resize and on the application start. */
-void App::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent)
+void App::recreateSwapchain(VulkanWindow&, const vk::SurfaceCapabilitiesKHR& surfaceCapabilities,
+                            vk::Extent2D newSurfaceExtent)
 {
 	// clear resources
 	for(auto v : swapchainImageViews)  device.destroy(v);
@@ -658,7 +660,7 @@ void App::recreateSwapchain(const vk::SurfaceCapabilitiesKHR& surfaceCapabilitie
 }
 
 
-void App::frame()
+void App::frame(VulkanWindow&)
 {
 	cout << "x" << flush;
 
@@ -804,14 +806,16 @@ int main(int argc, char* argv[])
 				&App::recreateSwapchain,
 				&app,
 				placeholders::_1,
-				placeholders::_2
+				placeholders::_2,
+				placeholders::_3
 			)
 		);
 		app.window.setFrameCallback(
-			bind(&App::frame, &app),
+			bind(&App::frame, &app, placeholders::_1),
 			app.physicalDevice,
 			app.device
 		);
+		app.window.show();
 		app.window.mainLoop();
 
 	// catch exceptions

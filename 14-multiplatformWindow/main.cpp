@@ -441,7 +441,8 @@ void App::init()
 
 /** Recreate swapchain and pipeline callback method.
  *  The method is usually called after the window resize and on the application start. */
-void App::recreateSwapchain(VulkanWindow&, const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent)
+void App::recreateSwapchain(VulkanWindow&, const vk::SurfaceCapabilitiesKHR& surfaceCapabilities,
+                            vk::Extent2D newSurfaceExtent)
 {
 	// clear resources
 	for(auto v : swapchainImageViews)  device.destroy(v);
@@ -741,7 +742,7 @@ void App::frame(VulkanWindow&)
 	// rendering commands
 	commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);  // bind pipeline
 	commandBuffer.draw(  // draw single triangle
-		4,  // vertexCount
+		3,  // vertexCount
 		1,  // instanceCount
 		0,  // firstVertex
 		uint32_t(frameID)  // firstInstance
