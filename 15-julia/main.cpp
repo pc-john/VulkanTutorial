@@ -578,7 +578,7 @@ void App::recreateSwapchain(VulkanWindow&, const vk::SurfaceCapabilitiesKHR& sur
 				// input assembly
 				&(const vk::PipelineInputAssemblyStateCreateInfo&)vk::PipelineInputAssemblyStateCreateInfo{  // pInputAssemblyState
 					vk::PipelineInputAssemblyStateCreateFlags(),  // flags
-					vk::PrimitiveTopology::eTriangleList,  // topology
+					vk::PrimitiveTopology::eTriangleStrip,  // topology
 					VK_FALSE  // primitiveRestartEnable
 				},
 
