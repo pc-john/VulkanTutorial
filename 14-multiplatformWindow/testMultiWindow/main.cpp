@@ -820,7 +820,7 @@ void App::frame(VulkanWindow& w)
 	// rendering commands
 	commandBuffer.bindPipeline(vk::PipelineBindPoint::eGraphics, window.pipeline);  // bind pipeline
 	commandBuffer.draw(  // draw single triangle
-		4,  // vertexCount
+		3,  // vertexCount
 		1,  // instanceCount
 		0,  // firstVertex
 		uint32_t(frameID)  // firstInstance
