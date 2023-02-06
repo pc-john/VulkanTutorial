@@ -144,6 +144,7 @@ public:
 	int timer = 0;
 	QtRenderingWindow(QWindow* parent, VulkanWindow* vulkanWindow_) : QWindow(parent), vulkanWindow(vulkanWindow_)  {}
 	bool event(QEvent* event) override;
+	void scheduleFrameTimer();
 };
 
 // Qt global variables
@@ -2346,7 +2347,12 @@ bool QtRenderingWindow::event(QEvent* event)
 			return true;
 
 		case QEvent::Type::Resize: {
-			vulkanWindow->scheduleSwapchainResize();
+			// schedule swapchain resize
+			// (we do not call vulkanWindow->scheduleSwapchainResize() directly
+			// as Resize event might be delivered already inside VulkanWindow::create() function,
+			// resulting in assert error of invalid usage of scheduleFrame(); instead, we schedule frame manually)
+			vulkanWindow->_swapchainResizePending = true;
+			scheduleFrameTimer();
 			return QWindow::event(event);
 		}
 
@@ -2375,18 +2381,24 @@ bool QtRenderingWindow::event(QEvent* event)
 }
 
 
+void QtRenderingWindow::scheduleFrameTimer()
+{
+	// start zero timeout timer
+	if(timer == 0) {
+		timer = startTimer(0);
+		if(timer == 0)
+			throw runtime_error("VulkanWindow::scheduleNextFrame(): Cannot allocate timer.");
+	}
+}
+
+
 void VulkanWindow::scheduleFrame()
 {
 	// assert for valid usage
 	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
 
 	// start zero timeout timer
-	QtRenderingWindow* w = static_cast<QtRenderingWindow*>(_window);
-	if(w->timer == 0) {
-		w->timer = _window->startTimer(0);
-		if(w->timer == 0)
-			throw runtime_error("VulkanWindow::scheduleNextFrame(): Cannot allocate timer.");
-	}
+	static_cast<QtRenderingWindow*>(_window)->scheduleFrameTimer();
 }
 
 
