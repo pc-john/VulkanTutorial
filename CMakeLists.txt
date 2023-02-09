@@ -18,6 +18,7 @@ set(PACKAGES
     13-spinningTriangle
     14-multiplatformWindow
     15-julia
+    16-input
     ff-lag
     ff-win32AndWaylandPerfection
     ff-perfInfo
