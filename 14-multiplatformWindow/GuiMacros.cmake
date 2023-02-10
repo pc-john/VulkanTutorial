@@ -21,15 +21,18 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines inc
 				endif()
 			endif()
 		endif()
-		set(GUI_TYPE ${guiTypeDetected} CACHE STRING "Gui type. Accepted values: default, Win32, Xlib, Wayland, SDL, GLFW, Qt6 and Qt5." FORCE)
+		set(GUI_TYPE ${guiTypeDetected} CACHE STRING "Gui type. Accepted values: default, Win32, Xlib, Wayland, SDL3, SDL2, GLFW, Qt6 and Qt5." FORCE)
 
 	endif()
 
 	# give error on invalid GUI_TYPE
-	set(guiList "Win32" "Xlib" "Wayland" "SDL" "GLFW" "Qt6" "Qt5")
-	if(NOT "${GUI_TYPE}" IN_LIST guiList)
-		message(FATAL_ERROR "GUI_TYPE value is invalid. It must be set to default, Win32, Xlib, Wayland, SDL, GLFW, Qt6 or Qt5.")
+	set(guiList "Win32" "Xlib" "Wayland" "SDL3" "SDL2" "GLFW" "Qt6" "Qt5")
+	if(NOT GUI_TYPE IN_LIST guiList)
+		message(FATAL_ERROR "GUI_TYPE value is invalid. It must be set to default, Win32, Xlib, Wayland, SDL3, SDL2, GLFW, Qt6 or Qt5.")
 	endif()
+
+	# provide a list of valid values in CMake GUI
+	set_property(CACHE GUI_TYPE PROPERTY STRINGS ${guiList})
 
 
 	if("${GUI_TYPE}" STREQUAL "Win32")
@@ -71,12 +74,20 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines inc
 			message(FATAL_ERROR "Not all Wayland variables were detected properly.")
 		endif()
 
-	elseif("${GUI_TYPE}" STREQUAL "SDL")
+	elseif("${GUI_TYPE}" STREQUAL "SDL3")
 
-		# configure for SDL
+		# configure for SDL3
+		find_package(SDL3 REQUIRED)
+		set(${libs} ${${libs}} ${SDL3_LIBRARIES})
+		set(${defines} ${${defines}} USE_PLATFORM_SDL3)
+		set(${includes} ${${includes}} ${SDL3_INCLUDE_DIRS})
+
+	elseif("${GUI_TYPE}" STREQUAL "SDL2")
+
+		# configure for SDL2
 		find_package(SDL2 REQUIRED)
 		set(${libs} ${${libs}} ${SDL2_LIBRARIES})
-		set(${defines} ${${defines}} USE_PLATFORM_SDL)
+		set(${defines} ${${defines}} USE_PLATFORM_SDL2)
 		set(${includes} ${${includes}} ${SDL2_INCLUDE_DIRS})
 
 	elseif("${GUI_TYPE}" STREQUAL "GLFW")

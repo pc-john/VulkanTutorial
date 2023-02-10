@@ -71,7 +71,7 @@ protected:
 	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_wayland_surface" };
 
-#elif defined(USE_PLATFORM_SDL)
+#elif defined(USE_PLATFORM_SDL2)
 
 	struct SDL_Window* _window = nullptr;
 	bool _framePending;
@@ -170,7 +170,7 @@ inline void VulkanWindow::setCloseCallback(const std::function<CloseCallback>& c
 inline void VulkanWindow::setVisible(bool value)  { if(value) show(); else hide(); }
 inline vk::SurfaceKHR VulkanWindow::surface() const  { return _surface; }
 inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return _surfaceExtent; }
-#if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_SDL) || defined(USE_PLATFORM_GLFW)
+#if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_SDL2) || defined(USE_PLATFORM_GLFW)
 inline bool VulkanWindow::isVisible() const  { return _visible; }
 #elif defined(USE_PLATFORM_WAYLAND)
 inline bool VulkanWindow::isVisible() const  { return _xdgSurface != nullptr; }

@@ -9,7 +9,7 @@
 #elif defined(USE_PLATFORM_WAYLAND)
 # include "xdg-shell-client-protocol.h"
 # include "xdg-decoration-client-protocol.h"
-#elif defined(USE_PLATFORM_SDL)
+#elif defined(USE_PLATFORM_SDL2)
 # include "SDL.h"
 # include "SDL_vulkan.h"
 # include <algorithm>
@@ -101,7 +101,7 @@ static xdg_wm_base_listener _xdgWmBaseListener;
 
 
 // SDL global variables
-#if defined(USE_PLATFORM_SDL)
+#if defined(USE_PLATFORM_SDL2)
 static bool sdlInitialized = false;
 static bool running;
 static constexpr const char* windowPointerName = "VulkanWindow";
@@ -376,7 +376,7 @@ void VulkanWindow::init()
 
 	init(nullptr);
 
-#elif defined(USE_PLATFORM_SDL)
+#elif defined(USE_PLATFORM_SDL2)
 
 	// handle multiple init attempts
 	if(sdlInitialized)
@@ -629,7 +629,7 @@ void VulkanWindow::finalize() noexcept
 	_xdgWmBase = nullptr;
 	_zxdgDecorationManagerV1 = nullptr;
 
-#elif defined(USE_PLATFORM_SDL)
+#elif defined(USE_PLATFORM_SDL2)
 
 	// finalize SDL
 	if(sdlInitialized) {
@@ -752,7 +752,7 @@ void VulkanWindow::destroy() noexcept
 		_wlSurface = nullptr;
 	}
 
-#elif defined(USE_PLATFORM_SDL)
+#elif defined(USE_PLATFORM_SDL2)
 
 	if(_window) {
 
@@ -882,7 +882,7 @@ VulkanWindow::VulkanWindow(VulkanWindow&& other)
 	_forcedFrame = other._forcedFrame;
 	_title = move(other._title);
 
-#elif defined(USE_PLATFORM_SDL)
+#elif defined(USE_PLATFORM_SDL2)
 
 	// move SDL members
 	_window = other._window;
@@ -1000,7 +1000,7 @@ VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
 	_forcedFrame = other._forcedFrame;
 	_title = move(other._title);
 
-#elif defined(USE_PLATFORM_SDL)
+#elif defined(USE_PLATFORM_SDL2)
 
 	// move SDL members
 	_window = other._window;
@@ -1067,7 +1067,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	assert(_windowClass && "VulkanWindow class was not initialized. Call VulkanWindow::init() before VulkanWindow::create().");
 #elif defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_WAYLAND)
 	assert(_display && "VulkanWindow class was not initialized. Call VulkanWindow::init() before VulkanWindow::create().");
-#elif defined(USE_PLATFORM_SDL)
+#elif defined(USE_PLATFORM_SDL2)
 	assert(sdlInitialized && "VulkanWindow class was not initialized. Call VulkanWindow::init() before VulkanWindow::create().");
 #elif defined(USE_PLATFORM_QT)
 	assert(qGuiApplication && "VulkanWindow class was not initialized. Call VulkanWindow::init() before VulkanWindow::create().");
@@ -1203,7 +1203,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 		throw runtime_error("wl_display_flush() failed.");
 	return _surface;
 
-#elif defined(USE_PLATFORM_SDL)
+#elif defined(USE_PLATFORM_SDL2)
 
 	// init variables
 	_framePending = true;
@@ -1363,7 +1363,7 @@ void VulkanWindow::renderFrame()
 #elif defined(USE_PLATFORM_WAYLAND)
 		// do nothing here
 		// because _surfaceExtent is set in _xdgToplevelListener's configure callback
-#elif defined(USE_PLATFORM_SDL)
+#elif defined(USE_PLATFORM_SDL2)
 		// get surface size using SDL
 		SDL_Vulkan_GetDrawableSize(_window, reinterpret_cast<int*>(&_surfaceExtent.width), reinterpret_cast<int*>(&_surfaceExtent.height));
 		_surfaceExtent.width  = clamp(_surfaceExtent.width,  surfaceCapabilities.minImageExtent.width,  surfaceCapabilities.maxImageExtent.width);
@@ -1877,7 +1877,7 @@ void VulkanWindow::scheduleFrame()
 }
 
 
-#elif defined(USE_PLATFORM_SDL)
+#elif defined(USE_PLATFORM_SDL2)
 
 
 const vector<const char*>& VulkanWindow::requiredExtensions()
