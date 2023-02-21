@@ -2,6 +2,7 @@
 #if defined(USE_PLATFORM_WIN32)
 # define NOMINMAX  // avoid the definition of min and max macros by windows.h
 # include <windows.h>
+# include <windowsx.h>
 # include <tchar.h>
 #elif defined(USE_PLATFORM_XLIB)
 # include <X11/Xutil.h>
@@ -175,7 +176,82 @@ void VulkanWindow::init()
 		return;
 
 	// window's message handling procedure
-	auto wndProc = [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) noexcept -> LRESULT {
+	auto wndProc = [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) noexcept -> LRESULT
+	{
+		auto handleMouseButton =
+			[](HWND hwnd, size_t mouseButton, VulkanWindow::ButtonAction downOrUp, WPARAM wParam, LPARAM lParam) -> LRESULT
+		{
+			VulkanWindow* window = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
+
+			// handle mods
+			window->_mouseState.mods.set(VulkanWindow::Modifier::Ctrl, wParam & MK_CONTROL);
+			window->_mouseState.mods.set(VulkanWindow::Modifier::Shift, wParam & MK_SHIFT);
+			window->_mouseState.mods.set(VulkanWindow::Modifier::Alt, GetKeyState(VK_MENU)<0);
+
+			// handle mouse move, if any
+			int x = GET_X_LPARAM(lParam);
+			int y = GET_Y_LPARAM(lParam);
+			if(x != window->_mouseState.posX || y != window->_mouseState.posY) {
+				window->_mouseState.posX = x;
+				window->_mouseState.posY = y;
+				if(window->_mouseMoveCallback)
+					window->_mouseMoveCallback(*window, window->_mouseState);
+			}
+
+			// set new state and capture mouse
+			bool prevAny = window->_mouseState.buttons.any();
+			window->_mouseState.buttons.set(mouseButton, downOrUp==VulkanWindow::ButtonAction::Down);
+			bool newAny = window->_mouseState.buttons.any();
+			if(prevAny != newAny) {
+				if(newAny)
+					SetCapture(hwnd);
+				else
+					ReleaseCapture();
+			}
+
+			// callback
+			if(window->_mouseButtonCallback)
+				window->_mouseButtonCallback(*window, mouseButton, downOrUp, window->_mouseState);
+
+			return 0;
+		};
+
+		auto getMouseXButton =
+			[](WPARAM wParam) -> size_t
+		{
+			switch(GET_XBUTTON_WPARAM(wParam)) {
+			case XBUTTON1: return VulkanWindow::MouseButton::X1;
+			case XBUTTON2: return VulkanWindow::MouseButton::X2;
+			default: return VulkanWindow::MouseButton::Unknown;
+			}
+		};
+
+		auto handleMouseWheel =
+			[](VulkanWindow* window, int& wheelVariable, WPARAM wParam, LPARAM lParam) -> LRESULT
+		{
+			// handle mods
+			window->_mouseState.mods.set(VulkanWindow::Modifier::Ctrl, wParam & MK_CONTROL);
+			window->_mouseState.mods.set(VulkanWindow::Modifier::Shift, wParam & MK_SHIFT);
+			window->_mouseState.mods.set(VulkanWindow::Modifier::Alt, GetKeyState(VK_MENU)<0);
+
+			// handle mouse move, if any
+			int x = GET_X_LPARAM(lParam);
+			int y = GET_Y_LPARAM(lParam);
+			if(x != window->_mouseState.posX || y != window->_mouseState.posY) {
+				window->_mouseState.posX = x;
+				window->_mouseState.posY = y;
+				if(window->_mouseMoveCallback)
+					window->_mouseMoveCallback(*window, window->_mouseState);
+			}
+
+			// handle wheel rotation
+			// (value is relative since last wheel message)
+			wheelVariable = GET_WHEEL_DELTA_WPARAM(wParam);
+			if(window->_mouseWheelCallback)
+				window->_mouseWheelCallback(*window, window->_mouseState);
+			return 0;
+		};
+
 		switch(msg)
 		{
 			// erase background message
@@ -241,6 +317,39 @@ void VulkanWindow::init()
 				}
 
 				return 0;
+			}
+
+			// mouse move
+			case WM_MOUSEMOVE: {
+				VulkanWindow* window = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
+				window->_mouseState.posX = GET_X_LPARAM(lParam);
+				window->_mouseState.posY = GET_Y_LPARAM(lParam);
+				window->_mouseState.mods.set(Modifier::Ctrl, wParam & MK_CONTROL);
+				window->_mouseState.mods.set(Modifier::Shift, wParam & MK_SHIFT);
+				window->_mouseState.mods.set(Modifier::Alt, GetKeyState(VK_MENU)<0);
+				if(window->_mouseMoveCallback)
+					window->_mouseMoveCallback(*window, window->_mouseState);
+				return 0;
+			}
+
+			// mouse buttons
+			case WM_LBUTTONDOWN: return handleMouseButton(hwnd, MouseButton::Left,   ButtonAction::Down, wParam, lParam);
+			case WM_LBUTTONUP:   return handleMouseButton(hwnd, MouseButton::Left,   ButtonAction::Up,   wParam, lParam);
+			case WM_RBUTTONDOWN: return handleMouseButton(hwnd, MouseButton::Right,  ButtonAction::Down, wParam, lParam);
+			case WM_RBUTTONUP:   return handleMouseButton(hwnd, MouseButton::Right,  ButtonAction::Up,   wParam, lParam);
+			case WM_MBUTTONDOWN: return handleMouseButton(hwnd, MouseButton::Middle, ButtonAction::Down, wParam, lParam);
+			case WM_MBUTTONUP:   return handleMouseButton(hwnd, MouseButton::Middle, ButtonAction::Up,   wParam, lParam);
+			case WM_XBUTTONDOWN: return handleMouseButton(hwnd, getMouseXButton(wParam), ButtonAction::Down, wParam, lParam);
+			case WM_XBUTTONUP:   return handleMouseButton(hwnd, getMouseXButton(wParam), ButtonAction::Up,   wParam, lParam);
+
+			// vertical and horizontal mouse wheel
+			case WM_MOUSEWHEEL: {
+				VulkanWindow* window = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
+				return handleMouseWheel(window, window->_mouseState.wheelY, wParam, lParam);
+			}
+			case WM_MOUSEHWHEEL: {
+				VulkanWindow* window = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
+				return handleMouseWheel(window, window->_mouseState.wheelX, wParam, lParam);
 			}
 
 			// left mouse button down on non-client window area message

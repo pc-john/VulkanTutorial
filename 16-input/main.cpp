@@ -30,6 +30,9 @@ public:
 	void recreateSwapchain(VulkanWindow& window,
 		const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent);
 	void frame(VulkanWindow& window);
+	void mouseMove(VulkanWindow& window, const VulkanWindow::MouseState& mouseState);
+	void mouseButton(VulkanWindow&, size_t button, VulkanWindow::ButtonAction downOrUp, const VulkanWindow::MouseState& mouseState);
+	void mouseWheel(VulkanWindow& window, const VulkanWindow::MouseState& mouseState);
 
 	// Vulkan instance must be destructed as the last Vulkan handle.
 	// It is probably good idea to destroy it after the display connection.
@@ -63,7 +66,7 @@ public:
 	vk::Pipeline pipeline;
 
 	enum class FrameUpdateMode { OnDemand, Continuous, MaxFrameRate };
-	FrameUpdateMode frameUpdateMode = FrameUpdateMode::Continuous;
+	FrameUpdateMode frameUpdateMode = FrameUpdateMode::OnDemand;
 	size_t frameID = ~size_t(0);
 	size_t fpsNumFrames = ~size_t(0);
 	chrono::high_resolution_clock::time_point fpsStartTime;
@@ -819,6 +822,24 @@ void App::frame(VulkanWindow&)
 }
 
 
+void App::mouseMove(VulkanWindow&, const VulkanWindow::MouseState& s)
+{
+	cout << "m" << flush;
+}
+
+
+void App::mouseButton(VulkanWindow&, size_t button, VulkanWindow::ButtonAction downOrUp, const VulkanWindow::MouseState& s)
+{
+	cout << "b" << flush;
+}
+
+
+void App::mouseWheel(VulkanWindow&, const VulkanWindow::MouseState& s)
+{
+	cout << "w" << flush;
+}
+
+
 int main(int argc, char* argv[])
 {
 	// catch exceptions
@@ -841,6 +862,9 @@ int main(int argc, char* argv[])
 			app.physicalDevice,
 			app.device
 		);
+		app.window.setMouseMoveCallback(bind(&App::mouseMove, &app, placeholders::_1, placeholders::_2));
+		app.window.setMouseButtonCallback(bind(&App::mouseButton, &app, placeholders::_1, placeholders::_2, placeholders::_3, placeholders::_4));
+		app.window.setMouseWheelCallback(bind(&App::mouseWheel, &app, placeholders::_1, placeholders::_2));
 		app.window.show();
 		app.window.mainLoop();
 
