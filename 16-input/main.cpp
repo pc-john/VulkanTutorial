@@ -760,7 +760,7 @@ void App::frame(VulkanWindow&)
 		vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment,  // stageFlags
 		0,  // offset
 		32,  // size
-		&PushData{  // pValues
+		&(const PushData&)PushData{  // pValues
 			-2.f, -2.f, 2.f, 2.f,
 			0,
 			0,

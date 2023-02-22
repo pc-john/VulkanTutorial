@@ -29,9 +29,10 @@ public:
 		static constexpr const size_t Ctrl = 0;
 		static constexpr const size_t Shift = 1;
 		static constexpr const size_t Alt = 2;
+		static constexpr const size_t Meta = 3;
 	};
 	struct MouseState {
-		int posX, posY;
+		int posX, posY;  // position of the mouse in window client area coordinates (relative to the upper-left corner)
 		int relX, relY;  // relative against the state of previous mouse callback
 		std::bitset<32> buttons;
 		std::bitset<32> mods;

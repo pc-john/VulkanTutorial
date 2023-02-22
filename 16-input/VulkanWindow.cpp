@@ -22,6 +22,8 @@
 # include <QGuiApplication>
 # include <QWindow>
 # include <QVulkanInstance>
+# include <QMouseEvent>
+# include <QWheelEvent>
 # include <fstream>
 #endif
 #include <vulkan/vulkan.hpp>
@@ -179,78 +181,78 @@ void VulkanWindow::init()
 	auto wndProc = [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) noexcept -> LRESULT
 	{
 		auto handleMouseButton =
-			[](HWND hwnd, size_t mouseButton, VulkanWindow::ButtonAction downOrUp, WPARAM wParam, LPARAM lParam) -> LRESULT
-		{
-			VulkanWindow* window = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
+			[](HWND hwnd, size_t mouseButton, ButtonAction downOrUp, WPARAM wParam, LPARAM lParam) -> LRESULT
+			{
+				VulkanWindow* window = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 
-			// handle mods
-			window->_mouseState.mods.set(VulkanWindow::Modifier::Ctrl, wParam & MK_CONTROL);
-			window->_mouseState.mods.set(VulkanWindow::Modifier::Shift, wParam & MK_SHIFT);
-			window->_mouseState.mods.set(VulkanWindow::Modifier::Alt, GetKeyState(VK_MENU)<0);
+				// handle mods
+				window->_mouseState.mods.set(Modifier::Ctrl, wParam & MK_CONTROL);
+				window->_mouseState.mods.set(Modifier::Shift, wParam & MK_SHIFT);
+				window->_mouseState.mods.set(Modifier::Alt, GetKeyState(VK_MENU)<0);
 
-			// handle mouse move, if any
-			int x = GET_X_LPARAM(lParam);
-			int y = GET_Y_LPARAM(lParam);
-			if(x != window->_mouseState.posX || y != window->_mouseState.posY) {
-				window->_mouseState.posX = x;
-				window->_mouseState.posY = y;
-				if(window->_mouseMoveCallback)
-					window->_mouseMoveCallback(*window, window->_mouseState);
-			}
+				// handle mouse move, if any
+				int x = GET_X_LPARAM(lParam);
+				int y = GET_Y_LPARAM(lParam);
+				if(x != window->_mouseState.posX || y != window->_mouseState.posY) {
+					window->_mouseState.posX = x;
+					window->_mouseState.posY = y;
+					if(window->_mouseMoveCallback)
+						window->_mouseMoveCallback(*window, window->_mouseState);
+				}
 
-			// set new state and capture mouse
-			bool prevAny = window->_mouseState.buttons.any();
-			window->_mouseState.buttons.set(mouseButton, downOrUp==VulkanWindow::ButtonAction::Down);
-			bool newAny = window->_mouseState.buttons.any();
-			if(prevAny != newAny) {
-				if(newAny)
-					SetCapture(hwnd);
-				else
-					ReleaseCapture();
-			}
+				// set new state and capture mouse
+				bool prevAny = window->_mouseState.buttons.any();
+				window->_mouseState.buttons.set(mouseButton, downOrUp==ButtonAction::Down);
+				bool newAny = window->_mouseState.buttons.any();
+				if(prevAny != newAny) {
+					if(newAny)
+						SetCapture(hwnd);
+					else
+						ReleaseCapture();
+				}
 
-			// callback
-			if(window->_mouseButtonCallback)
-				window->_mouseButtonCallback(*window, mouseButton, downOrUp, window->_mouseState);
+				// callback
+				if(window->_mouseButtonCallback)
+					window->_mouseButtonCallback(*window, mouseButton, downOrUp, window->_mouseState);
 
-			return 0;
-		};
+				return 0;
+			};
 
 		auto getMouseXButton =
 			[](WPARAM wParam) -> size_t
-		{
-			switch(GET_XBUTTON_WPARAM(wParam)) {
-			case XBUTTON1: return VulkanWindow::MouseButton::X1;
-			case XBUTTON2: return VulkanWindow::MouseButton::X2;
-			default: return VulkanWindow::MouseButton::Unknown;
-			}
-		};
+			{
+				switch(GET_XBUTTON_WPARAM(wParam)) {
+				case XBUTTON1: return MouseButton::X1;
+				case XBUTTON2: return MouseButton::X2;
+				default: return MouseButton::Unknown;
+				}
+			};
 
 		auto handleMouseWheel =
 			[](VulkanWindow* window, int& wheelVariable, WPARAM wParam, LPARAM lParam) -> LRESULT
-		{
-			// handle mods
-			window->_mouseState.mods.set(VulkanWindow::Modifier::Ctrl, wParam & MK_CONTROL);
-			window->_mouseState.mods.set(VulkanWindow::Modifier::Shift, wParam & MK_SHIFT);
-			window->_mouseState.mods.set(VulkanWindow::Modifier::Alt, GetKeyState(VK_MENU)<0);
+			{
+				// handle mods
+				window->_mouseState.mods.set(Modifier::Ctrl, wParam & MK_CONTROL);
+				window->_mouseState.mods.set(Modifier::Shift, wParam & MK_SHIFT);
+				window->_mouseState.mods.set(Modifier::Alt, GetKeyState(VK_MENU)<0);
 
-			// handle mouse move, if any
-			int x = GET_X_LPARAM(lParam);
-			int y = GET_Y_LPARAM(lParam);
-			if(x != window->_mouseState.posX || y != window->_mouseState.posY) {
-				window->_mouseState.posX = x;
-				window->_mouseState.posY = y;
-				if(window->_mouseMoveCallback)
-					window->_mouseMoveCallback(*window, window->_mouseState);
-			}
+				// handle mouse move, if any
+				int x = GET_X_LPARAM(lParam);
+				int y = GET_Y_LPARAM(lParam);
+				if(x != window->_mouseState.posX || y != window->_mouseState.posY) {
+					window->_mouseState.posX = x;
+					window->_mouseState.posY = y;
+					if(window->_mouseMoveCallback)
+						window->_mouseMoveCallback(*window, window->_mouseState);
+				}
 
-			// handle wheel rotation
-			// (value is relative since last wheel message)
-			wheelVariable = GET_WHEEL_DELTA_WPARAM(wParam);
-			if(window->_mouseWheelCallback)
-				window->_mouseWheelCallback(*window, window->_mouseState);
-			return 0;
-		};
+				// handle wheel rotation
+				// (value is relative since last wheel message)
+				wheelVariable = GET_WHEEL_DELTA_WPARAM(wParam);
+				if(window->_mouseWheelCallback)
+					window->_mouseWheelCallback(*window, window->_mouseState);
+				return 0;
+			};
 
 		switch(msg)
 		{
@@ -2431,6 +2433,50 @@ bool QtRenderingWindow::event(QEvent* event)
 {
 	try {
 
+		auto getMouseButton =
+			[](QMouseEvent* e) -> size_t {
+				switch(e->button()) {
+				case Qt::LeftButton: return VulkanWindow::MouseButton::Left;
+				case Qt::RightButton: return VulkanWindow::MouseButton::Right;
+				case Qt::MiddleButton: return VulkanWindow::MouseButton::Middle;
+				case Qt::XButton1: return VulkanWindow::MouseButton::X1;
+				case Qt::XButton2: return VulkanWindow::MouseButton::X2;
+				default: return VulkanWindow::MouseButton::Unknown;
+				}
+			};
+
+		auto handleMouseButton =
+			[](VulkanWindow* vulkanWindow, QMouseEvent* e, size_t mouseButton, VulkanWindow::ButtonAction downOrUp) -> bool {
+
+				// handle mods
+				Qt::KeyboardModifiers m = e->modifiers();
+				vulkanWindow->_mouseState.mods.set(VulkanWindow::Modifier::Ctrl, m & Qt::ControlModifier);
+				vulkanWindow->_mouseState.mods.set(VulkanWindow::Modifier::Shift, m & Qt::ShiftModifier);
+				vulkanWindow->_mouseState.mods.set(VulkanWindow::Modifier::Alt, m & Qt::AltModifier);
+				vulkanWindow->_mouseState.mods.set(VulkanWindow::Modifier::Meta, m & Qt::MetaModifier);
+
+				// handle mouse move, if any
+#if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
+				QPoint p = e->position().toPoint();
+#else
+				QPoint p = e->pos();
+#endif
+				if(vulkanWindow->_mouseState.posX != p.x() ||
+				   vulkanWindow->_mouseState.posY != p.y())
+				{
+					vulkanWindow->_mouseState.posX = p.x();
+					vulkanWindow->_mouseState.posY = p.y();
+					if(vulkanWindow->_mouseMoveCallback)
+						vulkanWindow->_mouseMoveCallback(*vulkanWindow, vulkanWindow->_mouseState);
+				}
+
+				// callback
+				if(vulkanWindow->_mouseButtonCallback)
+					vulkanWindow->_mouseButtonCallback(*vulkanWindow, mouseButton, downOrUp, vulkanWindow->_mouseState);
+				return true;
+
+			};
+
 		// handle verious events
 		switch(event->type()) {
 
@@ -2463,6 +2509,65 @@ bool QtRenderingWindow::event(QEvent* event)
 			vulkanWindow->_swapchainResizePending = true;
 			scheduleFrameTimer();
 			return QWindow::event(event);
+		}
+
+		// handle mouse events
+		case QEvent::Type::MouseMove: {
+			QMouseEvent* e = static_cast<QMouseEvent*>(event);
+			Qt::KeyboardModifiers m = e->modifiers();
+			vulkanWindow->_mouseState.mods.set(VulkanWindow::Modifier::Ctrl, m & Qt::ControlModifier);
+			vulkanWindow->_mouseState.mods.set(VulkanWindow::Modifier::Shift, m & Qt::ShiftModifier);
+			vulkanWindow->_mouseState.mods.set(VulkanWindow::Modifier::Alt, m & Qt::AltModifier);
+			vulkanWindow->_mouseState.mods.set(VulkanWindow::Modifier::Meta, m & Qt::MetaModifier);
+#if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
+			QPoint p = e->position().toPoint();
+#else
+			QPoint p = e->pos();
+#endif
+			vulkanWindow->_mouseState.posX = p.x();
+			vulkanWindow->_mouseState.posY = p.y();
+			if(vulkanWindow->_mouseMoveCallback)
+				vulkanWindow->_mouseMoveCallback(*vulkanWindow, vulkanWindow->_mouseState);
+			return true;
+		}
+		case QEvent::Type::MouseButtonPress: {
+			QMouseEvent* e = static_cast<QMouseEvent*>(event);
+			return handleMouseButton(vulkanWindow, e, getMouseButton(e), VulkanWindow::ButtonAction::Down);
+		}
+		case QEvent::Type::MouseButtonRelease: {
+			QMouseEvent* e = static_cast<QMouseEvent*>(event);
+			return handleMouseButton(vulkanWindow, e, getMouseButton(e), VulkanWindow::ButtonAction::Up);
+		}
+		case QEvent::Type::Wheel: {
+
+			// handle mods
+			QWheelEvent* e = static_cast<QWheelEvent*>(event);
+			Qt::KeyboardModifiers m = e->modifiers();
+			vulkanWindow->_mouseState.mods.set(VulkanWindow::Modifier::Ctrl, m & Qt::ControlModifier);
+			vulkanWindow->_mouseState.mods.set(VulkanWindow::Modifier::Shift, m & Qt::ShiftModifier);
+			vulkanWindow->_mouseState.mods.set(VulkanWindow::Modifier::Alt, m & Qt::AltModifier);
+			vulkanWindow->_mouseState.mods.set(VulkanWindow::Modifier::Meta, m & Qt::MetaModifier);
+
+			// handle mouse move, if any
+			QPoint p = e->position().toPoint();
+			if(vulkanWindow->_mouseState.posX != p.x() ||
+				vulkanWindow->_mouseState.posY != p.y())
+			{
+				vulkanWindow->_mouseState.posX = p.x();
+				vulkanWindow->_mouseState.posY = p.y();
+				if(vulkanWindow->_mouseMoveCallback)
+					vulkanWindow->_mouseMoveCallback(*vulkanWindow, vulkanWindow->_mouseState);
+			}
+
+			// handle wheel rotation
+			// (value is relative since last wheel event)
+			p = e->angleDelta();
+			vulkanWindow->_mouseState.wheelX = p.x();
+			vulkanWindow->_mouseState.wheelY = p.y();
+			if(vulkanWindow->_mouseWheelCallback)
+				vulkanWindow->_mouseWheelCallback(*vulkanWindow, vulkanWindow->_mouseState);
+			return true;
+
 		}
 
 		// hide window on close
