@@ -1247,7 +1247,8 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 
 	// create window
 	XSetWindowAttributes attr;
-	attr.event_mask = ExposureMask | StructureNotifyMask | VisibilityChangeMask | PropertyChangeMask;
+	attr.event_mask = ExposureMask | StructureNotifyMask | VisibilityChangeMask | PropertyChangeMask |
+	                  PointerMotionMask | ButtonPressMask | ButtonReleaseMask;
 	_window =
 		XCreateWindow(
 			_display,  // display
@@ -1739,6 +1740,26 @@ void VulkanWindow::updateMinimized()
 
 void VulkanWindow::mainLoop()
 {
+	// mouse functions
+	auto handleModifiers =
+		[](VulkanWindow* w, unsigned int state)
+		{
+			w->_mouseState.mods.set(VulkanWindow::Modifier::Ctrl,  state & ControlMask);
+			w->_mouseState.mods.set(VulkanWindow::Modifier::Shift, state & ShiftMask);
+		};
+	auto handleMouseMove =
+		[](VulkanWindow* w, int newX, int newY)
+		{
+			if(w->_mouseState.posX != newX ||
+				w->_mouseState.posY != newY)
+			{
+				w->_mouseState.posX = newX;
+				w->_mouseState.posY = newY;
+				if(w->_mouseMoveCallback)
+					w->_mouseMoveCallback(*w, w->_mouseState);
+			}
+		};
+
 	// run Xlib event loop
 	XEvent e;
 	running = true;
@@ -1774,6 +1795,33 @@ void VulkanWindow::mainLoop()
 				w->scheduleSwapchainResize();
 			}
 			continue;
+		}
+
+		// mouse events
+		if(e.type == MotionNotify) {
+			handleModifiers(w, e.xmotion.state);
+			handleMouseMove(w, e.xmotion.x, e.xmotion.y);
+			continue;
+		}
+		if(e.type == ButtonPress) {
+			handleModifiers(w, e.xbutton.state);
+			handleMouseMove(w, e.xbutton.x, e.xbutton.y);
+			if(e.xbutton.button != Button4 && e.xbutton.button != Button5) {
+				if(w->_mouseButtonCallback)
+					w->_mouseButtonCallback(*w, e.xbutton.button-1, ButtonAction::Down, w->_mouseState);
+			}
+			else {
+				w->_mouseState.wheelY = (e.xbutton.button == Button5) ? 1 : -1;
+				if(w->_mouseWheelCallback)
+					w->_mouseWheelCallback(*w, w->_mouseState);
+			}
+		}
+		if(e.type == ButtonRelease) {
+			handleModifiers(w, e.xbutton.state);
+			handleMouseMove(w, e.xbutton.x, e.xbutton.y);
+			if(e.xbutton.button != Button4 && e.xbutton.button != Button5)
+				if(w->_mouseButtonCallback)
+					w->_mouseButtonCallback(*w, e.xbutton.button-1, ButtonAction::Up, w->_mouseState);
 		}
 
 		// map, unmap, obscured, unobscured
