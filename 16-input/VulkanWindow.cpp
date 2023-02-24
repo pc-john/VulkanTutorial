@@ -18,6 +18,7 @@
 #elif defined(USE_PLATFORM_GLFW)
 # define GLFW_INCLUDE_NONE  // do not include OpenGL headers
 # include <GLFW/glfw3.h>
+# include <cmath>
 #elif defined(USE_PLATFORM_QT)
 # include <QGuiApplication>
 # include <QWindow>
@@ -1411,6 +1412,51 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 				w->hide();
 				VulkanWindow::exitMainLoop();
 			}
+		}
+	);
+
+	glfwSetCursorPosCallback(
+		_window,
+		[](GLFWwindow* window, double xpos, double ypos) {
+			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
+			int x = lround(xpos);
+			int y = lround(ypos);
+			if(w->_mouseState.posX != x ||
+			   w->_mouseState.posY != y)
+			{
+				w->_mouseState.posX = x;
+				w->_mouseState.posY = y;
+				if(w->_mouseMoveCallback)
+					w->_mouseMoveCallback(*w, w->_mouseState);
+			}
+		}
+	);
+	glfwSetMouseButtonCallback(
+		_window,
+		[](GLFWwindow* window, int button, int action, int mods) {
+			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
+			size_t b;
+			switch(button) {
+			case GLFW_MOUSE_BUTTON_LEFT:   b = MouseButton::Left; break;
+			case GLFW_MOUSE_BUTTON_RIGHT:  b = MouseButton::Right; break;
+			case GLFW_MOUSE_BUTTON_MIDDLE: b = MouseButton::Middle; break;
+			case GLFW_MOUSE_BUTTON_4:      b = MouseButton::X1; break;
+			case GLFW_MOUSE_BUTTON_5:      b = MouseButton::X2; break;
+			default: b = MouseButton::Unknown;
+			}
+			ButtonAction a = (action == GLFW_PRESS) ? ButtonAction::Down : ButtonAction::Up;
+			if(w->_mouseButtonCallback)
+				w->_mouseButtonCallback(*w, b, a, w->_mouseState);
+		}
+	);
+	glfwSetScrollCallback(
+		_window,
+		[](GLFWwindow* window, double xoffset, double yoffset) {
+			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
+			w->_mouseState.wheelX = lround(xoffset);
+			w->_mouseState.wheelY = lround(yoffset);
+			if(w->_mouseWheelCallback)
+				w->_mouseWheelCallback(*w, w->_mouseState);
 		}
 	);
 
