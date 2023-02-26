@@ -98,6 +98,8 @@ protected:
 	static inline struct wl_compositor* _compositor = nullptr;
 	static inline struct xdg_wm_base* _xdgWmBase = nullptr;
 	static inline struct zxdg_decoration_manager_v1* _zxdgDecorationManagerV1 = nullptr;
+	static inline struct wl_seat* _seat = nullptr;
+	static inline struct wl_pointer* _pointer = nullptr;
 
 	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_wayland_surface" };

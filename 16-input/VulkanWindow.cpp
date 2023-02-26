@@ -10,6 +10,7 @@
 #elif defined(USE_PLATFORM_WAYLAND)
 # include "xdg-shell-client-protocol.h"
 # include "xdg-decoration-client-protocol.h"
+# include <map>
 #elif defined(USE_PLATFORM_SDL2)
 # include "SDL.h"
 # include "SDL_vulkan.h"
@@ -89,6 +90,8 @@ static bool running;  // bool indicating that application is running and it shal
 #if defined(USE_PLATFORM_WAYLAND)
 static bool externalDisplayHandle;
 static bool running;  // bool indicating that application is running and it shall not leave main loop
+static map<wl_surface*, VulkanWindow*> surface2windowMap;
+static VulkanWindow* windowUnderPointer = nullptr;
 
 // listeners
 struct WaylandListeners {
@@ -99,8 +102,10 @@ struct WaylandListeners {
 };
 
 // global listeners
-static wl_registry_listener _registryListener;
-static xdg_wm_base_listener _xdgWmBaseListener;
+static wl_registry_listener registryListener;
+static xdg_wm_base_listener xdgWmBaseListener;
+static wl_seat_listener seatListener;
+static wl_pointer_listener pointerListener;
 #endif
 
 
@@ -609,7 +614,7 @@ void VulkanWindow::init(void* data)
 	_registry = wl_display_get_registry(_display);
 	if(_registry == nullptr)
 		throw runtime_error("Cannot get Wayland registry object.");
-	_registryListener = {
+	registryListener = {
 		.global =
 			[](void*, wl_registry* registry, uint32_t name, const char* interface, uint32_t version) {
 				if(strcmp(interface, wl_compositor_interface.name) == 0)
@@ -621,29 +626,132 @@ void VulkanWindow::init(void* data)
 				else if(strcmp(interface, zxdg_decoration_manager_v1_interface.name) == 0)
 					_zxdgDecorationManagerV1 = static_cast<zxdg_decoration_manager_v1*>(
 						wl_registry_bind(registry, name, &zxdg_decoration_manager_v1_interface, 1));
+				else if(strcmp(interface, "wl_seat") == 0)
+					_seat = static_cast<wl_seat*>(wl_registry_bind(registry, name, &wl_seat_interface, 1));
 			},
 		.global_remove =
 			[](void*, wl_registry*, uint32_t) {
 			},
 	};
-	if(wl_registry_add_listener(_registry, &_registryListener, nullptr))
+	if(wl_registry_add_listener(_registry, &registryListener, nullptr))
 		throw runtime_error("wl_registry_add_listener() failed.");
 
 	// get and init global objects
 	if(wl_display_roundtrip(_display) == -1)
 		throw runtime_error("wl_display_roundtrip() failed.");
 	if(_compositor == nullptr)
-		throw runtime_error("Cannot get Wayland compositor object.");
+		throw runtime_error("Cannot get Wayland wl_compositor object.");
 	if(_xdgWmBase == nullptr)
 		throw runtime_error("Cannot get Wayland xdg_wm_base object.");
-	_xdgWmBaseListener = {
+	xdgWmBaseListener = {
 		.ping =
 			[](void*, xdg_wm_base* xdg, uint32_t serial) {
 				xdg_wm_base_pong(xdg, serial);
 			}
 	};
-	if(xdg_wm_base_add_listener(_xdgWmBase, &_xdgWmBaseListener, nullptr))
+	if(xdg_wm_base_add_listener(_xdgWmBase, &xdgWmBaseListener, nullptr))
 		throw runtime_error("xdg_wm_base_add_listener() failed.");
+	if(_seat == nullptr)
+		throw runtime_error("Cannot get Wayland wl_seat object.");
+	seatListener = {
+		.capabilities =
+			[](void* data, wl_seat* seat, uint32_t capabilities) {
+				if(capabilities & WL_SEAT_CAPABILITY_POINTER) {
+					_pointer = wl_seat_get_pointer(seat);
+				}
+			},
+	};
+	if(wl_seat_add_listener(_seat, &seatListener, nullptr))
+		throw runtime_error("wl_seat_add_listener() failed.");
+	if(wl_display_roundtrip(_display) == -1)
+		throw runtime_error("wl_display_roundtrip() failed.");
+
+	pointerListener = {
+		.enter =
+			[](void* data, wl_pointer* pointer, uint32_t serial, wl_surface* surface,
+			   wl_fixed_t surface_x, wl_fixed_t surface_y)
+			{
+				auto it = surface2windowMap.find(surface);
+				if(it == surface2windowMap.end()) {
+					// unknown window
+					windowUnderPointer = nullptr;
+					return;
+				}
+				windowUnderPointer = it->second;
+
+				if(windowUnderPointer == nullptr)  cout << "nullptr enter" << endl;
+				int x = surface_x >> 8;
+				int y = surface_y >> 8;
+				if(windowUnderPointer->_mouseState.posX != x ||
+					windowUnderPointer->_mouseState.posY != y)
+				{
+					windowUnderPointer->_mouseState.posX = x;
+					windowUnderPointer->_mouseState.posY = y;
+					if(windowUnderPointer->_mouseMoveCallback)
+						windowUnderPointer->_mouseMoveCallback(*windowUnderPointer, windowUnderPointer->_mouseState);
+				}
+			},
+		.leave =
+			[](void* data, wl_pointer* pointer, uint32_t serial, wl_surface* surface) {
+				windowUnderPointer = nullptr;
+			},
+		.motion =
+			[](void* data, wl_pointer* pointer, uint32_t time, wl_fixed_t surface_x, wl_fixed_t surface_y)
+			{
+				// handle unknown window
+				if(windowUnderPointer == nullptr)
+					return;
+
+				int x = surface_x >> 8;
+				int y = surface_y >> 8;
+				if(windowUnderPointer->_mouseState.posX != x ||
+					windowUnderPointer->_mouseState.posY != y)
+				{
+					windowUnderPointer->_mouseState.posX = x;
+					windowUnderPointer->_mouseState.posY = y;
+					if(windowUnderPointer->_mouseMoveCallback)
+						windowUnderPointer->_mouseMoveCallback(*windowUnderPointer, windowUnderPointer->_mouseState);
+				}
+			},
+		.button =
+			[](void* data, wl_pointer* pointer, uint32_t serial, uint32_t time, uint32_t button, uint32_t state)
+			{
+				// handle unknown window
+				if(windowUnderPointer == nullptr)
+					return;
+
+				size_t index;
+				switch(button) {
+				// button codes taken from linux/input-event-codes.h
+				case 0x110: index = MouseButton::Left; break;
+				case 0x111: index = MouseButton::Right; break;
+				case 0x112: index = MouseButton::Middle; break;
+				default: index = MouseButton::Unknown;
+				}
+				windowUnderPointer->_mouseState.buttons.set(index, state == WL_POINTER_BUTTON_STATE_PRESSED);
+				if(windowUnderPointer->_mouseButtonCallback) {
+					ButtonAction a = (state == WL_POINTER_BUTTON_STATE_PRESSED) ? ButtonAction::Down : ButtonAction::Up;
+					windowUnderPointer->_mouseButtonCallback(*windowUnderPointer, index, a, windowUnderPointer->_mouseState);
+				}
+			},
+		.axis =
+			[](void* data, wl_pointer* pointer, uint32_t time, uint32_t axis, wl_fixed_t value)
+			{
+				// handle unknown window
+				if(windowUnderPointer == nullptr)
+					return;
+
+				int v = value >> 8;
+				if(axis == WL_POINTER_AXIS_VERTICAL_SCROLL)
+					windowUnderPointer->_mouseState.wheelY = v;
+				else if(axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL)
+					windowUnderPointer->_mouseState.wheelX = v;
+				if(windowUnderPointer->_mouseWheelCallback)
+					windowUnderPointer->_mouseWheelCallback(*windowUnderPointer, windowUnderPointer->_mouseState);
+			},
+	};
+	if(wl_pointer_add_listener(_pointer, &pointerListener, nullptr))
+		throw runtime_error("wl_pointer_add_listener() failed.");
 
 #elif defined(USE_PLATFORM_QT)
 
@@ -729,6 +837,14 @@ void VulkanWindow::finalize() noexcept
 
 #elif defined(USE_PLATFORM_WAYLAND)
 
+	if(_pointer) {
+		wl_pointer_release(_pointer);
+		_pointer = nullptr;
+	}
+	if(_seat) {
+		wl_seat_release(_seat);
+		_seat = nullptr;
+	}
 	if(_xdgWmBase) {
 		xdg_wm_base_destroy(_xdgWmBase);
 		_xdgWmBase = nullptr;
@@ -843,6 +959,11 @@ void VulkanWindow::destroy() noexcept
 	}
 
 #elif defined(USE_PLATFORM_WAYLAND)
+
+	// erase from global map
+	surface2windowMap.erase(_wlSurface);
+	if(windowUnderPointer == this)
+		windowUnderPointer = nullptr;
 
 	// release resources
 	if(_scheduledFrameCallback) {
@@ -996,6 +1117,11 @@ VulkanWindow::VulkanWindow(VulkanWindow&& other)
 	_forcedFrame = other._forcedFrame;
 	_title = move(other._title);
 
+	// update global map
+	auto it = surface2windowMap.find(_wlSurface);
+	if(it != surface2windowMap.end())
+		it->second = this;
+
 #elif defined(USE_PLATFORM_SDL2)
 
 	// move SDL members
@@ -1113,6 +1239,11 @@ VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
 		other._listeners->vulkanWindow = &other;
 	_forcedFrame = other._forcedFrame;
 	_title = move(other._title);
+
+	// update global map
+	auto it = surface2windowMap.find(_wlSurface);
+	if(it != surface2windowMap.end())
+		it->second = this;
 
 #elif defined(USE_PLATFORM_SDL2)
 
@@ -1292,6 +1423,9 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	_wlSurface = wl_compositor_create_surface(_compositor);
 	if(_wlSurface == nullptr)
 		throw runtime_error("wl_compositor_create_surface() failed.");
+
+	// update surface2windowMap
+	surface2windowMap.insert_or_assign(_wlSurface, this);
 
 	// frame listener
 	_listeners->frameListener = {

@@ -95,8 +95,8 @@ struct WaylandListeners {
 };
 
 // global listeners
-static wl_registry_listener _registryListener;
-static xdg_wm_base_listener _xdgWmBaseListener;
+static wl_registry_listener registryListener;
+static xdg_wm_base_listener xdgWmBaseListener;
 #endif
 
 
@@ -495,7 +495,7 @@ void VulkanWindow::init(void* data)
 	_registry = wl_display_get_registry(_display);
 	if(_registry == nullptr)
 		throw runtime_error("Cannot get Wayland registry object.");
-	_registryListener = {
+	registryListener = {
 		.global =
 			[](void*, wl_registry* registry, uint32_t name, const char* interface, uint32_t version) {
 				if(strcmp(interface, wl_compositor_interface.name) == 0)
@@ -512,7 +512,7 @@ void VulkanWindow::init(void* data)
 			[](void*, wl_registry*, uint32_t) {
 			},
 	};
-	if(wl_registry_add_listener(_registry, &_registryListener, nullptr))
+	if(wl_registry_add_listener(_registry, &registryListener, nullptr))
 		throw runtime_error("wl_registry_add_listener() failed.");
 
 	// get and init global objects
@@ -522,13 +522,13 @@ void VulkanWindow::init(void* data)
 		throw runtime_error("Cannot get Wayland compositor object.");
 	if(_xdgWmBase == nullptr)
 		throw runtime_error("Cannot get Wayland xdg_wm_base object.");
-	_xdgWmBaseListener = {
+	xdgWmBaseListener = {
 		.ping =
 			[](void*, xdg_wm_base* xdg, uint32_t serial) {
 				xdg_wm_base_pong(xdg, serial);
 			}
 	};
-	if(xdg_wm_base_add_listener(_xdgWmBase, &_xdgWmBaseListener, nullptr))
+	if(xdg_wm_base_add_listener(_xdgWmBase, &xdgWmBaseListener, nullptr))
 		throw runtime_error("xdg_wm_base_add_listener() failed.");
 
 #elif defined(USE_PLATFORM_QT)
