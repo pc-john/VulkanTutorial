@@ -15,6 +15,7 @@
 # include "SDL.h"
 # include "SDL_vulkan.h"
 # include <algorithm>
+# include <cmath>
 # include <memory>
 #elif defined(USE_PLATFORM_GLFW)
 # define GLFW_INCLUDE_NONE  // do not include OpenGL headers
@@ -1552,7 +1553,8 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 
 	glfwSetCursorPosCallback(
 		_window,
-		[](GLFWwindow* window, double xpos, double ypos) {
+		[](GLFWwindow* window, double xpos, double ypos)
+		{
 			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
 			int x = lround(xpos);
 			int y = lround(ypos);
@@ -1568,7 +1570,8 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	);
 	glfwSetMouseButtonCallback(
 		_window,
-		[](GLFWwindow* window, int button, int action, int mods) {
+		[](GLFWwindow* window, int button, int action, int mods)
+		{
 			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
 			size_t b;
 			switch(button) {
@@ -1580,6 +1583,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 			default: b = MouseButton::Unknown;
 			}
 			ButtonAction a = (action == GLFW_PRESS) ? ButtonAction::Down : ButtonAction::Up;
+			w->_mouseState.buttons.set(b, action == GLFW_PRESS);
 			if(w->_mouseButtonCallback)
 				w->_mouseButtonCallback(*w, b, a, w->_mouseState);
 		}
@@ -1588,8 +1592,8 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 		_window,
 		[](GLFWwindow* window, double xoffset, double yoffset) {
 			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
-			w->_mouseState.wheelX = lround(xoffset);
-			w->_mouseState.wheelY = lround(yoffset);
+			w->_mouseState.wheelX = lround(xoffset*120);
+			w->_mouseState.wheelY = lround(yoffset*120);
 			if(w->_mouseWheelCallback)
 				w->_mouseWheelCallback(*w, w->_mouseState);
 		}
@@ -2334,7 +2338,8 @@ void VulkanWindow::mainLoop()
 			default: mouseButton = MouseButton::Unknown;
 			}
 
-			// callback
+			// callback with new button state
+			w->_mouseState.buttons.set(mouseButton, downOrUp==ButtonAction::Down);
 			if(w->_mouseButtonCallback)
 				w->_mouseButtonCallback(*w, mouseButton, downOrUp, w->_mouseState);
 		};
@@ -2470,8 +2475,13 @@ void VulkanWindow::mainLoop()
 
 			// handle wheel rotation
 			// (value is relative since last wheel event)
-			w->_mouseState.wheelX = event.wheel.x;
-			w->_mouseState.wheelY = event.wheel.y;
+#if SDL_MAJOR_VERSION == 2 || SDL_MINOR_VERSION >= 18
+			w->_mouseState.wheelX = lround(event.wheel.preciseX*120);
+			w->_mouseState.wheelY = lround(event.wheel.preciseY*120);
+#else
+			w->_mouseState.wheelX = event.wheel.x*120;
+			w->_mouseState.wheelY = event.wheel.y*120;
+#endif
 			if(w->_mouseWheelCallback)
 				w->_mouseWheelCallback(*w, w->_mouseState);
 			break;
@@ -2793,7 +2803,8 @@ bool QtRenderingWindow::event(QEvent* event)
 						vulkanWindow->_mouseMoveCallback(*vulkanWindow, vulkanWindow->_mouseState);
 				}
 
-				// callback
+				// callback with new button state
+				vulkanWindow->_mouseState.buttons.set(mouseButton, downOrUp==VulkanWindow::ButtonAction::Down);
 				if(vulkanWindow->_mouseButtonCallback)
 					vulkanWindow->_mouseButtonCallback(*vulkanWindow, mouseButton, downOrUp, vulkanWindow->_mouseState);
 				return true;

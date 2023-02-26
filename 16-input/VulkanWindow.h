@@ -138,7 +138,7 @@ protected:
 	std::function<RecreateSwapchainCallback> _recreateSwapchainCallback;
 	std::function<CloseCallback> _closeCallback;
 
-	MouseState _mouseState;
+	MouseState _mouseState = {};
 	std::function<MouseMoveCallback> _mouseMoveCallback;
 	std::function<MouseButtonCallback> _mouseButtonCallback;
 	std::function<MouseWheelCallback> _mouseWheelCallback;

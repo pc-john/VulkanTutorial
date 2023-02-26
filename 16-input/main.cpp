@@ -824,19 +824,20 @@ void App::frame(VulkanWindow&)
 
 void App::mouseMove(VulkanWindow&, const VulkanWindow::MouseState& s)
 {
-	cout << "m" << flush;
+	cout << "m(" << s.posX << "," << s.posY << ")" << flush;
 }
 
 
 void App::mouseButton(VulkanWindow&, size_t button, VulkanWindow::ButtonAction downOrUp, const VulkanWindow::MouseState& s)
 {
-	cout << "b" << flush;
+	string d = (downOrUp == VulkanWindow::ButtonAction::Down) ? "D" : "U";
+	cout << "b" << button << d << "[" << hex << s.buttons.to_ulong() << dec << "]" << flush;
 }
 
 
 void App::mouseWheel(VulkanWindow&, const VulkanWindow::MouseState& s)
 {
-	cout << "w" << flush;
+	cout << "w(" << s.wheelX << "," << s.wheelY << ")" << flush;
 }
 
 
