@@ -1904,6 +1904,18 @@ void VulkanWindow::mainLoop()
 					w->_mouseMoveCallback(*w, w->_mouseState);
 			}
 		};
+	auto getMouseButton =
+		[](unsigned int button) -> size_t
+		{
+			switch(button) {
+			case Button1: return MouseButton::Left;
+			case Button2: return MouseButton::Middle;
+			case Button3: return MouseButton::Right;
+			case 8: return MouseButton::X1;
+			case 9: return MouseButton::X2;
+			default: return MouseButton::Unknown;
+			}
+		};
 
 	// run Xlib event loop
 	XEvent e;
@@ -1951,12 +1963,21 @@ void VulkanWindow::mainLoop()
 		if(e.type == ButtonPress) {
 			handleModifiers(w, e.xbutton.state);
 			handleMouseMove(w, e.xbutton.x, e.xbutton.y);
-			if(e.xbutton.button != Button4 && e.xbutton.button != Button5) {
+			if(e.xbutton.button < Button4 || e.xbutton.button > 7) {
+				size_t button = getMouseButton(e.xbutton.button);
+				w->_mouseState.buttons.set(button, true);
 				if(w->_mouseButtonCallback)
-					w->_mouseButtonCallback(*w, e.xbutton.button-1, ButtonAction::Down, w->_mouseState);
+					w->_mouseButtonCallback(*w, button, ButtonAction::Down, w->_mouseState);
 			}
 			else {
-				w->_mouseState.wheelY = (e.xbutton.button == Button5) ? 1 : -1;
+				if(e.xbutton.button <= Button5) {
+					w->_mouseState.wheelY = (e.xbutton.button == Button5) ? -120 : 120;
+					w->_mouseState.wheelX = 0;
+				}
+				else {
+					w->_mouseState.wheelX = (e.xbutton.button == 6) ? -120 : 120;
+					w->_mouseState.wheelY = 0;
+				}
 				if(w->_mouseWheelCallback)
 					w->_mouseWheelCallback(*w, w->_mouseState);
 			}
@@ -1964,9 +1985,12 @@ void VulkanWindow::mainLoop()
 		if(e.type == ButtonRelease) {
 			handleModifiers(w, e.xbutton.state);
 			handleMouseMove(w, e.xbutton.x, e.xbutton.y);
-			if(e.xbutton.button != Button4 && e.xbutton.button != Button5)
+			if(e.xbutton.button < Button4 || e.xbutton.button > 7) {
+				size_t button = getMouseButton(e.xbutton.button);
+				w->_mouseState.buttons.set(button, false);
 				if(w->_mouseButtonCallback)
-					w->_mouseButtonCallback(*w, e.xbutton.button-1, ButtonAction::Up, w->_mouseState);
+					w->_mouseButtonCallback(*w, button, ButtonAction::Up, w->_mouseState);
+			}
 		}
 
 		// map, unmap, obscured, unobscured
