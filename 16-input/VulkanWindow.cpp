@@ -254,11 +254,12 @@ void VulkanWindow::init()
 				}
 			};
 		auto handleMouseWheel =
-			[](VulkanWindow* window, int& wheelVariable, WPARAM wParam, LPARAM lParam) -> LRESULT
+			[](VulkanWindow* window, int& wheelVariable, int& setZeroVariable, WPARAM wParam, LPARAM lParam) -> LRESULT
 			{
 				// handle wheel rotation
 				// (value is relative since last wheel message)
 				wheelVariable = GET_WHEEL_DELTA_WPARAM(wParam);
+				setZeroVariable = 0;
 				if(window->_mouseWheelCallback)
 					window->_mouseWheelCallback(*window, window->_mouseState);
 				return 0;
@@ -354,13 +355,13 @@ void VulkanWindow::init()
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				handleModifiers(w, wParam);
 				handleMouseMove(w, lParam);
-				return handleMouseWheel(w, w->_mouseState.wheelY, wParam, lParam);
+				return handleMouseWheel(w, w->_mouseState.wheelY, w->_mouseState.wheelX, wParam, lParam);
 			}
 			case WM_MOUSEHWHEEL: {
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				handleModifiers(w, wParam);
 				handleMouseMove(w, lParam);
-				return handleMouseWheel(w, w->_mouseState.wheelX, wParam, lParam);
+				return handleMouseWheel(w, w->_mouseState.wheelX, w->_mouseState.wheelY, wParam, lParam);
 			}
 
 			// left mouse button down on non-client window area message
@@ -1598,7 +1599,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 		_window,
 		[](GLFWwindow* window, double xoffset, double yoffset) {
 			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
-			w->_mouseState.wheelX = lround(xoffset*120);
+			w->_mouseState.wheelX = -lround(xoffset*120);
 			w->_mouseState.wheelY = lround(yoffset*120);
 			if(w->_mouseWheelCallback)
 				w->_mouseWheelCallback(*w, w->_mouseState);
@@ -2885,7 +2886,7 @@ bool QtRenderingWindow::event(QEvent* event)
 			// handle wheel rotation
 			// (value is relative since last wheel event)
 			p = e->angleDelta();
-			vulkanWindow->_mouseState.wheelX = p.x();
+			vulkanWindow->_mouseState.wheelX = -p.x();
 			vulkanWindow->_mouseState.wheelY = p.y();
 			if(vulkanWindow->_mouseWheelCallback)
 				vulkanWindow->_mouseWheelCallback(*vulkanWindow, vulkanWindow->_mouseState);
