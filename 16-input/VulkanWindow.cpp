@@ -727,6 +727,8 @@ void VulkanWindow::init(void* data)
 				case 0x110: index = MouseButton::Left; break;
 				case 0x111: index = MouseButton::Right; break;
 				case 0x112: index = MouseButton::Middle; break;
+				case 0x113: index = MouseButton::X1; break;
+				case 0x114: index = MouseButton::X2; break;
 				default: index = MouseButton::Unknown;
 				}
 				windowUnderPointer->_mouseState.buttons.set(index, state == WL_POINTER_BUTTON_STATE_PRESSED);
@@ -742,11 +744,15 @@ void VulkanWindow::init(void* data)
 				if(windowUnderPointer == nullptr)
 					return;
 
-				int v = value >> 8;
-				if(axis == WL_POINTER_AXIS_VERTICAL_SCROLL)
-					windowUnderPointer->_mouseState.wheelY = v;
-				else if(axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL)
+				int v = (value * 8) / 256;
+				if(axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
+					windowUnderPointer->_mouseState.wheelX = 0;
+					windowUnderPointer->_mouseState.wheelY = -v;
+				}
+				else if(axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL) {
 					windowUnderPointer->_mouseState.wheelX = v;
+					windowUnderPointer->_mouseState.wheelY = 0;
+				}
 				if(windowUnderPointer->_mouseWheelCallback)
 					windowUnderPointer->_mouseWheelCallback(*windowUnderPointer, windowUnderPointer->_mouseState);
 			},
