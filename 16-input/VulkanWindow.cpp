@@ -2975,6 +2975,24 @@ bool QtRenderingWindow::event(QEvent* event)
 
 		}
 
+		// handle key events
+		case QEvent::Type::KeyPress: {
+			if(vulkanWindow->_keyCallback) {
+				QKeyEvent *k = static_cast<QKeyEvent*>(event);
+				if(!k->isAutoRepeat())
+					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyAction::Down, k->nativeScanCode(), k->nativeVirtualKey(), k->text().toStdString());
+			}
+			return true;
+		}
+		case QEvent::Type::KeyRelease: {
+			if(vulkanWindow->_keyCallback) {
+				QKeyEvent *k = static_cast<QKeyEvent*>(event);
+				if(!k->isAutoRepeat())
+					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyAction::Up, k->nativeScanCode(), k->nativeVirtualKey(), k->text().toStdString());
+			}
+			return true;
+		}
+
 		// hide window on close
 		// (we must not really close it as Vulkan surface would be destroyed
 		// and this would make a problem as swapchain still exists and Vulkan
