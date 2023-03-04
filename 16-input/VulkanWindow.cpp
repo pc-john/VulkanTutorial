@@ -1662,6 +1662,14 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 				w->_mouseWheelCallback(*w, w->_mouseState);
 		}
 	);
+	glfwSetKeyCallback(
+		_window,
+		[](GLFWwindow* window, int key, int scanCode, int action, int mods) {
+			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
+			if(w->_keyCallback && action != GLFW_REPEAT)
+				w->_keyCallback(*w, (action == GLFW_PRESS) ? KeyAction::Down : KeyAction::Up, scanCode, key, "");
+		}
+	);
 
 	// create surface
 	if(glfwCreateWindowSurface(instance, _window, nullptr, reinterpret_cast<VkSurfaceKHR*>(&_surface)) != VK_SUCCESS)
