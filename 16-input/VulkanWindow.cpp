@@ -4,6 +4,7 @@
 # include <windows.h>
 # include <windowsx.h>
 # include <tchar.h>
+# include <map>
 #elif defined(USE_PLATFORM_XLIB)
 # include <X11/Xutil.h>
 # include <map>
@@ -59,6 +60,8 @@ static wstring utf8toWString(const char* s)
 	return r;
 }
 # endif
+
+static std::map<uint8_t, std::string> pressedKeys;
 
 // list of windows waiting for frame rendering
 // (the windows have _framePendingState set to FramePendingState::Pending or TentativePending)
@@ -362,6 +365,60 @@ void VulkanWindow::init()
 				handleModifiers(w, wParam);
 				handleMouseMove(w, lParam);
 				return handleMouseWheel(w, w->_mouseState.wheelX, w->_mouseState.wheelY, wParam, lParam);
+			}
+
+			// keyboard events
+			case WM_KEYDOWN: {
+
+				// skip auto-repeat messages
+				if(lParam & (1 << 30))
+					return 0;
+
+				auto getUtf8 =
+					[](HWND hwnd) -> std::string
+					{
+						// get WM_CHAR message
+						MSG msg;
+						if(!PeekMessage(&msg, hwnd, WM_CHAR, WM_CHAR, PM_REMOVE))
+							return "";
+
+						// convert from current code page to utf-16
+						WPARAM c;
+					#if _UNICODE
+						c = msg.wParam;
+					#else
+						int l1 = MultiByteToWideChar(CP_ACP, 0, reinterpret_cast<char*>(&msg.wParam), 1, reinterpret_cast<wchar_t*>(&c), sizeof(c));
+						if(l1 == 0)
+							return "";
+					#endif
+
+						// convert from utf-16 to utf-8
+						constexpr int maxLen = 12;
+						char s[maxLen+1];
+						int l2 = WideCharToMultiByte(CP_UTF8, 0, reinterpret_cast<wchar_t*>(&c), l1, s, maxLen, nullptr, nullptr);
+						if(l2 == 0)
+							return "";
+						s[l2] = 0;
+						return s;
+					};
+
+				uint8_t keyCode = wParam & 0xff;
+				auto& utf8character = pressedKeys[keyCode];
+				utf8character = getUtf8(hwnd);
+				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
+				if(w->_keyCallback)
+					w->_keyCallback(*w, KeyAction::Down, (lParam >> 16) & 0xff, keyCode, utf8character);
+				return 0;
+			}
+			case WM_KEYUP: {
+				uint8_t keyCode = wParam & 0xff;
+				auto it = pressedKeys.find(keyCode);
+				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
+				if(w->_keyCallback)
+					w->_keyCallback(*w, KeyAction::Up, (lParam >> 16) & 0xff, wParam & 0xff, (it != pressedKeys.end()) ? it->second : "");
+				if(it != pressedKeys.end())
+					pressedKeys.erase(it);
+				return 0;
 			}
 
 			// left mouse button down on non-client window area message

@@ -25,6 +25,7 @@ public:
 		static constexpr const size_t Unknown = 31;
 	};
 	enum class ButtonAction : uint8_t { Down, Up };
+	enum class KeyAction : uint8_t { Down, Up };
 	struct Modifier {
 		static constexpr const size_t Ctrl = 0;
 		static constexpr const size_t Shift = 1;
@@ -43,6 +44,7 @@ public:
 	typedef void MouseMoveCallback(VulkanWindow& window, const MouseState& mouseState);
 	typedef void MouseButtonCallback(VulkanWindow& window, size_t button, ButtonAction downOrUp, const MouseState& mouseState);
 	typedef void MouseWheelCallback(VulkanWindow& window, const MouseState& mouseState);
+	typedef void KeyCallback(VulkanWindow& window, KeyAction downOrUp, uint16_t scanCode, uint16_t keyCode, const std::string& utf8character);
 
 protected:
 
@@ -142,6 +144,7 @@ protected:
 	std::function<MouseMoveCallback> _mouseMoveCallback;
 	std::function<MouseButtonCallback> _mouseButtonCallback;
 	std::function<MouseWheelCallback> _mouseWheelCallback;
+	std::function<KeyCallback> _keyCallback;
 
 public:
 
@@ -184,12 +187,15 @@ public:
 	void setMouseButtonCallback(const std::function<MouseButtonCallback>& cb);
 	void setMouseWheelCallback(std::function<MouseWheelCallback>&& cb);
 	void setMouseWheelCallback(const std::function<MouseWheelCallback>& cb);
+	void setKeyCallback(std::function<KeyCallback>&& cb);
+	void setKeyCallback(const std::function<KeyCallback>& cb);
 	const std::function<RecreateSwapchainCallback>& recreateSwapchainCallback() const;
 	const std::function<FrameCallback>& frameCallback() const;
 	const std::function<CloseCallback>& closeCallback() const;
 	const std::function<MouseMoveCallback>& mouseMoveCallback() const;
 	const std::function<MouseButtonCallback>& mouseButtonCallback() const;
 	const std::function<MouseWheelCallback>& mouseWheelCallback() const;
+	const std::function<KeyCallback>& keyCallback() const;
 
 	// getters
 	vk::SurfaceKHR surface() const;
@@ -226,12 +232,15 @@ inline void VulkanWindow::setMouseButtonCallback(std::function<MouseButtonCallba
 inline void VulkanWindow::setMouseButtonCallback(const std::function<MouseButtonCallback>& cb)  { _mouseButtonCallback = cb; }
 inline void VulkanWindow::setMouseWheelCallback(std::function<MouseWheelCallback>&& cb)  { _mouseWheelCallback = move(cb); }
 inline void VulkanWindow::setMouseWheelCallback(const std::function<MouseWheelCallback>& cb)  { _mouseWheelCallback = cb; }
+inline void VulkanWindow::setKeyCallback(std::function<KeyCallback>&& cb)  { _keyCallback = move(cb); }
+inline void VulkanWindow::setKeyCallback(const std::function<KeyCallback>& cb)  { _keyCallback = cb; }
 inline const std::function<VulkanWindow::RecreateSwapchainCallback>& VulkanWindow::recreateSwapchainCallback() const  { return _recreateSwapchainCallback; }
 inline const std::function<VulkanWindow::FrameCallback>& VulkanWindow::frameCallback() const  { return _frameCallback; }
 inline const std::function<VulkanWindow::CloseCallback>& VulkanWindow::closeCallback() const  { return _closeCallback; }
 inline const std::function<VulkanWindow::MouseMoveCallback>& VulkanWindow::mouseMoveCallback() const  { return _mouseMoveCallback; }
 inline const std::function<VulkanWindow::MouseButtonCallback>& VulkanWindow::mouseButtonCallback() const  { return _mouseButtonCallback; }
 inline const std::function<VulkanWindow::MouseWheelCallback>& VulkanWindow::mouseWheelCallback() const  { return _mouseWheelCallback; }
+inline const std::function<VulkanWindow::KeyCallback>& VulkanWindow::keyCallback() const  { return _keyCallback; }
 inline vk::SurfaceKHR VulkanWindow::surface() const  { return _surface; }
 inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return _surfaceExtent; }
 #if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_SDL2) || defined(USE_PLATFORM_GLFW)

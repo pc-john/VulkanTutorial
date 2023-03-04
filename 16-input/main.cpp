@@ -33,6 +33,7 @@ public:
 	void mouseMove(VulkanWindow& window, const VulkanWindow::MouseState& mouseState);
 	void mouseButton(VulkanWindow&, size_t button, VulkanWindow::ButtonAction downOrUp, const VulkanWindow::MouseState& mouseState);
 	void mouseWheel(VulkanWindow& window, const VulkanWindow::MouseState& mouseState);
+	void key(VulkanWindow& window, VulkanWindow::KeyAction downOrUp, uint16_t scanCode, uint16_t keyCode, std::string utf8character);
 
 	// Vulkan instance must be destructed as the last Vulkan handle.
 	// It is probably good idea to destroy it after the display connection.
@@ -841,6 +842,17 @@ void App::mouseWheel(VulkanWindow&, const VulkanWindow::MouseState& s)
 }
 
 
+void App::key(VulkanWindow&, VulkanWindow::KeyAction downOrUp, uint16_t scanCode, uint16_t keyCode, std::string utf8character)
+{
+	if(downOrUp == VulkanWindow::KeyAction::Down)
+		cout << "KeyDown";
+	else
+		cout << "KeyUp";
+
+	cout << ", scanCode: " << scanCode << ", keyCode: " << keyCode << ", utf8: " << utf8character << endl;
+}
+
+
 int main(int argc, char* argv[])
 {
 	// catch exceptions
@@ -866,6 +878,7 @@ int main(int argc, char* argv[])
 		app.window.setMouseMoveCallback(bind(&App::mouseMove, &app, placeholders::_1, placeholders::_2));
 		app.window.setMouseButtonCallback(bind(&App::mouseButton, &app, placeholders::_1, placeholders::_2, placeholders::_3, placeholders::_4));
 		app.window.setMouseWheelCallback(bind(&App::mouseWheel, &app, placeholders::_1, placeholders::_2));
+		app.window.setKeyCallback(bind(&App::key, &app, placeholders::_1, placeholders::_2, placeholders::_3, placeholders::_4, placeholders::_5));
 		app.window.show();
 		app.window.mainLoop();
 
