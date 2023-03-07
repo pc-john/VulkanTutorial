@@ -36,6 +36,14 @@ target_link_libraries(${APP_NAME} ${libs})
 set_property(SOURCE VulkanWindow.cpp APPEND PROPERTY COMPILE_DEFINITIONS ${vulkanWindowDefines})
 set_property(TARGET ${APP_NAME} PROPERTY CXX_STANDARD 17)
 
+# xkbcommon
+if(UNIX)
+	find_library(
+		XKBCOMMON_LIBRARY
+		NAMES xkbcommon)
+	target_link_libraries(${APP_NAME} ${XKBCOMMON_LIBRARY})
+endif()
+
 # copy DLLs (SDL2.dll, glfw3.dll, Qt stuff,...)
 if(WIN32)
 	if(${GUI_TYPE} STREQUAL "SDL" AND SDL2_DLL)

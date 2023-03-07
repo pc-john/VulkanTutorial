@@ -8,6 +8,8 @@
 #elif defined(USE_PLATFORM_XLIB)
 # include <X11/Xutil.h>
 # include <map>
+typedef uint32_t xkb_keysym_t;  // taken from xkbcommon/xkbcommon.h
+extern "C" int xkb_keysym_to_utf8(xkb_keysym_t keysym, char *buffer, size_t size);  // taken from xkbcommon/xkbcommon.h
 #elif defined(USE_PLATFORM_WAYLAND)
 # include "xdg-shell-client-protocol.h"
 # include "xdg-decoration-client-protocol.h"
@@ -644,7 +646,7 @@ void VulkanWindow::init(void* data)
 
 	}
 
-	// get WM_DELETE_WINDOW atom
+	// get atoms
 	_wmDeleteMessage = XInternAtom(_display, "WM_DELETE_WINDOW", False);
 	_wmStateProperty = XInternAtom(_display, "WM_STATE", False);
 
@@ -1444,7 +1446,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	// create window
 	XSetWindowAttributes attr;
 	attr.event_mask = ExposureMask | StructureNotifyMask | VisibilityChangeMask | PropertyChangeMask |
-	                  PointerMotionMask | ButtonPressMask | ButtonReleaseMask;
+	                  PointerMotionMask | ButtonPressMask | ButtonReleaseMask | KeyPressMask | KeyReleaseMask;
 	_window =
 		XCreateWindow(
 			_display,  // display
@@ -2046,6 +2048,7 @@ void VulkanWindow::mainLoop()
 				if(w->_mouseWheelCallback)
 					w->_mouseWheelCallback(*w, w->_mouseState);
 			}
+			continue;
 		}
 		if(e.type == ButtonRelease) {
 			handleModifiers(w, e.xbutton.state);
@@ -2056,6 +2059,46 @@ void VulkanWindow::mainLoop()
 				if(w->_mouseButtonCallback)
 					w->_mouseButtonCallback(*w, button, ButtonAction::Up, w->_mouseState);
 			}
+			continue;
+		}
+
+		// keyboard events
+		if(e.type == KeyPress) {
+
+			// callback
+			if(w->_keyCallback) {
+				uint16_t s = XLookupKeysym(&e.xkey, 0);
+				char text[8];
+				int l = xkb_keysym_to_utf8(s, text, sizeof(text)-1);
+				text[l] = 0;
+				w->_keyCallback(*w, KeyAction::Down, e.xkey.keycode, s, text);
+			}
+
+			continue;
+		}
+		if(e.type == KeyRelease) {
+
+			// skip auto-repeat key events
+			if(XEventsQueued(_display, QueuedAfterReading)) {
+				XEvent nextEvent;
+				XPeekEvent(_display, &nextEvent);
+				if(nextEvent.type == KeyPress && nextEvent.xkey.time == e.xkey.time &&
+				   nextEvent.xkey.keycode == e.xkey.keycode)
+				{
+					XNextEvent(_display, &nextEvent);
+					continue;
+				}
+			}
+
+			// callback
+			if(w->_keyCallback) {
+				uint16_t s = XLookupKeysym(&e.xkey, 0);
+				char text[8];
+				int l = xkb_keysym_to_utf8(s, text, sizeof(text)-1);
+				text[l] = 0;
+				w->_keyCallback(*w, KeyAction::Up, e.xkey.keycode, s, text);
+			}
+			continue;
 		}
 
 		// map, unmap, obscured, unobscured
