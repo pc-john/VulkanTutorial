@@ -75,7 +75,7 @@ public:
 	float valueGradient = -1.f;
 	uint32_t windowHeight;
 	float minX, minY, maxX, maxY;
-	void setView(uint32_t coordX, uint32_t coordY, float valueX, float valueY);
+	void setView(int coordX, int coordY, float valueX, float valueY);
 
 };
 
@@ -686,13 +686,13 @@ void App::recreateSwapchain(VulkanWindow&, const vk::SurfaceCapabilitiesKHR& sur
 }
 
 
-void App::setView(uint32_t coordX, uint32_t coordY, float valueX, float valueY)
+void App::setView(int coordX, int coordY, float valueX, float valueY)
 {
 	vk::Extent2D windowSize = window.surfaceExtent();
 	minY = valueY - (coordY * valueGradient);
-	maxY = valueY + ((windowSize.height - coordY) * valueGradient);
+	maxY = valueY + ((int(windowSize.height) - coordY) * valueGradient);
 	minX = valueX - (coordX * valueGradient);
-	maxX = valueX + ((windowSize.width - coordX) * valueGradient);
+	maxX = valueX + ((int(windowSize.width) - coordX) * valueGradient);
 	cout << "New coords: " << minX << "," << minY << ", " << maxX << "," << maxY << endl;
 }
 
@@ -853,6 +853,14 @@ void App::frame(VulkanWindow&)
 void App::mouseMove(VulkanWindow&, const VulkanWindow::MouseState& s)
 {
 	cout << "m(" << s.posX << "," << s.posY << ")" << flush;
+
+	if(s.buttons.test(VulkanWindow::MouseButton::Left)) {
+		vk::Extent2D windowSize = window.surfaceExtent();
+		float rx = float(s.posX-s.relX) / windowSize.width;
+		float ry = float(s.posY-s.relY) / windowSize.height;
+		setView(s.posX, s.posY, minX*(1.f-rx) + maxX*rx, minY*(1.f-ry) + maxY*ry);
+		window.scheduleFrame();
+	}
 }
 
 

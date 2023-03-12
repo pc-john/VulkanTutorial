@@ -204,6 +204,8 @@ void VulkanWindow::init()
 			[](VulkanWindow* w, int x, int y)
 			{
 				if(x != w->_mouseState.posX || y != w->_mouseState.posY) {
+					w->_mouseState.relX = x - w->_mouseState.posX;
+					w->_mouseState.relY = y - w->_mouseState.posY;
 					w->_mouseState.posX = x;
 					w->_mouseState.posY = y;
 					if(w->_mouseMoveCallback)
@@ -224,6 +226,8 @@ void VulkanWindow::init()
 				int x = GET_X_LPARAM(lParam);
 				int y = GET_Y_LPARAM(lParam);
 				if(x != w->_mouseState.posX || y != w->_mouseState.posY) {
+					w->_mouseState.relX = x - w->_mouseState.posX;
+					w->_mouseState.relY = y - w->_mouseState.posY;
 					w->_mouseState.posX = x;
 					w->_mouseState.posY = y;
 					if(w->_mouseMoveCallback)
@@ -1625,6 +1629,8 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 			if(w->_mouseState.posX != x ||
 			   w->_mouseState.posY != y)
 			{
+				w->_mouseState.relX = x - w->_mouseState.posX;
+				w->_mouseState.relY = y - w->_mouseState.posY;
 				w->_mouseState.posX = x;
 				w->_mouseState.posY = y;
 				if(w->_mouseMoveCallback)
@@ -2453,6 +2459,8 @@ void VulkanWindow::mainLoop()
 			if(w->_mouseState.posX != newX ||
 			   w->_mouseState.posY != newY)
 			{
+				w->_mouseState.relX = newX - w->_mouseState.posX;
+				w->_mouseState.relY = newY - w->_mouseState.posY;
 				w->_mouseState.posX = newX;
 				w->_mouseState.posY = newY;
 				if(w->_mouseMoveCallback)
@@ -2932,6 +2940,8 @@ bool QtRenderingWindow::event(QEvent* event)
 				if(vulkanWindow->_mouseState.posX != newX ||
 				   vulkanWindow->_mouseState.posY != newY)
 				{
+					vulkanWindow->_mouseState.relX = newX - vulkanWindow->_mouseState.posX;
+					vulkanWindow->_mouseState.relY = newY - vulkanWindow->_mouseState.posY;
 					vulkanWindow->_mouseState.posX = newX;
 					vulkanWindow->_mouseState.posY = newY;
 					if(vulkanWindow->_mouseMoveCallback)
@@ -2950,6 +2960,8 @@ bool QtRenderingWindow::event(QEvent* event)
 				if(vulkanWindow->_mouseState.posX != p.x() ||
 				   vulkanWindow->_mouseState.posY != p.y())
 				{
+					vulkanWindow->_mouseState.relX = p.x() - vulkanWindow->_mouseState.posX;
+					vulkanWindow->_mouseState.relY = p.y() - vulkanWindow->_mouseState.posY;
 					vulkanWindow->_mouseState.posX = p.x();
 					vulkanWindow->_mouseState.posY = p.y();
 					if(vulkanWindow->_mouseMoveCallback)
