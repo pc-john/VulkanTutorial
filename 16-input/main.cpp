@@ -72,6 +72,11 @@ public:
 	size_t fpsNumFrames = ~size_t(0);
 	chrono::high_resolution_clock::time_point fpsStartTime;
 
+	float valueGradient = -1.f;
+	uint32_t windowHeight;
+	float minX, minY, maxX, maxY;
+	void setView(uint32_t coordX, uint32_t coordY, float valueX, float valueY);
+
 };
 
 
@@ -667,6 +672,28 @@ void App::recreateSwapchain(VulkanWindow&, const vk::SurfaceCapabilitiesKHR& sur
 				-1 // basePipelineIndex
 			)
 		).value;
+
+	// set view
+	if(valueGradient == -1.f) {
+		valueGradient = 4.f / newSurfaceExtent.height;
+		setView(newSurfaceExtent.width/2, newSurfaceExtent.height/2, 0.f, 0.f);
+	}
+	else {
+		valueGradient *= float(windowHeight) / newSurfaceExtent.height;
+		setView(newSurfaceExtent.width/2, newSurfaceExtent.height/2, (minX+maxX)/2, (minY+maxY)/2);
+	}
+	windowHeight = newSurfaceExtent.height;
+}
+
+
+void App::setView(uint32_t coordX, uint32_t coordY, float valueX, float valueY)
+{
+	vk::Extent2D windowSize = window.surfaceExtent();
+	minY = valueY - (coordY * valueGradient);
+	maxY = valueY + ((windowSize.height - coordY) * valueGradient);
+	minX = valueX - (coordX * valueGradient);
+	maxX = valueX + ((windowSize.width - coordX) * valueGradient);
+	cout << "New coords: " << minX << "," << minY << ", " << maxX << "," << maxY << endl;
 }
 
 
@@ -762,7 +789,7 @@ void App::frame(VulkanWindow&)
 		0,  // offset
 		32,  // size
 		&(const PushData&)PushData{  // pValues
-			-2.f, -2.f, 2.f, 2.f,
+			minX, minY, maxX, maxY,
 			0,
 			0,
 			0.f, 0.f,
@@ -839,6 +866,13 @@ void App::mouseButton(VulkanWindow&, size_t button, VulkanWindow::ButtonAction d
 void App::mouseWheel(VulkanWindow&, const VulkanWindow::MouseState& s)
 {
 	cout << "w(" << s.wheelX << "," << s.wheelY << ")" << flush;
+
+	vk::Extent2D windowSize = window.surfaceExtent();
+	float rx = float(s.posX) / windowSize.width;
+	float ry = float(s.posY) / windowSize.height;
+	valueGradient *= powf(0.9f, float(s.wheelY));
+	setView(s.posX, s.posY, minX*(1.f-rx) + maxX*rx, minY*(1.f-ry) + maxY*ry);
+	window.scheduleFrame();
 }
 
 
