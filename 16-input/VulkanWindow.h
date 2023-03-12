@@ -37,13 +37,12 @@ public:
 		int relX, relY;  // relative against the state of previous mouse callback
 		std::bitset<32> buttons;
 		std::bitset<32> mods;
-		int wheelX, wheelY;  // relative against the state of previous wheel callback
 	};
 
 	// input function prototypes
 	typedef void MouseMoveCallback(VulkanWindow& window, const MouseState& mouseState);
 	typedef void MouseButtonCallback(VulkanWindow& window, size_t button, ButtonAction downOrUp, const MouseState& mouseState);
-	typedef void MouseWheelCallback(VulkanWindow& window, const MouseState& mouseState);
+	typedef void MouseWheelCallback(VulkanWindow& window, int wheelX, int wheelY, const MouseState& mouseState);
 	typedef void KeyCallback(VulkanWindow& window, KeyAction downOrUp, uint16_t scanCode, uint16_t keyCode, const std::string& utf8character);
 
 protected:

@@ -32,7 +32,7 @@ public:
 	void frame(VulkanWindow& window);
 	void mouseMove(VulkanWindow& window, const VulkanWindow::MouseState& mouseState);
 	void mouseButton(VulkanWindow&, size_t button, VulkanWindow::ButtonAction downOrUp, const VulkanWindow::MouseState& mouseState);
-	void mouseWheel(VulkanWindow& window, const VulkanWindow::MouseState& mouseState);
+	void mouseWheel(VulkanWindow& window, int wheelX, int wheelY, const VulkanWindow::MouseState& mouseState);
 	void key(VulkanWindow& window, VulkanWindow::KeyAction downOrUp, uint16_t scanCode, uint16_t keyCode, std::string utf8character);
 
 	// Vulkan instance must be destructed as the last Vulkan handle.
@@ -863,14 +863,14 @@ void App::mouseButton(VulkanWindow&, size_t button, VulkanWindow::ButtonAction d
 }
 
 
-void App::mouseWheel(VulkanWindow&, const VulkanWindow::MouseState& s)
+void App::mouseWheel(VulkanWindow&, int wheelX, int wheelY, const VulkanWindow::MouseState& s)
 {
-	cout << "w(" << s.wheelX << "," << s.wheelY << ")" << flush;
+	cout << "w(" << wheelX << "," << wheelY << ")" << flush;
 
 	vk::Extent2D windowSize = window.surfaceExtent();
 	float rx = float(s.posX) / windowSize.width;
 	float ry = float(s.posY) / windowSize.height;
-	valueGradient *= powf(0.9f, float(s.wheelY));
+	valueGradient *= powf(0.9f, float(wheelY));
 	setView(s.posX, s.posY, minX*(1.f-rx) + maxX*rx, minY*(1.f-ry) + maxY*ry);
 	window.scheduleFrame();
 }
@@ -911,7 +911,7 @@ int main(int argc, char* argv[])
 		);
 		app.window.setMouseMoveCallback(bind(&App::mouseMove, &app, placeholders::_1, placeholders::_2));
 		app.window.setMouseButtonCallback(bind(&App::mouseButton, &app, placeholders::_1, placeholders::_2, placeholders::_3, placeholders::_4));
-		app.window.setMouseWheelCallback(bind(&App::mouseWheel, &app, placeholders::_1, placeholders::_2));
+		app.window.setMouseWheelCallback(bind(&App::mouseWheel, &app, placeholders::_1, placeholders::_2, placeholders::_3, placeholders::_4));
 		app.window.setKeyCallback(bind(&App::key, &app, placeholders::_1, placeholders::_2, placeholders::_3, placeholders::_4, placeholders::_5));
 		app.window.show();
 		app.window.mainLoop();
