@@ -852,7 +852,9 @@ void App::frame(VulkanWindow&)
 
 void App::mouseMove(VulkanWindow&, const VulkanWindow::MouseState& s)
 {
+#if 0
 	cout << "m(" << s.posX << "," << s.posY << ")" << flush;
+#endif
 
 	if(s.buttons.test(VulkanWindow::MouseButton::Left)) {
 		vk::Extent2D windowSize = window.surfaceExtent();
@@ -867,7 +869,16 @@ void App::mouseMove(VulkanWindow&, const VulkanWindow::MouseState& s)
 void App::mouseButton(VulkanWindow&, size_t button, VulkanWindow::ButtonAction downOrUp, const VulkanWindow::MouseState& s)
 {
 	string d = (downOrUp == VulkanWindow::ButtonAction::Down) ? "D" : "U";
-	cout << "b" << button << d << "[" << hex << s.buttons.to_ulong() << dec << "]" << flush;
+	cout << "b" << button << d << "[" << hex << s.buttons.to_ulong() << dec << "]";
+	if(s.mods.test(VulkanWindow::Modifier::Ctrl))
+		cout << "Ctrl";
+	if(s.mods.test(VulkanWindow::Modifier::Shift))
+		cout << "Shift";
+	if(s.mods.test(VulkanWindow::Modifier::Alt))
+		cout << "Alt";
+	if(s.mods.test(VulkanWindow::Modifier::Meta))
+		cout << "Meta";
+	cout << endl;
 }
 
 
@@ -878,7 +889,7 @@ void App::mouseWheel(VulkanWindow&, int wheelX, int wheelY, const VulkanWindow::
 	vk::Extent2D windowSize = window.surfaceExtent();
 	float rx = float(s.posX) / windowSize.width;
 	float ry = float(s.posY) / windowSize.height;
-	valueGradient *= powf(0.9f, float(wheelY));
+	valueGradient *= powf(0.9f, float(wheelY) / 120);
 	setView(s.posX, s.posY, minX*(1.f-rx) + maxX*rx, minY*(1.f-ry) + maxY*ry);
 	window.scheduleFrame();
 }

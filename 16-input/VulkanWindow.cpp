@@ -199,6 +199,7 @@ void VulkanWindow::init()
 				w->_mouseState.mods.set(Modifier::Ctrl,  wParam & MK_CONTROL);
 				w->_mouseState.mods.set(Modifier::Shift, wParam & MK_SHIFT);
 				w->_mouseState.mods.set(Modifier::Alt,   GetKeyState(VK_MENU) < 0);
+				w->_mouseState.mods.set(Modifier::Meta,  GetKeyState(VK_LWIN) < 0 || GetKeyState(VK_RWIN));
 			};
 		auto handleMouseMove =
 			[](VulkanWindow* w, int x, int y)
@@ -213,7 +214,7 @@ void VulkanWindow::init()
 				}
 			};
 		auto handleMouseButton =
-			[](HWND hwnd, size_t mouseButton, ButtonAction downOrUp, WPARAM wParam, LPARAM lParam) -> LRESULT
+			[](HWND hwnd, MouseButton::EnumType mouseButton, ButtonAction downOrUp, WPARAM wParam, LPARAM lParam) -> LRESULT
 			{
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 
@@ -221,6 +222,7 @@ void VulkanWindow::init()
 				w->_mouseState.mods.set(Modifier::Ctrl,  wParam & MK_CONTROL);
 				w->_mouseState.mods.set(Modifier::Shift, wParam & MK_SHIFT);
 				w->_mouseState.mods.set(Modifier::Alt,   GetKeyState(VK_MENU) < 0);
+				w->_mouseState.mods.set(Modifier::Meta,  GetKeyState(VK_LWIN) < 0 || GetKeyState(VK_RWIN));
 
 				// handle mouse move, if any
 				int x = GET_X_LPARAM(lParam);
@@ -252,7 +254,7 @@ void VulkanWindow::init()
 				return 0;
 			};
 		auto getMouseXButton =
-			[](WPARAM wParam) -> size_t
+			[](WPARAM wParam) -> MouseButton::EnumType
 			{
 				switch(GET_XBUTTON_WPARAM(wParam)) {
 				case XBUTTON1: return MouseButton::X1;
@@ -1643,7 +1645,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 		[](GLFWwindow* window, int button, int action, int mods)
 		{
 			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
-			size_t b;
+			MouseButton::EnumType b;
 			switch(button) {
 			case GLFW_MOUSE_BUTTON_LEFT:   b = MouseButton::Left; break;
 			case GLFW_MOUSE_BUTTON_RIGHT:  b = MouseButton::Right; break;
@@ -1670,8 +1672,23 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 		_window,
 		[](GLFWwindow* window, int key, int scanCode, int action, int mods) {
 			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
-			if(w->_keyCallback && action != GLFW_REPEAT)
-				w->_keyCallback(*w, (action == GLFW_PRESS) ? KeyAction::Down : KeyAction::Up, scanCode, key, "");
+			if(action != GLFW_REPEAT) {
+				if(key >= GLFW_KEY_LEFT_SHIFT && key <= GLFW_KEY_RIGHT_SUPER) {
+					bool down = (action == GLFW_PRESS);
+					switch(key) {
+					case GLFW_KEY_LEFT_SHIFT:    w->_mouseState.mods.set(Modifier::Shift, down); break;
+					case GLFW_KEY_LEFT_CONTROL:  w->_mouseState.mods.set(Modifier::Ctrl,  down); break;
+					case GLFW_KEY_LEFT_ALT:      w->_mouseState.mods.set(Modifier::Alt,   down); break;
+					case GLFW_KEY_LEFT_SUPER:    w->_mouseState.mods.set(Modifier::Meta,  down); break;
+					case GLFW_KEY_RIGHT_SHIFT:   w->_mouseState.mods.set(Modifier::Shift, down); break;
+					case GLFW_KEY_RIGHT_CONTROL: w->_mouseState.mods.set(Modifier::Ctrl,  down); break;
+					case GLFW_KEY_RIGHT_ALT:     w->_mouseState.mods.set(Modifier::Alt,   down); break;
+					case GLFW_KEY_RIGHT_SUPER:   w->_mouseState.mods.set(Modifier::Meta,  down); break;
+					}
+				}
+				if(w->_keyCallback)
+					w->_keyCallback(*w, (action == GLFW_PRESS) ? KeyAction::Down : KeyAction::Up, scanCode, key, "");
+			}
 		}
 	);
 
@@ -2471,7 +2488,7 @@ void VulkanWindow::mainLoop()
 		[](VulkanWindow* w, SDL_Event& event, ButtonAction downOrUp) -> void
 		{
 			// button
-			size_t mouseButton;
+			MouseButton::EnumType mouseButton;
 			switch(event.button.button) {
 			case SDL_BUTTON_LEFT:   mouseButton = MouseButton::Left; break;
 			case SDL_BUTTON_RIGHT:  mouseButton = MouseButton::Right; break;
@@ -2915,7 +2932,7 @@ bool QtRenderingWindow::event(QEvent* event)
 
 		// mouse functions
 		auto getMouseButton =
-			[](QMouseEvent* e) -> size_t {
+			[](QMouseEvent* e) -> VulkanWindow::MouseButton::EnumType {
 				switch(e->button()) {
 				case Qt::LeftButton: return VulkanWindow::MouseButton::Left;
 				case Qt::RightButton: return VulkanWindow::MouseButton::Right;
@@ -2949,7 +2966,7 @@ bool QtRenderingWindow::event(QEvent* event)
 				}
 			};
 		auto handleMouseButton =
-			[](VulkanWindow* vulkanWindow, QMouseEvent* e, size_t mouseButton, VulkanWindow::ButtonAction downOrUp) -> bool
+			[](VulkanWindow* vulkanWindow, QMouseEvent* e, VulkanWindow::MouseButton::EnumType mouseButton, VulkanWindow::ButtonAction downOrUp) -> bool
 			{
 				// handle mouse move, if any
 #if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))

@@ -17,31 +17,35 @@ public:
 
 	// input structures and enums
 	struct MouseButton {
-		static constexpr const size_t Left = 0;
-		static constexpr const size_t Right = 1;
-		static constexpr const size_t Middle = 2;
-		static constexpr const size_t X1 = 3;
-		static constexpr const size_t X2 = 4;
-		static constexpr const size_t Unknown = 31;
+		enum EnumType {
+			Left,
+			Right,
+			Middle,
+			X1,
+			X2,
+			Unknown = 0xff,
+		};
 	};
 	enum class ButtonAction : uint8_t { Down, Up };
 	enum class KeyAction : uint8_t { Down, Up };
 	struct Modifier {
-		static constexpr const size_t Ctrl = 0;
-		static constexpr const size_t Shift = 1;
-		static constexpr const size_t Alt = 2;
-		static constexpr const size_t Meta = 3;
+		enum EnumType {
+			Ctrl,
+			Shift,
+			Alt,
+			Meta,
+		};
 	};
 	struct MouseState {
 		int posX, posY;  // position of the mouse in window client area coordinates (relative to the upper-left corner)
 		int relX, relY;  // relative against the state of previous mouse callback
-		std::bitset<32> buttons;
-		std::bitset<32> mods;
+		std::bitset<16> buttons;
+		std::bitset<16> mods;
 	};
 
 	// input function prototypes
 	typedef void MouseMoveCallback(VulkanWindow& window, const MouseState& mouseState);
-	typedef void MouseButtonCallback(VulkanWindow& window, size_t button, ButtonAction downOrUp, const MouseState& mouseState);
+	typedef void MouseButtonCallback(VulkanWindow& window, MouseButton::EnumType button, ButtonAction downOrUp, const MouseState& mouseState);
 	typedef void MouseWheelCallback(VulkanWindow& window, int wheelX, int wheelY, const MouseState& mouseState);
 	typedef void KeyCallback(VulkanWindow& window, KeyAction downOrUp, uint16_t scanCode, uint16_t keyCode, const std::string& utf8character);
 
