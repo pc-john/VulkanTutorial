@@ -1977,6 +1977,8 @@ void VulkanWindow::mainLoop()
 		{
 			w->_mouseState.mods.set(VulkanWindow::Modifier::Ctrl,  state & ControlMask);
 			w->_mouseState.mods.set(VulkanWindow::Modifier::Shift, state & ShiftMask);
+			w->_mouseState.mods.set(VulkanWindow::Modifier::Alt,   state & (Mod1Mask|Mod5Mask));
+			w->_mouseState.mods.set(VulkanWindow::Modifier::Meta,  state & Mod4Mask);
 		};
 	auto handleMouseMove =
 		[](VulkanWindow* w, int newX, int newY)
@@ -1984,6 +1986,8 @@ void VulkanWindow::mainLoop()
 			if(w->_mouseState.posX != newX ||
 				w->_mouseState.posY != newY)
 			{
+				w->_mouseState.relX = newX - w->_mouseState.posX;
+				w->_mouseState.relY = newY - w->_mouseState.posY;
 				w->_mouseState.posX = newX;
 				w->_mouseState.posY = newY;
 				if(w->_mouseMoveCallback)
@@ -1991,7 +1995,7 @@ void VulkanWindow::mainLoop()
 			}
 		};
 	auto getMouseButton =
-		[](unsigned int button) -> size_t
+		[](unsigned int button) -> MouseButton::EnumType
 		{
 			switch(button) {
 			case Button1: return MouseButton::Left;
@@ -2047,25 +2051,27 @@ void VulkanWindow::mainLoop()
 			continue;
 		}
 		if(e.type == ButtonPress) {
+			cout << "state: " << e.xbutton.state << endl;
 			handleModifiers(w, e.xbutton.state);
 			handleMouseMove(w, e.xbutton.x, e.xbutton.y);
 			if(e.xbutton.button < Button4 || e.xbutton.button > 7) {
-				size_t button = getMouseButton(e.xbutton.button);
+				MouseButton::EnumType button = getMouseButton(e.xbutton.button);
 				w->_mouseState.buttons.set(button, true);
 				if(w->_mouseButtonCallback)
 					w->_mouseButtonCallback(*w, button, ButtonAction::Down, w->_mouseState);
 			}
 			else {
+				int wheelX, wheelY;
 				if(e.xbutton.button <= Button5) {
-					w->_mouseState.wheelY = (e.xbutton.button == Button5) ? -120 : 120;
-					w->_mouseState.wheelX = 0;
+					wheelX = 0;
+					wheelY = (e.xbutton.button == Button5) ? -120 : 120;
 				}
 				else {
-					w->_mouseState.wheelX = (e.xbutton.button == 6) ? -120 : 120;
-					w->_mouseState.wheelY = 0;
+					wheelX = (e.xbutton.button == 6) ? -120 : 120;
+					wheelY = 0;
 				}
 				if(w->_mouseWheelCallback)
-					w->_mouseWheelCallback(*w, w->_mouseState);
+					w->_mouseWheelCallback(*w, wheelX, wheelY, w->_mouseState);
 			}
 			continue;
 		}
@@ -2073,7 +2079,7 @@ void VulkanWindow::mainLoop()
 			handleModifiers(w, e.xbutton.state);
 			handleMouseMove(w, e.xbutton.x, e.xbutton.y);
 			if(e.xbutton.button < Button4 || e.xbutton.button > 7) {
-				size_t button = getMouseButton(e.xbutton.button);
+				MouseButton::EnumType button = getMouseButton(e.xbutton.button);
 				w->_mouseState.buttons.set(button, false);
 				if(w->_mouseButtonCallback)
 					w->_mouseButtonCallback(*w, button, ButtonAction::Up, w->_mouseState);
