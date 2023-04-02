@@ -13,6 +13,9 @@ extern "C" int xkb_keysym_to_utf8(xkb_keysym_t keysym, char *buffer, size_t size
 #elif defined(USE_PLATFORM_WAYLAND)
 # include "xdg-shell-client-protocol.h"
 # include "xdg-decoration-client-protocol.h"
+# include <xkbcommon/xkbcommon.h>
+# include <sys/mman.h>
+# include <unistd.h>
 # include <map>
 #elif defined(USE_PLATFORM_SDL2)
 # include "SDL.h"
@@ -98,6 +101,7 @@ static bool externalDisplayHandle;
 static bool running;  // bool indicating that application is running and it shall not leave main loop
 static map<wl_surface*, VulkanWindow*> surface2windowMap;
 static VulkanWindow* windowUnderPointer = nullptr;
+static VulkanWindow* windowWithKbFocus = nullptr;
 
 // listeners
 struct WaylandListeners {
@@ -112,6 +116,7 @@ static wl_registry_listener registryListener;
 static xdg_wm_base_listener xdgWmBaseListener;
 static wl_seat_listener seatListener;
 static wl_pointer_listener pointerListener;
+static wl_keyboard_listener keyboardListener;
 #endif
 
 
@@ -718,19 +723,13 @@ void VulkanWindow::init(void* data)
 		throw runtime_error("xdg_wm_base_add_listener() failed.");
 	if(_seat == nullptr)
 		throw runtime_error("Cannot get Wayland wl_seat object.");
-	seatListener = {
-		.capabilities =
-			[](void* data, wl_seat* seat, uint32_t capabilities) {
-				if(capabilities & WL_SEAT_CAPABILITY_POINTER) {
-					_pointer = wl_seat_get_pointer(seat);
-				}
-			},
-	};
-	if(wl_seat_add_listener(_seat, &seatListener, nullptr))
-		throw runtime_error("wl_seat_add_listener() failed.");
-	if(wl_display_roundtrip(_display) == -1)
-		throw runtime_error("wl_display_roundtrip() failed.");
 
+	// xkb_context
+	_xkbContext = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+	if(_xkbContext == NULL)
+		throw runtime_error("VulkanWindow::init(): Cannot create XKB context.");
+
+	// pointer
 	pointerListener = {
 		.enter =
 			[](void* data, wl_pointer* pointer, uint32_t serial, wl_surface* surface,
@@ -744,12 +743,13 @@ void VulkanWindow::init(void* data)
 				}
 				windowUnderPointer = it->second;
 
-				if(windowUnderPointer == nullptr)  cout << "nullptr enter" << endl;
 				int x = surface_x >> 8;
 				int y = surface_y >> 8;
 				if(windowUnderPointer->_mouseState.posX != x ||
 					windowUnderPointer->_mouseState.posY != y)
 				{
+					windowUnderPointer->_mouseState.relX = 0;
+					windowUnderPointer->_mouseState.relY = 0;
 					windowUnderPointer->_mouseState.posX = x;
 					windowUnderPointer->_mouseState.posY = y;
 					if(windowUnderPointer->_mouseMoveCallback)
@@ -757,7 +757,8 @@ void VulkanWindow::init(void* data)
 				}
 			},
 		.leave =
-			[](void* data, wl_pointer* pointer, uint32_t serial, wl_surface* surface) {
+			[](void* data, wl_pointer* pointer, uint32_t serial, wl_surface* surface)
+			{
 				windowUnderPointer = nullptr;
 			},
 		.motion =
@@ -772,6 +773,8 @@ void VulkanWindow::init(void* data)
 				if(windowUnderPointer->_mouseState.posX != x ||
 					windowUnderPointer->_mouseState.posY != y)
 				{
+					windowUnderPointer->_mouseState.relX = x - windowUnderPointer->_mouseState.posX;
+					windowUnderPointer->_mouseState.relY = y - windowUnderPointer->_mouseState.posY;
 					windowUnderPointer->_mouseState.posX = x;
 					windowUnderPointer->_mouseState.posY = y;
 					if(windowUnderPointer->_mouseMoveCallback)
@@ -785,7 +788,7 @@ void VulkanWindow::init(void* data)
 				if(windowUnderPointer == nullptr)
 					return;
 
-				size_t index;
+				MouseButton::EnumType index;
 				switch(button) {
 				// button codes taken from linux/input-event-codes.h
 				case 0x110: index = MouseButton::Left; break;
@@ -809,20 +812,159 @@ void VulkanWindow::init(void* data)
 					return;
 
 				int v = (value * 8) / 256;
+				int wheelX, wheelY;
 				if(axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
-					windowUnderPointer->_mouseState.wheelX = 0;
-					windowUnderPointer->_mouseState.wheelY = -v;
+					wheelX = 0;
+					wheelY = -v;
 				}
 				else if(axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL) {
-					windowUnderPointer->_mouseState.wheelX = v;
-					windowUnderPointer->_mouseState.wheelY = 0;
+					wheelX = v;
+					wheelY = 0;
 				}
 				if(windowUnderPointer->_mouseWheelCallback)
-					windowUnderPointer->_mouseWheelCallback(*windowUnderPointer, windowUnderPointer->_mouseState);
+					windowUnderPointer->_mouseWheelCallback(*windowUnderPointer, wheelX, wheelY,
+					                                        windowUnderPointer->_mouseState);
 			},
 	};
-	if(wl_pointer_add_listener(_pointer, &pointerListener, nullptr))
-		throw runtime_error("wl_pointer_add_listener() failed.");
+
+	// keyboard
+	keyboardListener = {
+		.keymap =
+			[](void* data, wl_keyboard* keyboard, uint32_t format, int32_t fd, uint32_t size)
+			{
+				cout << "keyboard keymap format: " << format << endl;
+
+				if(format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1)
+					return;
+
+				// map memory
+				char* m = static_cast<char*>(mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0));
+				if(m == MAP_FAILED)
+					throw runtime_error("VulkanWindow::init(): Failed to map memory in keymap event.");
+
+				// create keymap
+				xkb_keymap* keymap = xkb_keymap_new_from_string(_xkbContext, m,
+					XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
+				int r1 = munmap(m, size);
+				int r2 = close(fd);
+
+				// handle errors
+				if(keymap == nullptr)
+					throw runtime_error("VulkanWindow::init(): Failed to create keymap in keymap event.");
+				if(r1 != 0) {
+					xkb_keymap_unref(keymap);
+					throw runtime_error("VulkanWindow::init(): Failed to unmap memory in keymap event.");
+				}
+				if(r2 != 0) {
+					xkb_keymap_unref(keymap);
+					throw runtime_error("VulkanWindow::init(): Failed to close file descriptor in keymap event.");
+				}
+
+				// unref old xkb_state
+				if(_xkbState)
+					xkb_state_unref(_xkbState);
+
+				// create new xkb_state
+				_xkbState = xkb_state_new(keymap);
+				xkb_keymap_unref(keymap);
+				if(_xkbState == nullptr)
+					throw runtime_error("VulkanWindow::create(): Cannot create XKB state object in keymap event.");
+			},
+		.enter =
+			[](void* data, wl_keyboard* keyboard, uint32_t serial, wl_surface* surface,
+			   wl_array* keys)
+			{
+				cout << "enter keyboard" <<endl;
+
+				auto it = surface2windowMap.find(surface);
+				if(it == surface2windowMap.end()) {
+					// unknown window
+					windowWithKbFocus = nullptr;
+					return;
+				}
+				windowWithKbFocus = it->second;
+
+				// iterate keys array
+				// (following for loop is equivalent to wl_array_for_each(key, keys) used in C)
+				uint32_t* key;
+				for(key = static_cast<uint32_t*>(keys->data);
+				    reinterpret_cast<char*>(key) < static_cast<char*>(keys->data) + keys->size;
+				    key++)
+				{
+					xkb_state_key_get_one_sym(_xkbState, *key + 8);
+				}
+			},
+		.leave =
+			[](void* data, wl_keyboard* keyboard, uint32_t serial, wl_surface* surface)
+			{
+				windowWithKbFocus = nullptr;
+			},
+		.key =
+			[](void* data, wl_keyboard* keyboard, uint32_t serial, uint32_t time,
+			   uint32_t key, uint32_t state)
+			{
+				cout << "key " << key << ", state " << state << endl;
+
+				// process key
+				uint32_t keyCode = key + 8;
+				xkb_keysym_t sym = xkb_state_key_get_one_sym(_xkbState, keyCode);
+
+				// callback
+				if(windowWithKbFocus->_keyCallback) {
+					char utf8char[8];
+					xkb_state_key_get_utf8(_xkbState, keyCode, utf8char, sizeof(utf8char));
+					windowWithKbFocus->_keyCallback(
+						*windowWithKbFocus,
+						state==WL_KEYBOARD_KEY_STATE_PRESSED ? KeyAction::Down : KeyAction::Up,
+						key,  // scanCode
+						sym,  // keyCode
+						utf8char);  // utf8character
+				}
+			},
+		.modifiers =
+			[](void* data, wl_keyboard* keyboard, uint32_t serial, uint32_t mods_depressed,
+			   uint32_t mods_latched, uint32_t mods_locked, uint32_t group)
+			{
+				cout << "modifier" << endl;
+
+				xkb_state_update_mask(_xkbState, mods_depressed, mods_latched, mods_locked, 0, 0, group);
+			},
+	};
+
+	// seat listener
+	seatListener = {
+		.capabilities =
+			[](void* data, wl_seat* seat, uint32_t capabilities) {
+				if(capabilities & WL_SEAT_CAPABILITY_POINTER) {
+					if(_pointer == nullptr) {
+						_pointer = wl_seat_get_pointer(seat);
+						if(wl_pointer_add_listener(_pointer, &pointerListener, nullptr))
+							throw runtime_error("wl_pointer_add_listener() failed.");
+					}
+				}
+				else
+					if(_pointer != nullptr) {
+						wl_pointer_release(_pointer);
+						_pointer = nullptr;
+					}
+				if(capabilities & WL_SEAT_CAPABILITY_KEYBOARD) {
+					if(_keyboard == nullptr) {
+						_keyboard = wl_seat_get_keyboard(seat);
+						if(wl_keyboard_add_listener(_keyboard, &keyboardListener, nullptr))
+							throw runtime_error("wl_keyboard_add_listener() failed.");
+					}
+				}
+				else
+					if(_keyboard != nullptr) {
+						wl_keyboard_release(_keyboard);
+						_keyboard = nullptr;
+					}
+			},
+	};
+	if(wl_seat_add_listener(_seat, &seatListener, nullptr))
+		throw runtime_error("wl_seat_add_listener() failed.");
+	if(wl_display_roundtrip(_display) == -1)
+		throw runtime_error("wl_display_roundtrip() failed.");
 
 #elif defined(USE_PLATFORM_QT)
 
@@ -912,9 +1054,21 @@ void VulkanWindow::finalize() noexcept
 		wl_pointer_release(_pointer);
 		_pointer = nullptr;
 	}
+	if(_keyboard) {
+		wl_keyboard_release(_keyboard);
+		_keyboard = nullptr;
+	}
 	if(_seat) {
 		wl_seat_release(_seat);
 		_seat = nullptr;
+	}
+	if(_xkbState) {
+		xkb_state_unref(_xkbState);
+		_xkbState = nullptr;
+	}
+	if(_xkbContext) {
+		xkb_context_unref(_xkbContext);
+		_xkbContext = nullptr;
 	}
 	if(_xdgWmBase) {
 		xdg_wm_base_destroy(_xdgWmBase);

@@ -105,6 +105,9 @@ protected:
 	static inline struct zxdg_decoration_manager_v1* _zxdgDecorationManagerV1 = nullptr;
 	static inline struct wl_seat* _seat = nullptr;
 	static inline struct wl_pointer* _pointer = nullptr;
+	static inline struct wl_keyboard* _keyboard = nullptr;
+	static inline struct xkb_context* _xkbContext = nullptr;
+	static inline struct xkb_state* _xkbState = nullptr;
 
 	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_wayland_surface" };

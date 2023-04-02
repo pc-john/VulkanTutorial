@@ -37,11 +37,9 @@ set_property(SOURCE VulkanWindow.cpp APPEND PROPERTY COMPILE_DEFINITIONS ${vulka
 set_property(TARGET ${APP_NAME} PROPERTY CXX_STANDARD 17)
 
 # xkbcommon
-if(UNIX)
-	find_library(
-		XKBCOMMON_LIBRARY
-		NAMES xkbcommon)
-	target_link_libraries(${APP_NAME} ${XKBCOMMON_LIBRARY})
+if(${GUI_TYPE} STREQUAL "Wayland")
+	find_package(xkbcommon REQUIRED)
+	target_link_libraries(${APP_NAME} xkbcommon::xkbcommon)
 endif()
 
 # copy DLLs (SDL2.dll, glfw3.dll, Qt stuff,...)
