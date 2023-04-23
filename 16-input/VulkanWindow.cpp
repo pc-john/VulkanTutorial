@@ -8,7 +8,6 @@
 #elif defined(USE_PLATFORM_XLIB)
 # include <X11/Xutil.h>
 # include <map>
-extern "C" int xkb_keysym_to_utf8(uint32_t keysym, char *buffer, size_t size);  // originally defined in xkbcommon/xkbcommon.h; this definition avoids the need to have xkbcommon headers installed
 #elif defined(USE_PLATFORM_WAYLAND)
 # include "xdg-shell-client-protocol.h"
 # include "xdg-decoration-client-protocol.h"

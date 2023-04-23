@@ -8,8 +8,6 @@
 #
 # Following targets might be created:
 #    xkbcommon::xkbcommon - if xkbcommon_INCLUDE_DIR and xkbcommon_LIBRARY are set
-#    xkbcommon::headers - if xkbcommon_INCLUDE_DIR is set
-#    xkbcommon::lib - if xkbcommon_LIBRARY is set
 #
 
 
@@ -55,21 +53,5 @@ if(${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 			INTERFACE_LINK_LIBRARIES "${${CMAKE_FIND_PACKAGE_NAME}_LIBRARY}"
 		)
 		set(${CMAKE_FIND_PACKAGE_NAME}_DIR "${CMAKE_FIND_PACKAGE_NAME}_DIR-NOTFOUND" CACHE PATH "${CMAKE_FIND_PACKAGE_NAME} config directory." FORCE)
-	endif()
-endif()
-if(${CMAKE_FIND_PACKAGE_NAME}_LIBRARY)
-	if(NOT TARGET xkbcommon::lib)
-		add_library(xkbcommon::lib INTERFACE IMPORTED)
-		set_target_properties(xkbcommon::lib PROPERTIES
-			INTERFACE_LINK_LIBRARIES "${${CMAKE_FIND_PACKAGE_NAME}_LIBRARY}"
-		)
-	endif()
-endif()
-if(${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR)
-	if(NOT TARGET xkbcommon::headers)
-		add_library(xkbcommon::headers INTERFACE IMPORTED)
-		set_target_properties(xkbcommon::lib PROPERTIES
-			INTERFACE_INCLUDE_DIRECTORIES "${${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR}"
-		)
 	endif()
 endif()
