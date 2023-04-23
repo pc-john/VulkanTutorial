@@ -8,8 +8,7 @@
 #elif defined(USE_PLATFORM_XLIB)
 # include <X11/Xutil.h>
 # include <map>
-typedef uint32_t xkb_keysym_t;  // taken from xkbcommon/xkbcommon.h
-extern "C" int xkb_keysym_to_utf8(xkb_keysym_t keysym, char *buffer, size_t size);  // taken from xkbcommon/xkbcommon.h
+extern "C" int xkb_keysym_to_utf8(uint32_t keysym, char *buffer, size_t size);  // originally defined in xkbcommon/xkbcommon.h; this definition avoids the need to have xkbcommon headers installed
 #elif defined(USE_PLATFORM_WAYLAND)
 # include "xdg-shell-client-protocol.h"
 # include "xdg-decoration-client-protocol.h"
@@ -2246,10 +2245,18 @@ void VulkanWindow::mainLoop()
 
 			// callback
 			if(w->_keyCallback) {
-				uint16_t s = XLookupKeysym(&e.xkey, 0);
+#if 0
+				uint16_t s = XLookupKeysym(&e.xkey, e.xkey.state);
 				char text[8];
 				int l = xkb_keysym_to_utf8(s, text, sizeof(text)-1);
 				text[l] = 0;
+#else
+				KeySym s;
+				char text[8];
+				XLookupString(&e.xkey, text, sizeof(text)-1, &s, nullptr);
+				int l = xkb_keysym_to_utf8(s, text, sizeof(text)-1);
+				text[l] = 0;
+#endif
 				w->_keyCallback(*w, KeyAction::Down, e.xkey.keycode, s, text);
 			}
 
