@@ -26,8 +26,8 @@ public:
 			Unknown = 0xff,
 		};
 	};
-	enum class ButtonAction : uint8_t { Down, Up };
-	enum class KeyAction : uint8_t { Down, Up };
+	enum class ButtonState : uint8_t { Pressed, Released };
+	enum class KeyState : uint8_t { Pressed, Released };
 	struct Modifier {
 		enum EnumType {
 			Ctrl,
@@ -45,9 +45,9 @@ public:
 
 	// input function prototypes
 	typedef void MouseMoveCallback(VulkanWindow& window, const MouseState& mouseState);
-	typedef void MouseButtonCallback(VulkanWindow& window, MouseButton::EnumType button, ButtonAction downOrUp, const MouseState& mouseState);
+	typedef void MouseButtonCallback(VulkanWindow& window, MouseButton::EnumType button, ButtonState buttonState, const MouseState& mouseState);
 	typedef void MouseWheelCallback(VulkanWindow& window, int wheelX, int wheelY, const MouseState& mouseState);
-	typedef void KeyCallback(VulkanWindow& window, KeyAction downOrUp, uint16_t scanCode, uint16_t keyCode, const std::string& utf8character);
+	typedef void KeyCallback(VulkanWindow& window, KeyState keyState, uint16_t scanCode, uint16_t keyCode);
 
 protected:
 

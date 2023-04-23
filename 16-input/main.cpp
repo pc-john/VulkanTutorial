@@ -32,9 +32,9 @@ public:
 		const vk::SurfaceCapabilitiesKHR& surfaceCapabilities, vk::Extent2D newSurfaceExtent);
 	void frame(VulkanWindow& window);
 	void mouseMove(VulkanWindow& window, const VulkanWindow::MouseState& mouseState);
-	void mouseButton(VulkanWindow&, size_t button, VulkanWindow::ButtonAction downOrUp, const VulkanWindow::MouseState& mouseState);
+	void mouseButton(VulkanWindow&, size_t button, VulkanWindow::ButtonState buttonState, const VulkanWindow::MouseState& mouseState);
 	void mouseWheel(VulkanWindow& window, int wheelX, int wheelY, const VulkanWindow::MouseState& mouseState);
-	void key(VulkanWindow& window, VulkanWindow::KeyAction downOrUp, uint16_t scanCode, uint16_t keyCode, std::string utf8character);
+	void key(VulkanWindow& window, VulkanWindow::KeyState keyState, uint16_t scanCode, uint16_t keyCode);
 
 	// Vulkan instance must be destructed as the last Vulkan handle.
 	// It is probably good idea to destroy it after the display connection.
@@ -867,9 +867,9 @@ void App::mouseMove(VulkanWindow&, const VulkanWindow::MouseState& s)
 }
 
 
-void App::mouseButton(VulkanWindow&, size_t button, VulkanWindow::ButtonAction downOrUp, const VulkanWindow::MouseState& s)
+void App::mouseButton(VulkanWindow&, size_t button, VulkanWindow::ButtonState buttonState, const VulkanWindow::MouseState& s)
 {
-	string d = (downOrUp == VulkanWindow::ButtonAction::Down) ? "D" : "U";
+	string d = (buttonState == VulkanWindow::ButtonState::Pressed) ? "D" : "U";
 	cout << "b" << button << d << "[" << hex << s.buttons.to_ulong() << dec << "]";
 	if(s.mods.test(VulkanWindow::Modifier::Ctrl))
 		cout << "Ctrl";
@@ -896,14 +896,14 @@ void App::mouseWheel(VulkanWindow&, int wheelX, int wheelY, const VulkanWindow::
 }
 
 
-void App::key(VulkanWindow&, VulkanWindow::KeyAction downOrUp, uint16_t scanCode, uint16_t keyCode, std::string utf8character)
+void App::key(VulkanWindow&, VulkanWindow::KeyState keyState, uint16_t scanCode, uint16_t keyCode)
 {
-	if(downOrUp == VulkanWindow::KeyAction::Down)
+	if(keyState == VulkanWindow::KeyState::Pressed)
 		cout << "KeyDown";
 	else
 		cout << "KeyUp";
 
-	cout << ", scanCode: " << scanCode << ", keyCode: " << keyCode << ", utf8: " << utf8character << endl;
+	cout << ", scanCode: " << scanCode << ", keyCode: " << keyCode << endl;
 }
 
 
@@ -932,7 +932,7 @@ int main(int argc, char* argv[])
 		app.window.setMouseMoveCallback(bind(&App::mouseMove, &app, placeholders::_1, placeholders::_2));
 		app.window.setMouseButtonCallback(bind(&App::mouseButton, &app, placeholders::_1, placeholders::_2, placeholders::_3, placeholders::_4));
 		app.window.setMouseWheelCallback(bind(&App::mouseWheel, &app, placeholders::_1, placeholders::_2, placeholders::_3, placeholders::_4));
-		app.window.setKeyCallback(bind(&App::key, &app, placeholders::_1, placeholders::_2, placeholders::_3, placeholders::_4, placeholders::_5));
+		app.window.setKeyCallback(bind(&App::key, &app, placeholders::_1, placeholders::_2, placeholders::_3, placeholders::_4));
 		app.window.show();
 		app.window.mainLoop();
 

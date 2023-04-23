@@ -2211,7 +2211,7 @@ void VulkanWindow::mainLoop()
 				MouseButton::EnumType button = getMouseButton(e.xbutton.button);
 				w->_mouseState.buttons.set(button, true);
 				if(w->_mouseButtonCallback)
-					w->_mouseButtonCallback(*w, button, ButtonAction::Down, w->_mouseState);
+					w->_mouseButtonCallback(*w, button, ButtonState::Pressed, w->_mouseState);
 			}
 			else {
 				int wheelX, wheelY;
@@ -2235,35 +2235,24 @@ void VulkanWindow::mainLoop()
 				MouseButton::EnumType button = getMouseButton(e.xbutton.button);
 				w->_mouseState.buttons.set(button, false);
 				if(w->_mouseButtonCallback)
-					w->_mouseButtonCallback(*w, button, ButtonAction::Up, w->_mouseState);
+					w->_mouseButtonCallback(*w, button, ButtonState::Released, w->_mouseState);
 			}
 			continue;
 		}
 
 		// keyboard events
-		if(e.type == KeyPress) {
-
+		if(e.type == KeyPress)
+		{
 			// callback
 			if(w->_keyCallback) {
-#if 0
-				uint16_t s = XLookupKeysym(&e.xkey, e.xkey.state);
-				char text[8];
-				int l = xkb_keysym_to_utf8(s, text, sizeof(text)-1);
-				text[l] = 0;
-#else
-				KeySym s;
-				char text[8];
-				XLookupString(&e.xkey, text, sizeof(text)-1, &s, nullptr);
-				int l = xkb_keysym_to_utf8(s, text, sizeof(text)-1);
-				text[l] = 0;
-#endif
-				w->_keyCallback(*w, KeyAction::Down, e.xkey.keycode, s, text);
+				KeySym keySym;
+				XLookupString(&e.xkey, nullptr, 0, &keySym, nullptr);
+				w->_keyCallback(*w, KeyState::Pressed, e.xkey.keycode, keySym);
 			}
-
 			continue;
 		}
-		if(e.type == KeyRelease) {
-
+		if(e.type == KeyRelease)
+		{
 			// skip auto-repeat key events
 			if(XEventsQueued(_display, QueuedAfterReading)) {
 				XEvent nextEvent;
@@ -2278,11 +2267,9 @@ void VulkanWindow::mainLoop()
 
 			// callback
 			if(w->_keyCallback) {
-				uint16_t s = XLookupKeysym(&e.xkey, 0);
-				char text[8];
-				int l = xkb_keysym_to_utf8(s, text, sizeof(text)-1);
-				text[l] = 0;
-				w->_keyCallback(*w, KeyAction::Up, e.xkey.keycode, s, text);
+				KeySym keySym;
+				XLookupString(&e.xkey, nullptr, 0, &keySym, nullptr);
+				w->_keyCallback(*w, KeyState::Released, e.xkey.keycode, keySym);
 			}
 			continue;
 		}
