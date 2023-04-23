@@ -799,8 +799,10 @@ void VulkanWindow::init(void* data)
 				}
 				windowUnderPointer->_mouseState.buttons.set(index, state == WL_POINTER_BUTTON_STATE_PRESSED);
 				if(windowUnderPointer->_mouseButtonCallback) {
-					ButtonAction a = (state == WL_POINTER_BUTTON_STATE_PRESSED) ? ButtonAction::Down : ButtonAction::Up;
-					windowUnderPointer->_mouseButtonCallback(*windowUnderPointer, index, a, windowUnderPointer->_mouseState);
+					ButtonState buttonState =
+						(state == WL_POINTER_BUTTON_STATE_PRESSED) ? ButtonState::Pressed : ButtonState::Released;
+					windowUnderPointer->_mouseButtonCallback(
+						*windowUnderPointer, index, buttonState, windowUnderPointer->_mouseState);
 				}
 			},
 		.axis =
@@ -906,18 +908,16 @@ void VulkanWindow::init(void* data)
 
 				// process key
 				uint32_t keyCode = key + 8;
-				xkb_keysym_t sym = xkb_state_key_get_one_sym(_xkbState, keyCode);
+				xkb_keysym_t keySym = xkb_state_key_get_one_sym(_xkbState, keyCode);
 
 				// callback
 				if(windowWithKbFocus->_keyCallback) {
-					char utf8char[8];
-					xkb_state_key_get_utf8(_xkbState, keyCode, utf8char, sizeof(utf8char));
 					windowWithKbFocus->_keyCallback(
 						*windowWithKbFocus,
-						state==WL_KEYBOARD_KEY_STATE_PRESSED ? KeyAction::Down : KeyAction::Up,
-						key,  // scanCode
-						sym,  // keyCode
-						utf8char);  // utf8character
+						state==WL_KEYBOARD_KEY_STATE_PRESSED ? KeyState::Pressed : KeyState::Released,
+						keyCode,  // scanCode
+						keySym  // keyCode
+					);
 				}
 			},
 		.modifiers =
