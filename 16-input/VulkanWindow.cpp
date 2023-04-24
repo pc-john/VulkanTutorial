@@ -2638,7 +2638,7 @@ void VulkanWindow::mainLoop()
 			}
 		};
 	auto handleMouseButton =
-		[](VulkanWindow* w, SDL_Event& event, ButtonAction downOrUp) -> void
+		[](VulkanWindow* w, SDL_Event& event, ButtonState buttonState) -> void
 		{
 			// button
 			MouseButton::EnumType mouseButton;
@@ -2652,9 +2652,9 @@ void VulkanWindow::mainLoop()
 			}
 
 			// callback with new button state
-			w->_mouseState.buttons.set(mouseButton, downOrUp==ButtonAction::Down);
+			w->_mouseState.buttons.set(mouseButton, buttonState==ButtonState::Pressed);
 			if(w->_mouseButtonCallback)
-				w->_mouseButtonCallback(*w, mouseButton, downOrUp, w->_mouseState);
+				w->_mouseButtonCallback(*w, mouseButton, buttonState, w->_mouseState);
 		};
 
 	// main loop
@@ -2769,7 +2769,7 @@ void VulkanWindow::mainLoop()
 				SDL_GetWindowData(SDL_GetWindowFromID(event.button.windowID), windowPointerName));
 			handleModifiers(w);
 			handleMouseMove(w, event.button.x, event.button.y);
-			handleMouseButton(w, event, ButtonAction::Down);
+			handleMouseButton(w, event, ButtonState::Pressed);
 			break;
 		}
 		case SDL_MOUSEBUTTONUP: {
@@ -2777,7 +2777,7 @@ void VulkanWindow::mainLoop()
 				SDL_GetWindowData(SDL_GetWindowFromID(event.button.windowID), windowPointerName));
 			handleModifiers(w);
 			handleMouseMove(w, event.button.x, event.button.y);
-			handleMouseButton(w, event, ButtonAction::Up);
+			handleMouseButton(w, event, ButtonState::Released);
 			break;
 		}
 		case SDL_MOUSEWHEEL:
@@ -2791,7 +2791,7 @@ void VulkanWindow::mainLoop()
 
 				// handle wheel rotation
 				// (value is relative since last wheel event)
-#if SDL_MAJOR_VERSION == 2 || SDL_MINOR_VERSION >= 18
+#if SDL_MAJOR_VERSION == 2 && SDL_MINOR_VERSION >= 18
 				int wheelX = lround(event.wheel.preciseX*120);
 				int wheelY = lround(event.wheel.preciseY*120);
 #else
@@ -2807,14 +2807,14 @@ void VulkanWindow::mainLoop()
 			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
 				SDL_GetWindowData(SDL_GetWindowFromID(event.key.windowID), windowPointerName));
 			if(w->_keyCallback && event.key.repeat == 0)
-				w->_keyCallback(*w, KeyAction::Down, event.key.keysym.scancode, event.key.keysym.sym, "");
+				w->_keyCallback(*w, KeyState::Pressed, event.key.keysym.scancode, event.key.keysym.sym);
 			break;
 		}
 		case SDL_KEYUP: {
 			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
 				SDL_GetWindowData(SDL_GetWindowFromID(event.key.windowID), windowPointerName));
 			if(w->_keyCallback && event.key.repeat == 0)
-				w->_keyCallback(*w, KeyAction::Up, event.key.keysym.scancode, event.key.keysym.sym, "");
+				w->_keyCallback(*w, KeyState::Released, event.key.keysym.scancode, event.key.keysym.sym);
 			break;
 		}
 
