@@ -64,8 +64,6 @@ static wstring utf8toWString(const char* s)
 }
 # endif
 
-static std::map<uint8_t, std::string> pressedKeys;
-
 // list of windows waiting for frame rendering
 // (the windows have _framePendingState set to FramePendingState::Pending or TentativePending)
 static vector<VulkanWindow*> framePendingWindows;
@@ -82,6 +80,137 @@ static void removeFromFramePendingWindows(VulkanWindow* w)
 	}
 	framePendingWindows.pop_back();
 }
+
+static const VulkanWindow::ScanCode scanCodeConversionTable[512] = {
+	// normal keys:
+	// (changes compared to values that is carried by each VulkanWindow::ScanCode enum item: NumLock->PauseBreak)
+	/*0-1*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Escape,
+	/*2-6*/ VulkanWindow::ScanCode::Num1, VulkanWindow::ScanCode::Num2, VulkanWindow::ScanCode::Num3, VulkanWindow::ScanCode::Num4, VulkanWindow::ScanCode::Num5,
+	/*7-11*/ VulkanWindow::ScanCode::Num6, VulkanWindow::ScanCode::Num7, VulkanWindow::ScanCode::Num8, VulkanWindow::ScanCode::Num9, VulkanWindow::ScanCode::Num0,
+	/*12-15*/ VulkanWindow::ScanCode::Minus, VulkanWindow::ScanCode::Equal, VulkanWindow::ScanCode::Backspace, VulkanWindow::ScanCode::Tab,
+	/*16-22*/ VulkanWindow::ScanCode::Q, VulkanWindow::ScanCode::W, VulkanWindow::ScanCode::E, VulkanWindow::ScanCode::R, VulkanWindow::ScanCode::T, VulkanWindow::ScanCode::Y, VulkanWindow::ScanCode::U,
+	/*23-28*/ VulkanWindow::ScanCode::I, VulkanWindow::ScanCode::O, VulkanWindow::ScanCode::P, VulkanWindow::ScanCode::LeftBracket, VulkanWindow::ScanCode::RightBracket, VulkanWindow::ScanCode::Enter,
+	/*29-34*/ VulkanWindow::ScanCode::LeftControl, VulkanWindow::ScanCode::A, VulkanWindow::ScanCode::S, VulkanWindow::ScanCode::D, VulkanWindow::ScanCode::F, VulkanWindow::ScanCode::G,
+	/*35-40*/ VulkanWindow::ScanCode::H, VulkanWindow::ScanCode::J, VulkanWindow::ScanCode::K, VulkanWindow::ScanCode::L, VulkanWindow::ScanCode::Semicolon, VulkanWindow::ScanCode::Apostrophe,
+	/*41-47*/ VulkanWindow::ScanCode::GraveAccent, VulkanWindow::ScanCode::LeftShift, VulkanWindow::ScanCode::Backslash, VulkanWindow::ScanCode::Z, VulkanWindow::ScanCode::X, VulkanWindow::ScanCode::C, VulkanWindow::ScanCode::V,
+	/*48-54*/ VulkanWindow::ScanCode::B, VulkanWindow::ScanCode::N, VulkanWindow::ScanCode::M, VulkanWindow::ScanCode::Comma, VulkanWindow::ScanCode::Period, VulkanWindow::ScanCode::Slash, VulkanWindow::ScanCode::RightShift,
+	/*55-58*/ VulkanWindow::ScanCode::KeypadMultiply, VulkanWindow::ScanCode::LeftAlt, VulkanWindow::ScanCode::Space, VulkanWindow::ScanCode::CapsLock,
+	/*59-64*/ VulkanWindow::ScanCode::F1, VulkanWindow::ScanCode::F2, VulkanWindow::ScanCode::F3, VulkanWindow::ScanCode::F4, VulkanWindow::ScanCode::F5, VulkanWindow::ScanCode::F6,
+	/*65-70*/ VulkanWindow::ScanCode::F7, VulkanWindow::ScanCode::F8, VulkanWindow::ScanCode::F9, VulkanWindow::ScanCode::F10, VulkanWindow::ScanCode::PauseBreak, VulkanWindow::ScanCode::ScrollLock,
+	/*71-77*/ VulkanWindow::ScanCode::Keypad7, VulkanWindow::ScanCode::Keypad8, VulkanWindow::ScanCode::Keypad9, VulkanWindow::ScanCode::KeypadMinus, VulkanWindow::ScanCode::Keypad4, VulkanWindow::ScanCode::Keypad5, VulkanWindow::ScanCode::Keypad6,
+	/*78-83*/ VulkanWindow::ScanCode::KeypadPlus, VulkanWindow::ScanCode::Keypad1, VulkanWindow::ScanCode::Keypad2, VulkanWindow::ScanCode::Keypad3, VulkanWindow::ScanCode::Keypad0, VulkanWindow::ScanCode::KeypadPeriod,
+	/*84-88*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::NonUSBackslash, VulkanWindow::ScanCode::F11, VulkanWindow::ScanCode::F12,
+	/*89-95*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*96-101*/ VulkanWindow::ScanCode::KeypadEnter, VulkanWindow::ScanCode::RightControl, VulkanWindow::ScanCode::KeypadDivide, VulkanWindow::ScanCode::PrintScreen, VulkanWindow::ScanCode::RightAlt, VulkanWindow::ScanCode::Unknown,
+	/*102-108*/ VulkanWindow::ScanCode::Home, VulkanWindow::ScanCode::Up, VulkanWindow::ScanCode::PageUp, VulkanWindow::ScanCode::Left, VulkanWindow::ScanCode::Right, VulkanWindow::ScanCode::End, VulkanWindow::ScanCode::Down,
+	/*109-112*/ VulkanWindow::ScanCode::PageDown, VulkanWindow::ScanCode::Insert, VulkanWindow::ScanCode::Delete, VulkanWindow::ScanCode::Unknown, 
+	/*113-118*/ VulkanWindow::ScanCode::Mute, VulkanWindow::ScanCode::VolumeDown, VulkanWindow::ScanCode::VolumeUp, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*119-124*/ VulkanWindow::ScanCode::PauseBreak, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*125-127*/ VulkanWindow::ScanCode::LeftGUI, VulkanWindow::ScanCode::RightGUI, VulkanWindow::ScanCode::Application,
+
+	/*128-130*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*131-135*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*136-140*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*141-145*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*146-150*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*151-155*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*156-160*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*161-165*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*166-170*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*171-175*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*176-180*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*181-185*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*186-190*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*191-195*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*196-200*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*201-205*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*206-210*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*211-215*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*216-220*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*221-225*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*226-230*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*231-235*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*236-240*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*241-245*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*246-250*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*251-255*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+
+	// extended keys:
+	// (changes compared to normal keys: Enter->KeypadEnter, LeftControl->RightControl, Slash->KeypadDivide, KeypadMultiply->PrintScreen, LeftAlt->RightAlt,
+	// Keypad7->Home, Keypad8->Up, Keypad9->PageUp, Keypad4->Left, Keypad6->Right, Keypad1->End, Keypad2->Down, Keypad3->PageDown, Keypad0->Insert, KeypadPeriod->Delete,
+	// 91->LeftGUI, 92->RightGUI, 93->Application)
+	/*0-1*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Escape,
+	/*2-6*/ VulkanWindow::ScanCode::Num1, VulkanWindow::ScanCode::Num2, VulkanWindow::ScanCode::Num3, VulkanWindow::ScanCode::Num4, VulkanWindow::ScanCode::Num5,
+	/*7-11*/ VulkanWindow::ScanCode::Num6, VulkanWindow::ScanCode::Num7, VulkanWindow::ScanCode::Num8, VulkanWindow::ScanCode::Num9, VulkanWindow::ScanCode::Num0,
+	/*12-15*/ VulkanWindow::ScanCode::Minus, VulkanWindow::ScanCode::Equal, VulkanWindow::ScanCode::Backspace, VulkanWindow::ScanCode::Tab,
+	/*16-22*/ VulkanWindow::ScanCode::Q, VulkanWindow::ScanCode::W, VulkanWindow::ScanCode::E, VulkanWindow::ScanCode::R, VulkanWindow::ScanCode::T, VulkanWindow::ScanCode::Y, VulkanWindow::ScanCode::U,
+	/*23-28*/ VulkanWindow::ScanCode::I, VulkanWindow::ScanCode::O, VulkanWindow::ScanCode::P, VulkanWindow::ScanCode::LeftBracket, VulkanWindow::ScanCode::RightBracket, VulkanWindow::ScanCode::KeypadEnter,
+	/*29-34*/ VulkanWindow::ScanCode::RightControl, VulkanWindow::ScanCode::A, VulkanWindow::ScanCode::S, VulkanWindow::ScanCode::D, VulkanWindow::ScanCode::F, VulkanWindow::ScanCode::G,
+	/*35-40*/ VulkanWindow::ScanCode::H, VulkanWindow::ScanCode::J, VulkanWindow::ScanCode::K, VulkanWindow::ScanCode::L, VulkanWindow::ScanCode::Semicolon, VulkanWindow::ScanCode::Apostrophe,
+	/*41-47*/ VulkanWindow::ScanCode::GraveAccent, VulkanWindow::ScanCode::LeftShift, VulkanWindow::ScanCode::Backslash, VulkanWindow::ScanCode::Z, VulkanWindow::ScanCode::X, VulkanWindow::ScanCode::C, VulkanWindow::ScanCode::V,
+	/*48-54*/ VulkanWindow::ScanCode::B, VulkanWindow::ScanCode::N, VulkanWindow::ScanCode::M, VulkanWindow::ScanCode::Comma, VulkanWindow::ScanCode::Period, VulkanWindow::ScanCode::KeypadDivide, VulkanWindow::ScanCode::RightShift,
+	/*55-56*/ VulkanWindow::ScanCode::PrintScreen, VulkanWindow::ScanCode::RightAlt /* RightAlt might be configured as AltGr. In that case, LeftControl press is generated by RightAlt as well. To change AltGr to Alt, switch to US-English keyboard layout. */,
+	/*57-58*/ VulkanWindow::ScanCode::Space, VulkanWindow::ScanCode::CapsLock,
+	/*59-64*/ VulkanWindow::ScanCode::F1, VulkanWindow::ScanCode::F2, VulkanWindow::ScanCode::F3, VulkanWindow::ScanCode::F4, VulkanWindow::ScanCode::F5, VulkanWindow::ScanCode::F6,
+	/*65-70*/ VulkanWindow::ScanCode::F7, VulkanWindow::ScanCode::F8, VulkanWindow::ScanCode::F9, VulkanWindow::ScanCode::F10, VulkanWindow::ScanCode::NumLock, VulkanWindow::ScanCode::ScrollLock,
+	/*71-77*/ VulkanWindow::ScanCode::Home, VulkanWindow::ScanCode::Up, VulkanWindow::ScanCode::PageUp, VulkanWindow::ScanCode::KeypadMinus, VulkanWindow::ScanCode::Left, VulkanWindow::ScanCode::Keypad5, VulkanWindow::ScanCode::Right,
+	/*78-83*/ VulkanWindow::ScanCode::KeypadPlus, VulkanWindow::ScanCode::End, VulkanWindow::ScanCode::Down, VulkanWindow::ScanCode::PageDown, VulkanWindow::ScanCode::Insert, VulkanWindow::ScanCode::Delete,
+	/*84-88*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::NonUSBackslash, VulkanWindow::ScanCode::F11, VulkanWindow::ScanCode::F12,
+	/*89-95*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::LeftGUI, VulkanWindow::ScanCode::RightGUI, VulkanWindow::ScanCode::Application, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*96-101*/ VulkanWindow::ScanCode::KeypadEnter, VulkanWindow::ScanCode::RightControl, VulkanWindow::ScanCode::KeypadDivide, VulkanWindow::ScanCode::PrintScreen, VulkanWindow::ScanCode::RightAlt, VulkanWindow::ScanCode::Unknown,
+	/*102-108*/ VulkanWindow::ScanCode::Home, VulkanWindow::ScanCode::Up, VulkanWindow::ScanCode::PageUp, VulkanWindow::ScanCode::Left, VulkanWindow::ScanCode::Right, VulkanWindow::ScanCode::End, VulkanWindow::ScanCode::Down,
+	/*109-112*/ VulkanWindow::ScanCode::PageDown, VulkanWindow::ScanCode::Insert, VulkanWindow::ScanCode::Delete, VulkanWindow::ScanCode::Unknown, 
+	/*113-118*/ VulkanWindow::ScanCode::Mute, VulkanWindow::ScanCode::VolumeDown, VulkanWindow::ScanCode::VolumeUp, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*119-124*/ VulkanWindow::ScanCode::PauseBreak, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*125-127*/ VulkanWindow::ScanCode::LeftGUI, VulkanWindow::ScanCode::RightGUI, VulkanWindow::ScanCode::Application,
+
+	/*128-130*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*131-135*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*136-140*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*141-145*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*146-150*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*151-155*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*156-160*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*161-165*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*166-170*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*171-175*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*176-180*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*181-185*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*186-190*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*191-195*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*196-200*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*201-205*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*206-210*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*211-215*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*216-220*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*221-225*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*226-230*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*231-235*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*236-240*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*241-245*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*246-250*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*251-255*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+};
+
+static VulkanWindow::ScanCode getScanCodeOfSpecialKey(WPARAM wParam)
+{
+	switch(wParam) {
+	case VK_VOLUME_MUTE: return VulkanWindow::ScanCode::Mute;
+	case VK_VOLUME_DOWN: return VulkanWindow::ScanCode::VolumeDown;
+	case VK_VOLUME_UP:   return VulkanWindow::ScanCode::VolumeUp;
+	case VK_MEDIA_NEXT_TRACK: return VulkanWindow::ScanCode::AudioNext;
+	case VK_MEDIA_PLAY_PAUSE: return VulkanWindow::ScanCode::AudioPlay;
+	case VK_MEDIA_PREV_TRACK: return VulkanWindow::ScanCode::AudioPrev;
+	case VK_MEDIA_STOP:       return VulkanWindow::ScanCode::AudioStop;
+	case VK_BROWSER_SEARCH: return VulkanWindow::ScanCode::Search;
+	case VK_BROWSER_HOME: return VulkanWindow::ScanCode::BrowserHome;
+	case VK_LAUNCH_MAIL: return VulkanWindow::ScanCode::LaunchMail;
+	case VK_LAUNCH_MEDIA_SELECT: return VulkanWindow::ScanCode::LaunchMedia;
+	case VK_LAUNCH_APP2: return VulkanWindow::ScanCode::Calculator;
+	default: return VulkanWindow::ScanCode::Unknown;
+	}
+}
+
 #endif
 
 
@@ -217,7 +346,7 @@ void VulkanWindow::init()
 				}
 			};
 		auto handleMouseButton =
-			[](HWND hwnd, MouseButton::EnumType mouseButton, ButtonAction downOrUp, WPARAM wParam, LPARAM lParam) -> LRESULT
+			[](HWND hwnd, MouseButton::EnumType mouseButton, ButtonState buttonState, WPARAM wParam, LPARAM lParam) -> LRESULT
 			{
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 
@@ -241,7 +370,7 @@ void VulkanWindow::init()
 
 				// set new state and capture mouse
 				bool prevAny = w->_mouseState.buttons.any();
-				w->_mouseState.buttons.set(mouseButton, downOrUp==ButtonAction::Down);
+				w->_mouseState.buttons.set(mouseButton, buttonState==ButtonState::Pressed);
 				bool newAny = w->_mouseState.buttons.any();
 				if(prevAny != newAny) {
 					if(newAny)
@@ -252,7 +381,7 @@ void VulkanWindow::init()
 
 				// callback
 				if(w->_mouseButtonCallback)
-					w->_mouseButtonCallback(*w, mouseButton, downOrUp, w->_mouseState);
+					w->_mouseButtonCallback(*w, mouseButton, buttonState, w->_mouseState);
 
 				return 0;
 			};
@@ -342,14 +471,14 @@ void VulkanWindow::init()
 			}
 
 			// mouse buttons
-			case WM_LBUTTONDOWN: return handleMouseButton(hwnd, MouseButton::Left,   ButtonAction::Down, wParam, lParam);
-			case WM_LBUTTONUP:   return handleMouseButton(hwnd, MouseButton::Left,   ButtonAction::Up,   wParam, lParam);
-			case WM_RBUTTONDOWN: return handleMouseButton(hwnd, MouseButton::Right,  ButtonAction::Down, wParam, lParam);
-			case WM_RBUTTONUP:   return handleMouseButton(hwnd, MouseButton::Right,  ButtonAction::Up,   wParam, lParam);
-			case WM_MBUTTONDOWN: return handleMouseButton(hwnd, MouseButton::Middle, ButtonAction::Down, wParam, lParam);
-			case WM_MBUTTONUP:   return handleMouseButton(hwnd, MouseButton::Middle, ButtonAction::Up,   wParam, lParam);
-			case WM_XBUTTONDOWN: return handleMouseButton(hwnd, getMouseXButton(wParam), ButtonAction::Down, wParam, lParam);
-			case WM_XBUTTONUP:   return handleMouseButton(hwnd, getMouseXButton(wParam), ButtonAction::Up,   wParam, lParam);
+			case WM_LBUTTONDOWN: return handleMouseButton(hwnd, MouseButton::Left,   ButtonState::Pressed,  wParam, lParam);
+			case WM_LBUTTONUP:   return handleMouseButton(hwnd, MouseButton::Left,   ButtonState::Released, wParam, lParam);
+			case WM_RBUTTONDOWN: return handleMouseButton(hwnd, MouseButton::Right,  ButtonState::Pressed,  wParam, lParam);
+			case WM_RBUTTONUP:   return handleMouseButton(hwnd, MouseButton::Right,  ButtonState::Released, wParam, lParam);
+			case WM_MBUTTONDOWN: return handleMouseButton(hwnd, MouseButton::Middle, ButtonState::Pressed,  wParam, lParam);
+			case WM_MBUTTONUP:   return handleMouseButton(hwnd, MouseButton::Middle, ButtonState::Released, wParam, lParam);
+			case WM_XBUTTONDOWN: return handleMouseButton(hwnd, getMouseXButton(wParam), ButtonState::Pressed,  wParam, lParam);
+			case WM_XBUTTONUP:   return handleMouseButton(hwnd, getMouseXButton(wParam), ButtonState::Released, wParam, lParam);
 
 			// vertical and horizontal mouse wheel
 			// (amount of wheel rotation since the last wheel message)
@@ -377,56 +506,34 @@ void VulkanWindow::init()
 			}
 
 			// keyboard events
-			case WM_KEYDOWN: {
-
+			case WM_KEYDOWN:
+			case WM_SYSKEYDOWN:  // LeftAlt, RightAlt and F10 come through WM_SYSKEYDOWN
+			{
 				// skip auto-repeat messages
 				if(lParam & (1 << 30))
 					return 0;
 
-				auto getUtf8 =
-					[](HWND hwnd) -> std::string
-					{
-						// get WM_CHAR message
-						MSG msg;
-						if(!PeekMessage(&msg, hwnd, WM_CHAR, WM_CHAR, PM_REMOVE))
-							return "";
-
-						// convert from current code page to utf-16
-						WPARAM c;
-					#if _UNICODE
-						c = msg.wParam;
-					#else
-						int l1 = MultiByteToWideChar(CP_ACP, 0, reinterpret_cast<char*>(&msg.wParam), 1, reinterpret_cast<wchar_t*>(&c), sizeof(c));
-						if(l1 == 0)
-							return "";
-					#endif
-
-						// convert from utf-16 to utf-8
-						constexpr int maxLen = 12;
-						char s[maxLen+1];
-						int l2 = WideCharToMultiByte(CP_UTF8, 0, reinterpret_cast<wchar_t*>(&c), l1, s, maxLen, nullptr, nullptr);
-						if(l2 == 0)
-							return "";
-						s[l2] = 0;
-						return s;
-					};
-
-				uint8_t keyCode = wParam & 0xff;
-				auto& utf8character = pressedKeys[keyCode];
-				utf8character = getUtf8(hwnd);
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				if(w->_keyCallback)
-					w->_keyCallback(*w, KeyAction::Down, (lParam >> 16) & 0xff, keyCode, utf8character);
+				{
+					ScanCode scanCode = scanCodeConversionTable[(lParam >> 16) & 0x1ff];
+					if(scanCode == ScanCode::Unknown)
+						scanCode = getScanCodeOfSpecialKey(wParam);
+					uint8_t keyCode = wParam & 0xff;
+					w->_keyCallback(*w, KeyState::Pressed, uint16_t(scanCode), keyCode);
+				}
 				return 0;
 			}
-			case WM_KEYUP: {
-				uint8_t keyCode = wParam & 0xff;
-				auto it = pressedKeys.find(keyCode);
+			case WM_KEYUP:
+			case WM_SYSKEYUP:  // LeftAlt, RightAlt and F10 come through WM_SYSKEYDOWN
+			{
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				if(w->_keyCallback)
-					w->_keyCallback(*w, KeyAction::Up, (lParam >> 16) & 0xff, wParam & 0xff, (it != pressedKeys.end()) ? it->second : "");
-				if(it != pressedKeys.end())
-					pressedKeys.erase(it);
+				{
+					ScanCode scanCode = scanCodeConversionTable[(lParam >> 16) & 0x1ff];
+					uint8_t keyCode = wParam & 0xff;
+					w->_keyCallback(*w, KeyState::Released, uint16_t(scanCode), keyCode);
+				}
 				return 0;
 			}
 
@@ -1806,10 +1913,10 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 			case GLFW_MOUSE_BUTTON_5:      b = MouseButton::X2; break;
 			default: b = MouseButton::Unknown;
 			}
-			ButtonAction a = (action == GLFW_PRESS) ? ButtonAction::Down : ButtonAction::Up;
+			ButtonState buttonState = (action == GLFW_PRESS) ? ButtonState::Pressed : ButtonState::Released;
 			w->_mouseState.buttons.set(b, action == GLFW_PRESS);
 			if(w->_mouseButtonCallback)
-				w->_mouseButtonCallback(*w, b, a, w->_mouseState);
+				w->_mouseButtonCallback(*w, b, buttonState, w->_mouseState);
 		}
 	);
 	glfwSetScrollCallback(
@@ -1839,7 +1946,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 					}
 				}
 				if(w->_keyCallback)
-					w->_keyCallback(*w, (action == GLFW_PRESS) ? KeyAction::Down : KeyAction::Up, scanCode, key, "");
+					w->_keyCallback(*w, (action == GLFW_PRESS) ? KeyState::Pressed : KeyState::Released, scanCode, key);
 			}
 		}
 	);
@@ -3119,7 +3226,7 @@ bool QtRenderingWindow::event(QEvent* event)
 				}
 			};
 		auto handleMouseButton =
-			[](VulkanWindow* vulkanWindow, QMouseEvent* e, VulkanWindow::MouseButton::EnumType mouseButton, VulkanWindow::ButtonAction downOrUp) -> bool
+			[](VulkanWindow* vulkanWindow, QMouseEvent* e, VulkanWindow::MouseButton::EnumType mouseButton, VulkanWindow::ButtonState buttonState) -> bool
 			{
 				// handle mouse move, if any
 #if (QT_VERSION >= QT_VERSION_CHECK(6, 0, 0))
@@ -3139,9 +3246,9 @@ bool QtRenderingWindow::event(QEvent* event)
 				}
 
 				// callback with new button state
-				vulkanWindow->_mouseState.buttons.set(mouseButton, downOrUp==VulkanWindow::ButtonAction::Down);
+				vulkanWindow->_mouseState.buttons.set(mouseButton, buttonState==VulkanWindow::ButtonState::Pressed);
 				if(vulkanWindow->_mouseButtonCallback)
-					vulkanWindow->_mouseButtonCallback(*vulkanWindow, mouseButton, downOrUp, vulkanWindow->_mouseState);
+					vulkanWindow->_mouseButtonCallback(*vulkanWindow, mouseButton, buttonState, vulkanWindow->_mouseState);
 				return true;
 
 			};
@@ -3195,12 +3302,12 @@ bool QtRenderingWindow::event(QEvent* event)
 		case QEvent::Type::MouseButtonPress: {
 			QMouseEvent* e = static_cast<QMouseEvent*>(event);
 			handleModifiers(vulkanWindow, e);
-			return handleMouseButton(vulkanWindow, e, getMouseButton(e), VulkanWindow::ButtonAction::Down);
+			return handleMouseButton(vulkanWindow, e, getMouseButton(e), VulkanWindow::ButtonState::Pressed);
 		}
 		case QEvent::Type::MouseButtonRelease: {
 			QMouseEvent* e = static_cast<QMouseEvent*>(event);
 			handleModifiers(vulkanWindow, e);
-			return handleMouseButton(vulkanWindow, e, getMouseButton(e), VulkanWindow::ButtonAction::Up);
+			return handleMouseButton(vulkanWindow, e, getMouseButton(e), VulkanWindow::ButtonState::Released);
 		}
 		case QEvent::Type::Wheel: {
 
@@ -3226,7 +3333,7 @@ bool QtRenderingWindow::event(QEvent* event)
 			if(vulkanWindow->_keyCallback) {
 				QKeyEvent *k = static_cast<QKeyEvent*>(event);
 				if(!k->isAutoRepeat())
-					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyAction::Down, k->nativeScanCode(), k->nativeVirtualKey(), k->text().toStdString());
+					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyState::Pressed, k->nativeScanCode(), k->nativeVirtualKey());
 			}
 			return true;
 		}
@@ -3234,7 +3341,7 @@ bool QtRenderingWindow::event(QEvent* event)
 			if(vulkanWindow->_keyCallback) {
 				QKeyEvent *k = static_cast<QKeyEvent*>(event);
 				if(!k->isAutoRepeat())
-					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyAction::Up, k->nativeScanCode(), k->nativeVirtualKey(), k->text().toStdString());
+					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyState::Released, k->nativeScanCode(), k->nativeVirtualKey());
 			}
 			return true;
 		}
