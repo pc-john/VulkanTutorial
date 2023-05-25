@@ -2353,7 +2353,7 @@ void VulkanWindow::mainLoop()
 			if(w->_keyCallback) {
 				KeySym keySym;
 				XLookupString(&e.xkey, nullptr, 0, &keySym, nullptr);
-				w->_keyCallback(*w, KeyState::Pressed, e.xkey.keycode, keySym);
+				w->_keyCallback(*w, KeyState::Pressed, e.xkey.keycode-8, keySym);
 			}
 			continue;
 		}
@@ -2375,7 +2375,7 @@ void VulkanWindow::mainLoop()
 			if(w->_keyCallback) {
 				KeySym keySym;
 				XLookupString(&e.xkey, nullptr, 0, &keySym, nullptr);
-				w->_keyCallback(*w, KeyState::Released, e.xkey.keycode, keySym);
+				w->_keyCallback(*w, KeyState::Released, e.xkey.keycode-8, keySym);
 			}
 			continue;
 		}
