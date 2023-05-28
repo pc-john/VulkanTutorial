@@ -591,18 +591,15 @@ void VulkanWindow::finalize() noexcept
 	// release resources
 	// (do not throw in the finalization code,
 	// so ignore the errors in release builds and assert in debug builds)
+	if(_windowClass) {
 # ifdef NDEBUG
-	if(_windowClass) {
-		UnregisterClass(MAKEINTATOM(_windowClass), _hInstance);
-		_windowClass = 0;
-	}
+		UnregisterClass(MAKEINTATOM(_windowClass), HINSTANCE(_hInstance));
 # else
-	if(_windowClass) {
 		if(!UnregisterClass(MAKEINTATOM(_windowClass), HINSTANCE(_hInstance)))
 			assert(0 && "UnregisterClass(): The function failed.");
+# endif
 		_windowClass = 0;
 	}
-# endif
 
 #elif defined(USE_PLATFORM_XLIB)
 
@@ -706,7 +703,7 @@ void VulkanWindow::destroy() noexcept
 	// and assert in debug builds)
 # ifdef NDEBUG
 	if(_hwnd) {
-		DestroyWindow(_hwnd);
+		DestroyWindow(HWND(_hwnd));
 		_hwnd = nullptr;
 	}
 # else
