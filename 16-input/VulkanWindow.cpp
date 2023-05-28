@@ -198,14 +198,14 @@ static VulkanWindow::ScanCode getScanCodeOfSpecialKey(WPARAM wParam)
 	case VK_VOLUME_MUTE: return VulkanWindow::ScanCode::Mute;
 	case VK_VOLUME_DOWN: return VulkanWindow::ScanCode::VolumeDown;
 	case VK_VOLUME_UP:   return VulkanWindow::ScanCode::VolumeUp;
-	case VK_MEDIA_NEXT_TRACK: return VulkanWindow::ScanCode::AudioNext;
-	case VK_MEDIA_PLAY_PAUSE: return VulkanWindow::ScanCode::AudioPlay;
-	case VK_MEDIA_PREV_TRACK: return VulkanWindow::ScanCode::AudioPrev;
-	case VK_MEDIA_STOP:       return VulkanWindow::ScanCode::AudioStop;
+	case VK_MEDIA_NEXT_TRACK: return VulkanWindow::ScanCode::MediaNext;
+	case VK_MEDIA_PLAY_PAUSE: return VulkanWindow::ScanCode::MediaPlayPause;
+	case VK_MEDIA_PREV_TRACK: return VulkanWindow::ScanCode::MediaPrev;
+	case VK_MEDIA_STOP:       return VulkanWindow::ScanCode::MediaStop;
 	case VK_BROWSER_SEARCH: return VulkanWindow::ScanCode::Search;
 	case VK_BROWSER_HOME: return VulkanWindow::ScanCode::BrowserHome;
-	case VK_LAUNCH_MAIL: return VulkanWindow::ScanCode::LaunchMail;
-	case VK_LAUNCH_MEDIA_SELECT: return VulkanWindow::ScanCode::LaunchMedia;
+	case VK_LAUNCH_MAIL: return VulkanWindow::ScanCode::Mail;
+	case VK_LAUNCH_MEDIA_SELECT: return VulkanWindow::ScanCode::MediaSelect;
 	case VK_LAUNCH_APP2: return VulkanWindow::ScanCode::Calculator;
 	default: return VulkanWindow::ScanCode::Unknown;
 	}
