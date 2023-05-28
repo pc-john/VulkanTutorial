@@ -993,12 +993,13 @@ void VulkanWindow::init(void* data)
 
 				// iterate keys array
 				// (following for loop is equivalent to wl_array_for_each(key, keys) used in C)
-				uint32_t* key;
-				for(key = static_cast<uint32_t*>(keys->data);
-				    reinterpret_cast<char*>(key) < static_cast<char*>(keys->data) + keys->size;
-				    key++)
+				uint32_t* p;
+				for(p = static_cast<uint32_t*>(keys->data);
+				    reinterpret_cast<char*>(p) < static_cast<char*>(keys->data) + keys->size;
+				    p++)
 				{
-					xkb_state_key_get_one_sym(_xkbState, *key + 8);
+					uint32_t scanCode = *p;
+					xkb_state_key_get_one_sym(_xkbState, scanCode + 8);
 				}
 			},
 		.leave =
@@ -1008,20 +1009,19 @@ void VulkanWindow::init(void* data)
 			},
 		.key =
 			[](void* data, wl_keyboard* keyboard, uint32_t serial, uint32_t time,
-			   uint32_t key, uint32_t state)
+			   uint32_t scanCode, uint32_t state)
 			{
-				cout << "key " << key << ", state " << state << endl;
+				cout << "scanCode " << scanCode << ", state " << state << endl;
 
 				// process key
-				uint32_t keyCode = key + 8;
-				xkb_keysym_t keySym = xkb_state_key_get_one_sym(_xkbState, keyCode);
+				xkb_keysym_t keySym = xkb_state_key_get_one_sym(_xkbState, scanCode + 8);
 
 				// callback
 				if(windowWithKbFocus->_keyCallback) {
 					windowWithKbFocus->_keyCallback(
 						*windowWithKbFocus,
 						state==WL_KEYBOARD_KEY_STATE_PRESSED ? KeyState::Pressed : KeyState::Released,
-						keyCode,  // scanCode
+						scanCode,  // scanCode
 						keySym  // keyCode
 					);
 				}
