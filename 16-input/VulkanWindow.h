@@ -44,8 +44,8 @@ public:
 	};
 	enum class ScanCode : uint16_t {
 		Unknown = 0, Escape = 1,
-		Num1 = 2, Num2 = 3, Num3 = 4, Num4 = 5, Num5 = 6, Num6 = 7, Num7 = 8, Num8 = 9, Num9 = 10,
-		Num0 = 11, Minus = 12, Equal = 13, Backspace = 14, Tab = 15, Q = 16, W = 17, E = 18, R = 19,
+		One = 2, Two = 3, Three = 4, Four = 5, Five = 6, Six = 7, Seven = 8, Eight = 9, Nine = 10,
+		Zero = 11, Minus = 12, Equal = 13, Backspace = 14, Tab = 15, Q = 16, W = 17, E = 18, R = 19,
 		T = 20, Y = 21, U = 22, I = 23, O = 24, P = 25, LeftBracket = 26, RightBracket = 27, Enter = 28, Return = 28, LeftControl = 29,
 		A = 30, S = 31, D = 32, F = 33, G = 34, H = 35, J = 36, K = 37, L = 38, Semicolon = 39,
 		Apostrophe = 40, GraveAccent = 41, LeftShift = 42, Backslash = 43, Z = 44, X = 45, C = 46, V = 47, B = 48, N = 49,
@@ -60,7 +60,7 @@ public:
 		PauseBreak = 119,
 		LeftGUI = 125, RightGUI = 126 /* untested */, Application = 127,
 		Calculator = 140,
-		Mail = 155,
+		Mail = 155, Back = 158, Forward = 159,
 		MediaNext = 163, MediaPlayPause = 164, MediaPrev = 165, MediaStop = 166,
 		MediaSelect = 171, BrowserHome = 172,
 		Search = 217,

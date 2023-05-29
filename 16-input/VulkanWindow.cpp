@@ -252,6 +252,66 @@ static wl_keyboard_listener keyboardListener;
 static bool sdlInitialized = false;
 static bool running;
 static constexpr const char* windowPointerName = "VulkanWindow";
+
+static const VulkanWindow::ScanCode scanCodeConversionTable[SDL_NUM_SCANCODES] = {
+	/*0..3*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*4..10*/ VulkanWindow::ScanCode::A, VulkanWindow::ScanCode::B, VulkanWindow::ScanCode::C, VulkanWindow::ScanCode::D, VulkanWindow::ScanCode::E, VulkanWindow::ScanCode::F, VulkanWindow::ScanCode::G,
+	/*11..17*/ VulkanWindow::ScanCode::H, VulkanWindow::ScanCode::I, VulkanWindow::ScanCode::J, VulkanWindow::ScanCode::K, VulkanWindow::ScanCode::L, VulkanWindow::ScanCode::M, VulkanWindow::ScanCode::N,
+	/*18..24*/ VulkanWindow::ScanCode::O, VulkanWindow::ScanCode::P, VulkanWindow::ScanCode::Q, VulkanWindow::ScanCode::R, VulkanWindow::ScanCode::S, VulkanWindow::ScanCode::T, VulkanWindow::ScanCode::U,
+	/*25..29*/ VulkanWindow::ScanCode::V, VulkanWindow::ScanCode::W, VulkanWindow::ScanCode::X, VulkanWindow::ScanCode::Y, VulkanWindow::ScanCode::Z,
+	/*30..34*/ VulkanWindow::ScanCode::One, VulkanWindow::ScanCode::Two, VulkanWindow::ScanCode::Three, VulkanWindow::ScanCode::Four, VulkanWindow::ScanCode::Five,
+	/*35..39*/ VulkanWindow::ScanCode::Six, VulkanWindow::ScanCode::Seven, VulkanWindow::ScanCode::Eight, VulkanWindow::ScanCode::Nine, VulkanWindow::ScanCode::Zero,
+	/*40..44*/ VulkanWindow::ScanCode::Return, VulkanWindow::ScanCode::Escape, VulkanWindow::ScanCode::Backspace, VulkanWindow::ScanCode::Tab, VulkanWindow::ScanCode::Space,
+	/*45..48*/ VulkanWindow::ScanCode::Minus, VulkanWindow::ScanCode::Equal, VulkanWindow::ScanCode::LeftBracket, VulkanWindow::ScanCode::RightBracket,
+	/*49..52*/ VulkanWindow::ScanCode::Backslash, VulkanWindow::ScanCode::NonUSBackslash, VulkanWindow::ScanCode::Semicolon, VulkanWindow::ScanCode::Apostrophe,
+	/*53..57*/ VulkanWindow::ScanCode::GraveAccent, VulkanWindow::ScanCode::Comma, VulkanWindow::ScanCode::Period, VulkanWindow::ScanCode::Slash, VulkanWindow::ScanCode::CapsLock,
+	/*58..63*/ VulkanWindow::ScanCode::F1, VulkanWindow::ScanCode::F2, VulkanWindow::ScanCode::F3, VulkanWindow::ScanCode::F4, VulkanWindow::ScanCode::F5, VulkanWindow::ScanCode::F6,
+	/*64..69*/ VulkanWindow::ScanCode::F7, VulkanWindow::ScanCode::F8, VulkanWindow::ScanCode::F9, VulkanWindow::ScanCode::F10, VulkanWindow::ScanCode::F11, VulkanWindow::ScanCode::F12,
+	/*70..73*/ VulkanWindow::ScanCode::PrintScreen, VulkanWindow::ScanCode::ScrollLock, VulkanWindow::ScanCode::PauseBreak, VulkanWindow::ScanCode::Insert,
+	/*74..78*/ VulkanWindow::ScanCode::Home, VulkanWindow::ScanCode::PageUp, VulkanWindow::ScanCode::Delete, VulkanWindow::ScanCode::End, VulkanWindow::ScanCode::PageDown,
+	/*79..83*/ VulkanWindow::ScanCode::Right, VulkanWindow::ScanCode::Left, VulkanWindow::ScanCode::Down, VulkanWindow::ScanCode::Up, VulkanWindow::ScanCode::NumLockClear,
+	/*84..88*/ VulkanWindow::ScanCode::KeypadDivide, VulkanWindow::ScanCode::KeypadMultiply, VulkanWindow::ScanCode::KeypadMinus, VulkanWindow::ScanCode::KeypadPlus, VulkanWindow::ScanCode::KeypadEnter,
+	/*89..94*/ VulkanWindow::ScanCode::Keypad1, VulkanWindow::ScanCode::Keypad2, VulkanWindow::ScanCode::Keypad3, VulkanWindow::ScanCode::Keypad4, VulkanWindow::ScanCode::Keypad5, VulkanWindow::ScanCode::Keypad6,
+	/*95..99*/ VulkanWindow::ScanCode::Keypad7, VulkanWindow::ScanCode::Keypad8, VulkanWindow::ScanCode::Keypad9, VulkanWindow::ScanCode::Keypad0, VulkanWindow::ScanCode::KeypadPeriod,
+	/*100..104*/ VulkanWindow::ScanCode::NonUSBackslash, VulkanWindow::ScanCode::Application, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*105..109*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*110..114*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*115..119*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*120..124*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*125..129*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::VolumeUp, VulkanWindow::ScanCode::VolumeDown,
+	/*130..134*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*135..139*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*140..144*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*145..149*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*150..154*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*155..159*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*160..164*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*165..169*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*170..174*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*175..179*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*180..184*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*185..189*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*190..194*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*195..199*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*200..204*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*205..209*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*210..214*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*215..219*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*220..224*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::LeftControl,
+	/*225..229*/ VulkanWindow::ScanCode::LeftShift, VulkanWindow::ScanCode::LeftAlt, VulkanWindow::ScanCode::LeftGUI, VulkanWindow::ScanCode::RightControl, VulkanWindow::ScanCode::RightShift,
+	/*230..234*/ VulkanWindow::ScanCode::RightAlt, VulkanWindow::ScanCode::RightGUI, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*235..239*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*240..244*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*245..249*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*250..254*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*255..259*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::MediaNext, VulkanWindow::ScanCode::MediaPrev,
+	/*260..264*/ VulkanWindow::ScanCode::MediaStop, VulkanWindow::ScanCode::MediaPlayPause, VulkanWindow::ScanCode::Mute, VulkanWindow::ScanCode::MediaSelect, VulkanWindow::ScanCode::Unknown,
+	/*265..269*/ VulkanWindow::ScanCode::Mail, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Search, VulkanWindow::ScanCode::BrowserHome,
+	/*270..274*/ VulkanWindow::ScanCode::Back, VulkanWindow::ScanCode::Forward, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*275..279*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*280..284*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Calculator,
+	/*285..289*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+};
 #endif
 
 
@@ -2911,14 +2971,44 @@ void VulkanWindow::mainLoop()
 			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
 				SDL_GetWindowData(SDL_GetWindowFromID(event.key.windowID), windowPointerName));
 			if(w->_keyCallback && event.key.repeat == 0)
-				w->_keyCallback(*w, KeyState::Pressed, event.key.keysym.scancode, event.key.keysym.sym);
+			{
+				// get scan code
+				ScanCode scanCode;
+				if(event.key.keysym.scancode <= 0)
+					scanCode = ScanCode::Unknown;
+				else if (event.key.keysym.scancode >= (sizeof(scanCodeConversionTable)/sizeof(ScanCode)))
+					scanCode = ScanCode(1000 + event.key.keysym.scancode);
+				else {
+					scanCode = scanCodeConversionTable[event.key.keysym.scancode];
+					if(scanCode == ScanCode::Unknown)
+						scanCode = ScanCode(1000 + event.key.keysym.scancode);
+				}
+
+				// call callback
+				w->_keyCallback(*w, KeyState::Pressed, uint16_t(scanCode), event.key.keysym.sym);
+			}
 			break;
 		}
 		case SDL_KEYUP: {
 			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(
 				SDL_GetWindowData(SDL_GetWindowFromID(event.key.windowID), windowPointerName));
 			if(w->_keyCallback && event.key.repeat == 0)
-				w->_keyCallback(*w, KeyState::Released, event.key.keysym.scancode, event.key.keysym.sym);
+			{
+				// get scan code
+				ScanCode scanCode;
+				if(event.key.keysym.scancode <= 0)
+					scanCode = ScanCode::Unknown;
+				else if (event.key.keysym.scancode >= (sizeof(scanCodeConversionTable)/sizeof(ScanCode)))
+					scanCode = ScanCode(1000 + event.key.keysym.scancode);
+				else {
+					scanCode = scanCodeConversionTable[event.key.keysym.scancode];
+					if(scanCode == ScanCode::Unknown)
+						scanCode = ScanCode(1000 + event.key.keysym.scancode);
+				}
+
+				// call callback
+				w->_keyCallback(*w, KeyState::Released, uint16_t(scanCode), event.key.keysym.sym);
+			}
 			break;
 		}
 
