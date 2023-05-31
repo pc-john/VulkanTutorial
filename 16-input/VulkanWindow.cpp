@@ -81,12 +81,36 @@ static void removeFromFramePendingWindows(VulkanWindow* w)
 	framePendingWindows.pop_back();
 }
 
+static VulkanWindow::ScanCode getScanCodeOfSpecialKey(WPARAM wParam)
+{
+	switch(wParam) {
+	case VK_VOLUME_MUTE: return VulkanWindow::ScanCode::Mute;
+	case VK_VOLUME_DOWN: return VulkanWindow::ScanCode::VolumeDown;
+	case VK_VOLUME_UP:   return VulkanWindow::ScanCode::VolumeUp;
+	case VK_MEDIA_NEXT_TRACK: return VulkanWindow::ScanCode::MediaNext;
+	case VK_MEDIA_PLAY_PAUSE: return VulkanWindow::ScanCode::MediaPlayPause;
+	case VK_MEDIA_PREV_TRACK: return VulkanWindow::ScanCode::MediaPrev;
+	case VK_MEDIA_STOP:       return VulkanWindow::ScanCode::MediaStop;
+	case VK_BROWSER_SEARCH: return VulkanWindow::ScanCode::Search;
+	case VK_BROWSER_HOME: return VulkanWindow::ScanCode::BrowserHome;
+	case VK_LAUNCH_MAIL: return VulkanWindow::ScanCode::Mail;
+	case VK_LAUNCH_MEDIA_SELECT: return VulkanWindow::ScanCode::MediaSelect;
+	case VK_LAUNCH_APP2: return VulkanWindow::ScanCode::Calculator;
+	default: return VulkanWindow::ScanCode::Unknown;
+	}
+}
+
+#endif
+
+
+#if defined(USE_PLATFORM_WIN32) || (defined(USE_PLATFORM_GLFW) && defined(_WIN32)) || (defined(USE_PLATFORM_QT) && defined(_WIN32))
+
 static const VulkanWindow::ScanCode scanCodeConversionTable[512] = {
 	// normal keys:
 	// (changes compared to values that is carried by each VulkanWindow::ScanCode enum item: NumLock->PauseBreak)
 	/*0-1*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Escape,
-	/*2-6*/ VulkanWindow::ScanCode::Num1, VulkanWindow::ScanCode::Num2, VulkanWindow::ScanCode::Num3, VulkanWindow::ScanCode::Num4, VulkanWindow::ScanCode::Num5,
-	/*7-11*/ VulkanWindow::ScanCode::Num6, VulkanWindow::ScanCode::Num7, VulkanWindow::ScanCode::Num8, VulkanWindow::ScanCode::Num9, VulkanWindow::ScanCode::Num0,
+	/*2-6*/ VulkanWindow::ScanCode::One, VulkanWindow::ScanCode::Two, VulkanWindow::ScanCode::Three, VulkanWindow::ScanCode::Four, VulkanWindow::ScanCode::Five,
+	/*7-11*/ VulkanWindow::ScanCode::Six, VulkanWindow::ScanCode::Seven, VulkanWindow::ScanCode::Eight, VulkanWindow::ScanCode::Nine, VulkanWindow::ScanCode::Zero,
 	/*12-15*/ VulkanWindow::ScanCode::Minus, VulkanWindow::ScanCode::Equal, VulkanWindow::ScanCode::Backspace, VulkanWindow::ScanCode::Tab,
 	/*16-22*/ VulkanWindow::ScanCode::Q, VulkanWindow::ScanCode::W, VulkanWindow::ScanCode::E, VulkanWindow::ScanCode::R, VulkanWindow::ScanCode::T, VulkanWindow::ScanCode::Y, VulkanWindow::ScanCode::U,
 	/*23-28*/ VulkanWindow::ScanCode::I, VulkanWindow::ScanCode::O, VulkanWindow::ScanCode::P, VulkanWindow::ScanCode::LeftBracket, VulkanWindow::ScanCode::RightBracket, VulkanWindow::ScanCode::Enter,
@@ -140,8 +164,8 @@ static const VulkanWindow::ScanCode scanCodeConversionTable[512] = {
 	// Keypad7->Home, Keypad8->Up, Keypad9->PageUp, Keypad4->Left, Keypad6->Right, Keypad1->End, Keypad2->Down, Keypad3->PageDown, Keypad0->Insert, KeypadPeriod->Delete,
 	// 91->LeftGUI, 92->RightGUI, 93->Application)
 	/*0-1*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Escape,
-	/*2-6*/ VulkanWindow::ScanCode::Num1, VulkanWindow::ScanCode::Num2, VulkanWindow::ScanCode::Num3, VulkanWindow::ScanCode::Num4, VulkanWindow::ScanCode::Num5,
-	/*7-11*/ VulkanWindow::ScanCode::Num6, VulkanWindow::ScanCode::Num7, VulkanWindow::ScanCode::Num8, VulkanWindow::ScanCode::Num9, VulkanWindow::ScanCode::Num0,
+	/*2-6*/ VulkanWindow::ScanCode::One, VulkanWindow::ScanCode::Two, VulkanWindow::ScanCode::Three, VulkanWindow::ScanCode::Four, VulkanWindow::ScanCode::Five,
+	/*7-11*/ VulkanWindow::ScanCode::Six, VulkanWindow::ScanCode::Seven, VulkanWindow::ScanCode::Eight, VulkanWindow::ScanCode::Nine, VulkanWindow::ScanCode::Zero,
 	/*12-15*/ VulkanWindow::ScanCode::Minus, VulkanWindow::ScanCode::Equal, VulkanWindow::ScanCode::Backspace, VulkanWindow::ScanCode::Tab,
 	/*16-22*/ VulkanWindow::ScanCode::Q, VulkanWindow::ScanCode::W, VulkanWindow::ScanCode::E, VulkanWindow::ScanCode::R, VulkanWindow::ScanCode::T, VulkanWindow::ScanCode::Y, VulkanWindow::ScanCode::U,
 	/*23-28*/ VulkanWindow::ScanCode::I, VulkanWindow::ScanCode::O, VulkanWindow::ScanCode::P, VulkanWindow::ScanCode::LeftBracket, VulkanWindow::ScanCode::RightBracket, VulkanWindow::ScanCode::KeypadEnter,
@@ -192,23 +216,19 @@ static const VulkanWindow::ScanCode scanCodeConversionTable[512] = {
 	/*251-255*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
 };
 
-static VulkanWindow::ScanCode getScanCodeOfSpecialKey(WPARAM wParam)
+/** Translates native scan code into VulkanWindow::ScanCode.
+ *  The nativeScanCode is expected to be within 0..511 range.
+ *  The values outside the range are handled by returning VulkanWindow::ScanCode::Unknown. */
+static VulkanWindow::ScanCode translateScanCode(int nativeScanCode)
 {
-	switch(wParam) {
-	case VK_VOLUME_MUTE: return VulkanWindow::ScanCode::Mute;
-	case VK_VOLUME_DOWN: return VulkanWindow::ScanCode::VolumeDown;
-	case VK_VOLUME_UP:   return VulkanWindow::ScanCode::VolumeUp;
-	case VK_MEDIA_NEXT_TRACK: return VulkanWindow::ScanCode::MediaNext;
-	case VK_MEDIA_PLAY_PAUSE: return VulkanWindow::ScanCode::MediaPlayPause;
-	case VK_MEDIA_PREV_TRACK: return VulkanWindow::ScanCode::MediaPrev;
-	case VK_MEDIA_STOP:       return VulkanWindow::ScanCode::MediaStop;
-	case VK_BROWSER_SEARCH: return VulkanWindow::ScanCode::Search;
-	case VK_BROWSER_HOME: return VulkanWindow::ScanCode::BrowserHome;
-	case VK_LAUNCH_MAIL: return VulkanWindow::ScanCode::Mail;
-	case VK_LAUNCH_MEDIA_SELECT: return VulkanWindow::ScanCode::MediaSelect;
-	case VK_LAUNCH_APP2: return VulkanWindow::ScanCode::Calculator;
-	default: return VulkanWindow::ScanCode::Unknown;
-	}
+	if(nativeScanCode <= 0 || nativeScanCode == 0x100)
+		return VulkanWindow::ScanCode::Unknown;
+	if(nativeScanCode >= sizeof(scanCodeConversionTable)/sizeof(VulkanWindow::ScanCode))
+		return VulkanWindow::ScanCode::Unknown;
+	VulkanWindow::ScanCode scanCode = scanCodeConversionTable[nativeScanCode];
+	if(scanCode == VulkanWindow::ScanCode::Unknown)
+		return VulkanWindow::ScanCode(1000 + nativeScanCode);
+	return scanCode;
 }
 
 #endif
@@ -312,6 +332,22 @@ static const VulkanWindow::ScanCode scanCodeConversionTable[SDL_NUM_SCANCODES] =
 	/*280..284*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Calculator,
 	/*285..289*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
 };
+
+/** Translates SDL scan code into VulkanWindow::ScanCode.
+ *  The sdlScanCode is expected to be within 0..511 range.
+ *  The values outside the range are handled by returning VulkanWindow::ScanCode::Unknown. */
+static VulkanWindow::ScanCode translateScanCode(int sdlScanCode)
+{
+	if(sdlScanCode <= 0)
+		return VulkanWindow::ScanCode::Unknown;
+	if(sdlScanCode >= sizeof(scanCodeConversionTable)/sizeof(VulkanWindow::ScanCode))
+		return VulkanWindow::ScanCode(1000 + sdlScanCode);
+	VulkanWindow::ScanCode scanCode = scanCodeConversionTable[sdlScanCode];
+	if(scanCode == VulkanWindow::ScanCode::Unknown)
+		return VulkanWindow::ScanCode(1000 + sdlScanCode);
+	return scanCode;
+}
+
 #endif
 
 
@@ -573,10 +609,15 @@ void VulkanWindow::init()
 				if(lParam & (1 << 30))
 					return 0;
 
+				// handle Alt-F4
+				if((lParam & 0xff0000) == (LPARAM(62) << 16) && GetKeyState(VK_MENU) < 0)
+					return DefWindowProc(hwnd, msg, wParam, lParam);
+
+				// callback
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				if(w->_keyCallback)
 				{
-					ScanCode scanCode = scanCodeConversionTable[(lParam >> 16) & 0x1ff];
+					ScanCode scanCode = translateScanCode((lParam >> 16) & 0x1ff);
 					if(scanCode == ScanCode::Unknown)
 						scanCode = getScanCodeOfSpecialKey(wParam);
 					uint8_t keyCode = wParam & 0xff;
@@ -590,7 +631,9 @@ void VulkanWindow::init()
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				if(w->_keyCallback)
 				{
-					ScanCode scanCode = scanCodeConversionTable[(lParam >> 16) & 0x1ff];
+					ScanCode scanCode = translateScanCode((lParam >> 16) & 0x1ff);
+					if(scanCode == ScanCode::Unknown)
+						scanCode = getScanCodeOfSpecialKey(wParam);
 					uint8_t keyCode = wParam & 0xff;
 					w->_keyCallback(*w, KeyState::Released, uint16_t(scanCode), keyCode);
 				}
@@ -1986,7 +2029,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	);
 	glfwSetKeyCallback(
 		_window,
-		[](GLFWwindow* window, int key, int scanCode, int action, int mods) {
+		[](GLFWwindow* window, int key, int nativeScanCode, int action, int mods) {
 			VulkanWindow* w = reinterpret_cast<VulkanWindow*>(glfwGetWindowUserPointer(window));
 			if(action != GLFW_REPEAT) {
 				if(key >= GLFW_KEY_LEFT_SHIFT && key <= GLFW_KEY_RIGHT_SUPER) {
@@ -2002,8 +2045,14 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 					case GLFW_KEY_RIGHT_SUPER:   w->_mouseState.mods.set(Modifier::Meta,  down); break;
 					}
 				}
-				if(w->_keyCallback)
-					w->_keyCallback(*w, (action == GLFW_PRESS) ? KeyState::Pressed : KeyState::Released, scanCode, key);
+				if(w->_keyCallback) {
+# ifdef _WIN32
+					ScanCode scanCode = translateScanCode(nativeScanCode);
+# else
+					ScanCode scanCode = ScanCode(nativeScanCode);
+# endif
+					w->_keyCallback(*w, (action == GLFW_PRESS) ? KeyState::Pressed : KeyState::Released, uint16_t(scanCode), key);
+				}
 			}
 		}
 	);
@@ -2410,7 +2459,8 @@ void VulkanWindow::mainLoop()
 			if(w->_keyCallback) {
 				KeySym keySym;
 				XLookupString(&e.xkey, nullptr, 0, &keySym, nullptr);
-				w->_keyCallback(*w, KeyState::Pressed, e.xkey.keycode-8, keySym);
+				ScanCode scanCode = e.xkey.keycode - 8;
+				w->_keyCallback(*w, KeyState::Pressed, scanCode, keySym);
 			}
 			continue;
 		}
@@ -2432,7 +2482,8 @@ void VulkanWindow::mainLoop()
 			if(w->_keyCallback) {
 				KeySym keySym;
 				XLookupString(&e.xkey, nullptr, 0, &keySym, nullptr);
-				w->_keyCallback(*w, KeyState::Released, e.xkey.keycode-8, keySym);
+				ScanCode scanCode = e.xkey.keycode - 8;
+				w->_keyCallback(*w, KeyState::Released, scanCode, keySym);
 			}
 			continue;
 		}
@@ -2972,19 +3023,7 @@ void VulkanWindow::mainLoop()
 				SDL_GetWindowData(SDL_GetWindowFromID(event.key.windowID), windowPointerName));
 			if(w->_keyCallback && event.key.repeat == 0)
 			{
-				// get scan code
-				ScanCode scanCode;
-				if(event.key.keysym.scancode <= 0)
-					scanCode = ScanCode::Unknown;
-				else if (event.key.keysym.scancode >= (sizeof(scanCodeConversionTable)/sizeof(ScanCode)))
-					scanCode = ScanCode(1000 + event.key.keysym.scancode);
-				else {
-					scanCode = scanCodeConversionTable[event.key.keysym.scancode];
-					if(scanCode == ScanCode::Unknown)
-						scanCode = ScanCode(1000 + event.key.keysym.scancode);
-				}
-
-				// call callback
+				ScanCode scanCode = translateScanCode(event.key.keysym.scancode);
 				w->_keyCallback(*w, KeyState::Pressed, uint16_t(scanCode), event.key.keysym.sym);
 			}
 			break;
@@ -2994,19 +3033,7 @@ void VulkanWindow::mainLoop()
 				SDL_GetWindowData(SDL_GetWindowFromID(event.key.windowID), windowPointerName));
 			if(w->_keyCallback && event.key.repeat == 0)
 			{
-				// get scan code
-				ScanCode scanCode;
-				if(event.key.keysym.scancode <= 0)
-					scanCode = ScanCode::Unknown;
-				else if (event.key.keysym.scancode >= (sizeof(scanCodeConversionTable)/sizeof(ScanCode)))
-					scanCode = ScanCode(1000 + event.key.keysym.scancode);
-				else {
-					scanCode = scanCodeConversionTable[event.key.keysym.scancode];
-					if(scanCode == ScanCode::Unknown)
-						scanCode = ScanCode(1000 + event.key.keysym.scancode);
-				}
-
-				// call callback
+				ScanCode scanCode = translateScanCode(event.key.keysym.scancode);
 				w->_keyCallback(*w, KeyState::Released, uint16_t(scanCode), event.key.keysym.sym);
 			}
 			break;
