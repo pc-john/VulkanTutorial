@@ -293,12 +293,12 @@ static const VulkanWindow::ScanCode scanCodeConversionTable[SDL_NUM_SCANCODES] =
 	/*84..88*/ VulkanWindow::ScanCode::KeypadDivide, VulkanWindow::ScanCode::KeypadMultiply, VulkanWindow::ScanCode::KeypadMinus, VulkanWindow::ScanCode::KeypadPlus, VulkanWindow::ScanCode::KeypadEnter,
 	/*89..94*/ VulkanWindow::ScanCode::Keypad1, VulkanWindow::ScanCode::Keypad2, VulkanWindow::ScanCode::Keypad3, VulkanWindow::ScanCode::Keypad4, VulkanWindow::ScanCode::Keypad5, VulkanWindow::ScanCode::Keypad6,
 	/*95..99*/ VulkanWindow::ScanCode::Keypad7, VulkanWindow::ScanCode::Keypad8, VulkanWindow::ScanCode::Keypad9, VulkanWindow::ScanCode::Keypad0, VulkanWindow::ScanCode::KeypadPeriod,
-	/*100..104*/ VulkanWindow::ScanCode::NonUSBackslash, VulkanWindow::ScanCode::Application, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
+	/*100..104*/ VulkanWindow::ScanCode::NonUSBackslash, VulkanWindow::ScanCode::Application, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::MediaSelect,
 	/*105..109*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
 	/*110..114*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
 	/*115..119*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
 	/*120..124*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
-	/*125..129*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::VolumeUp, VulkanWindow::ScanCode::VolumeDown,
+	/*125..129*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Mute, VulkanWindow::ScanCode::VolumeUp, VulkanWindow::ScanCode::VolumeDown,
 	/*130..134*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
 	/*135..139*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
 	/*140..144*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
@@ -326,7 +326,7 @@ static const VulkanWindow::ScanCode scanCodeConversionTable[SDL_NUM_SCANCODES] =
 	/*250..254*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
 	/*255..259*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::MediaNext, VulkanWindow::ScanCode::MediaPrev,
 	/*260..264*/ VulkanWindow::ScanCode::MediaStop, VulkanWindow::ScanCode::MediaPlayPause, VulkanWindow::ScanCode::Mute, VulkanWindow::ScanCode::MediaSelect, VulkanWindow::ScanCode::Unknown,
-	/*265..269*/ VulkanWindow::ScanCode::Mail, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Search, VulkanWindow::ScanCode::BrowserHome,
+	/*265..269*/ VulkanWindow::ScanCode::Mail, VulkanWindow::ScanCode::Calculator, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Search, VulkanWindow::ScanCode::BrowserHome,
 	/*270..274*/ VulkanWindow::ScanCode::Back, VulkanWindow::ScanCode::Forward, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
 	/*275..279*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
 	/*280..284*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Calculator,
@@ -2459,8 +2459,8 @@ void VulkanWindow::mainLoop()
 			if(w->_keyCallback) {
 				KeySym keySym;
 				XLookupString(&e.xkey, nullptr, 0, &keySym, nullptr);
-				ScanCode scanCode = e.xkey.keycode - 8;
-				w->_keyCallback(*w, KeyState::Pressed, scanCode, keySym);
+				ScanCode scanCode = ScanCode(e.xkey.keycode - 8);
+				w->_keyCallback(*w, KeyState::Pressed, uint16_t(scanCode), keySym);
 			}
 			continue;
 		}
@@ -2482,8 +2482,8 @@ void VulkanWindow::mainLoop()
 			if(w->_keyCallback) {
 				KeySym keySym;
 				XLookupString(&e.xkey, nullptr, 0, &keySym, nullptr);
-				ScanCode scanCode = e.xkey.keycode - 8;
-				w->_keyCallback(*w, KeyState::Released, scanCode, keySym);
+				ScanCode scanCode = ScanCode(e.xkey.keycode - 8);
+				w->_keyCallback(*w, KeyState::Released, uint16_t(scanCode), keySym);
 			}
 			continue;
 		}
