@@ -3447,7 +3447,11 @@ bool QtRenderingWindow::event(QEvent* event)
 			if(vulkanWindow->_keyCallback) {
 				QKeyEvent *k = static_cast<QKeyEvent*>(event);
 				if(!k->isAutoRepeat()) {
+# ifdef _WIN32
 					VulkanWindow::ScanCode scanCode = translateScanCode(k->nativeScanCode());
+# else
+					VulkanWindow::ScanCode scanCode = VulkanWindow::ScanCode(k->nativeScanCode() - 8);
+# endif
 					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyState::Pressed, uint16_t(scanCode), k->nativeVirtualKey());
 				}
 			}
@@ -3457,7 +3461,11 @@ bool QtRenderingWindow::event(QEvent* event)
 			if(vulkanWindow->_keyCallback) {
 				QKeyEvent *k = static_cast<QKeyEvent*>(event);
 				if(!k->isAutoRepeat()) {
+# ifdef _WIN32
 					VulkanWindow::ScanCode scanCode = translateScanCode(k->nativeScanCode());
+# else
+					VulkanWindow::ScanCode scanCode = VulkanWindow::ScanCode(k->nativeScanCode() - 8);
+# endif
 					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyState::Released, uint16_t(scanCode), k->nativeVirtualKey());
 				}
 			}
