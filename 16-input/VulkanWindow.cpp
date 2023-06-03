@@ -2049,7 +2049,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 # ifdef _WIN32
 					ScanCode scanCode = translateScanCode(nativeScanCode);
 # else
-					ScanCode scanCode = ScanCode(nativeScanCode);
+					ScanCode scanCode = ScanCode(nativeScanCode - 8);
 # endif
 					w->_keyCallback(*w, (action == GLFW_PRESS) ? KeyState::Pressed : KeyState::Released, uint16_t(scanCode), key);
 				}
