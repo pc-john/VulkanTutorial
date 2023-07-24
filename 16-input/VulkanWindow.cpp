@@ -3106,7 +3106,8 @@ void VulkanWindow::mainLoop()
 			if(w->_keyCallback && event.key.repeat == 0)
 			{
 				ScanCode scanCode = translateScanCode(event.key.keysym.scancode);
-				w->_keyCallback(*w, KeyState::Pressed, uint16_t(scanCode), event.key.keysym.sym);
+				CharUtf8 keyUtf8 = { uint64_t((event.key.keysym.sym&SDLK_SCANCODE_MASK) ? 0 : event.key.keysym.sym) };
+				w->_keyCallback(*w, KeyState::Pressed, uint16_t(scanCode), keyUtf8);
 			}
 			break;
 		}
@@ -3116,7 +3117,8 @@ void VulkanWindow::mainLoop()
 			if(w->_keyCallback && event.key.repeat == 0)
 			{
 				ScanCode scanCode = translateScanCode(event.key.keysym.scancode);
-				w->_keyCallback(*w, KeyState::Released, uint16_t(scanCode), event.key.keysym.sym);
+				CharUtf8 keyUtf8 = { uint64_t((event.key.keysym.sym&SDLK_SCANCODE_MASK) ? 0 : event.key.keysym.sym) };
+				w->_keyCallback(*w, KeyState::Released, uint16_t(scanCode), keyUtf8);
 			}
 			break;
 		}

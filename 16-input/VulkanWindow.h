@@ -70,46 +70,6 @@ public:
 			uint64_t asValue;
 			char asCharArray[8];
 		};
-	struct Key {
-		static constexpr const char Null = '\0';
-		static constexpr const char A = 'A';  static constexpr const char B = 'B';
-		static constexpr const char C = 'C';  static constexpr const char D = 'D';
-		static constexpr const char E = 'E';  static constexpr const char F = 'F';
-		static constexpr const char G = 'G';  static constexpr const char H = 'H';
-		static constexpr const char I = 'I';  static constexpr const char J = 'J';
-		static constexpr const char K = 'K';  static constexpr const char L = 'L';
-		static constexpr const char M = 'M';  static constexpr const char N = 'N';
-		static constexpr const char O = 'O';  static constexpr const char P = 'P';
-		static constexpr const char Q = 'Q';  static constexpr const char R = 'R';
-		static constexpr const char S = 'S';  static constexpr const char T = 'T';
-		static constexpr const char U = 'U';  static constexpr const char V = 'V';
-		static constexpr const char W = 'W';  static constexpr const char X = 'X';
-		static constexpr const char Y = 'Y';  static constexpr const char Z = 'Z';
-		static constexpr const char One   = '1';  static constexpr const char Two   = '2';
-		static constexpr const char Three = '3';  static constexpr const char Four  = '4';
-		static constexpr const char Five  = '5';  static constexpr const char Six   = '6';
-		static constexpr const char Seven = '7';  static constexpr const char Eight = '8';
-		static constexpr const char Nine  = '9';  static constexpr const char Zero  = '0';
-		static constexpr const char Exclam = '!';  static constexpr const char At = '@';
-		static constexpr const char Hash = '#';  static constexpr const char Dollar = '$';
-		static constexpr const char Percent = '%';  static constexpr const char Caret = '^';
-		static constexpr const char Ampersand = '&';  static constexpr const char Asterisk = '*';
-		static constexpr const char LeftParenthesis = '(';  static constexpr const char RightParenthesis = ')';
-		static constexpr const char LeftSquareBracket = '[';  static constexpr const char RightSquareBracket = ']';
-		static constexpr const char LeftCurlyBracket = '{';  static constexpr const char RightCurlyBracket = '}';
-		static constexpr const char Space = ' ';  static constexpr const char Backspace = '\b';
-		static constexpr const char Enter = '\n';  static constexpr const char Escape = 0x1b;
-		static constexpr const char Plus = '+';  static constexpr const char Minus = '-';
-		static constexpr const char Slash = '/';  static constexpr const char Backslash = '\\';
-		static constexpr const char Less = '<';  static constexpr const char Greater = '>';
-		static constexpr const char Colon = ':';  static constexpr const char Semicolon = ';';
-		static constexpr const char Dot = '.';  static constexpr const char Comma = ',';
-		static constexpr const char Equal = '=';  static constexpr const char Underscore = '_';
-		static constexpr const char Question = '?';  static constexpr const char Bar = '|';
-		static constexpr const char DoubleQuote = '"';  static constexpr const char Apostrophe = '\'';
-		static constexpr const char GraveAccent = '`';  static constexpr const char Tilde = '~';
-		static constexpr const char Tab = '\t';
-	};
 
 	// input function prototypes
 	typedef void MouseMoveCallback(VulkanWindow& window, const MouseState& mouseState);
