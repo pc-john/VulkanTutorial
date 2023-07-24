@@ -34,7 +34,7 @@ public:
 	void mouseMove(VulkanWindow& window, const VulkanWindow::MouseState& mouseState);
 	void mouseButton(VulkanWindow&, size_t button, VulkanWindow::ButtonState buttonState, const VulkanWindow::MouseState& mouseState);
 	void mouseWheel(VulkanWindow& window, int wheelX, int wheelY, const VulkanWindow::MouseState& mouseState);
-	void key(VulkanWindow& window, VulkanWindow::KeyState keyState, uint16_t scanCode, uint16_t keyCode);
+	void key(VulkanWindow& window, VulkanWindow::KeyState keyState, uint16_t scanCode, VulkanWindow::CharUtf8 key);
 
 	// Vulkan instance must be destructed as the last Vulkan handle.
 	// It is probably good idea to destroy it after the display connection.
@@ -896,14 +896,14 @@ void App::mouseWheel(VulkanWindow&, int wheelX, int wheelY, const VulkanWindow::
 }
 
 
-void App::key(VulkanWindow&, VulkanWindow::KeyState keyState, uint16_t scanCode, uint16_t keyCode)
+void App::key(VulkanWindow&, VulkanWindow::KeyState keyState, uint16_t scanCode, VulkanWindow::CharUtf8 key)
 {
 	if(keyState == VulkanWindow::KeyState::Pressed)
 		cout << "KeyDown";
 	else
 		cout << "KeyUp";
 
-	cout << ", scanCode: " << scanCode << ", keyCode: " << keyCode << endl;
+	cout << ", scanCode: " << scanCode << ", keyCode: " << key.asCharArray << endl;
 }
 
 

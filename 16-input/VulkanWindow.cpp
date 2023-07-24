@@ -43,7 +43,15 @@ using namespace std;
 
 #if defined(USE_PLATFORM_WIN32)
 
-// Win32 utf8 string to wstring conversion
+// list of windows waiting for frame rendering
+// (the windows have _framePendingState set to FramePendingState::Pending or TentativePending)
+static vector<VulkanWindow*> framePendingWindows;
+
+// scan code to key conversion table
+// (the table is updated upon each keyboard layout change)
+static VulkanWindow::CharUtf8 keyConversionTable[128];
+
+// Win32 UTF-8 string to wstring conversion
 # if defined(_UNICODE)
 static wstring utf8toWString(const char* s)
 {
@@ -64,9 +72,14 @@ static wstring utf8toWString(const char* s)
 }
 # endif
 
-// list of windows waiting for frame rendering
-// (the windows have _framePendingState set to FramePendingState::Pending or TentativePending)
-static vector<VulkanWindow*> framePendingWindows;
+// Win32 wchar_t (UTF-16) to UTF-8 character conversion
+static VulkanWindow::CharUtf8 wchar16ToUtf8(WCHAR wch16)
+{
+	VulkanWindow::CharUtf8 chUtf8 = { 0 };
+	int r = WideCharToMultiByte(CP_UTF8, 0, &wch16, 1, reinterpret_cast<LPSTR>(&chUtf8),
+	                            sizeof(chUtf8), nullptr, nullptr);
+	return (r>=1) ? chUtf8 : VulkanWindow::CharUtf8{0};
+};
 
 // remove VulkanWindow from framePendingWindows; VulkanWindow MUST be in framePendingWindows
 static void removeFromFramePendingWindows(VulkanWindow* w)
@@ -97,6 +110,37 @@ static VulkanWindow::ScanCode getScanCodeOfSpecialKey(WPARAM wParam)
 	case VK_LAUNCH_MEDIA_SELECT: return VulkanWindow::ScanCode::MediaSelect;
 	case VK_LAUNCH_APP2: return VulkanWindow::ScanCode::Calculator;
 	default: return VulkanWindow::ScanCode::Unknown;
+	}
+}
+
+static void initKeyConversionTable()
+{
+	for(uint8_t scanCode=0; scanCode<128; scanCode++)
+	{
+		// get scan code
+		int vk = MapVirtualKeyW(scanCode, MAPVK_VSC_TO_VK);
+		if(vk == 0) {
+			keyConversionTable[scanCode].asValue = 0;
+			continue;
+		}
+
+		// get virtual code
+		int wch16 = (MapVirtualKeyW(vk, MAPVK_VK_TO_CHAR) & 0xffff);
+		if(wch16 == 0) {
+			keyConversionTable[scanCode].asValue = 0;
+			continue;
+		}
+
+		// convert WCHAR (=UTF-16 on Win32) to UTF-8
+		VulkanWindow::CharUtf8 chUtf8 = wchar16ToUtf8(wch16);
+
+		// normalize case
+		// (convert A..Z into a..z)
+		if(chUtf8.asCharArray[0] >= 'A' && chUtf8.asCharArray[0] <= 'Z')
+			chUtf8.asCharArray[0] += 32;
+
+		// update table
+		keyConversionTable[scanCode] = chUtf8;
 	}
 }
 
@@ -576,6 +620,21 @@ void VulkanWindow::init()
 			case WM_XBUTTONDOWN: return handleMouseButton(hwnd, getMouseXButton(wParam), ButtonState::Pressed,  wParam, lParam);
 			case WM_XBUTTONUP:   return handleMouseButton(hwnd, getMouseXButton(wParam), ButtonState::Released, wParam, lParam);
 
+			// left mouse button down on non-client window area message
+			// (application freeze for several hundred of milliseconds is workarounded here)
+			case WM_NCLBUTTONDOWN: {
+				// This is a workaround for window freeze for several hundred of milliseconds
+				// if you click on its title bar. The clicking on the title bar
+				// makes execution of DefWindowProc to not return for several hundreds of milliseconds,
+				// making the application frozen for this time period.
+				// Sending extra WM_MOUSEMOVE workarounds the problem.
+				POINT point;
+				GetCursorPos(&point);
+				ScreenToClient(hwnd, &point);
+				PostMessage(hwnd, WM_MOUSEMOVE, 0, point.x | point.y<<16);
+				return DefWindowProc(hwnd, msg, wParam, lParam);
+			}
+
 			// vertical and horizontal mouse wheel
 			// (amount of wheel rotation since the last wheel message)
 			case WM_MOUSEWHEEL: {
@@ -617,11 +676,25 @@ void VulkanWindow::init()
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				if(w->_keyCallback)
 				{
-					ScanCode scanCode = translateScanCode((lParam >> 16) & 0x1ff);
+					// scan code
+					unsigned nativeScanCode = (lParam >> 16) & 0x1ff;
+					ScanCode scanCode = translateScanCode(nativeScanCode);
 					if(scanCode == ScanCode::Unknown)
 						scanCode = getScanCodeOfSpecialKey(wParam);
-					uint8_t keyCode = wParam & 0xff;
-					w->_keyCallback(*w, KeyState::Pressed, uint16_t(scanCode), keyCode);
+
+					// key code
+					CharUtf8 key;
+					if(nativeScanCode < 128)
+						key = keyConversionTable[nativeScanCode];
+					else
+					{
+						UINT nativeKeyCode = wParam & 0xff;
+						UINT wch16 = (MapVirtualKeyW(nativeKeyCode, MAPVK_VK_TO_CHAR) & 0xffff);
+						key = wchar16ToUtf8(wch16);
+					}
+
+					// callback
+					w->_keyCallback(*w, KeyState::Pressed, uint16_t(scanCode), key);
 				}
 				return 0;
 			}
@@ -631,27 +704,31 @@ void VulkanWindow::init()
 				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
 				if(w->_keyCallback)
 				{
-					ScanCode scanCode = translateScanCode((lParam >> 16) & 0x1ff);
+					// scan code
+					unsigned nativeScanCode = (lParam >> 16) & 0x1ff;
+					ScanCode scanCode = translateScanCode(nativeScanCode);
 					if(scanCode == ScanCode::Unknown)
 						scanCode = getScanCodeOfSpecialKey(wParam);
-					uint8_t keyCode = wParam & 0xff;
-					w->_keyCallback(*w, KeyState::Released, uint16_t(scanCode), keyCode);
+
+					// key code
+					CharUtf8 key;
+					if(nativeScanCode < 128)
+						key = keyConversionTable[nativeScanCode];
+					else
+					{
+						UINT nativeKeyCode = wParam & 0xff;
+						UINT wch16 = (MapVirtualKeyW(nativeKeyCode, MAPVK_VK_TO_CHAR) & 0xffff);
+						key = wchar16ToUtf8(wch16);
+					}
+
+					// callback
+					w->_keyCallback(*w, KeyState::Released, uint16_t(scanCode), key);
 				}
 				return 0;
 			}
 
-			// left mouse button down on non-client window area message
-			// (application freeze for several hundred of milliseconds is workarounded here)
-			case WM_NCLBUTTONDOWN: {
-				// This is a workaround for window freeze for several hundred of milliseconds
-				// if you click on its title bar. The clicking on the title bar
-				// makes execution of DefWindowProc to not return for several hundreds of milliseconds,
-				// making the application frozen for this time period.
-				// Sending extra WM_MOUSEMOVE workarounds the problem.
-				POINT point;
-				GetCursorPos(&point);
-				ScreenToClient(hwnd, &point);
-				PostMessage(hwnd, WM_MOUSEMOVE, 0, point.x | point.y<<16);
+			case WM_INPUTLANGCHANGE: {
+				initKeyConversionTable();
 				return DefWindowProc(hwnd, msg, wParam, lParam);
 			}
 
@@ -753,6 +830,11 @@ void VulkanWindow::init()
 		);
 	if(!_windowClass)
 		throw runtime_error("Cannot register window class.");
+
+	// init keyboard stuff
+	// (WM_INPUTLANGCHANGE is sent after keyboard layout was changed;
+	// any layout change since application start is reported this way)
+	initKeyConversionTable();
 
 #elif defined(USE_PLATFORM_XLIB)
 
