@@ -144,6 +144,20 @@ static void initKeyConversionTable()
 		// update table
 		keyConversionTable[scanCode] = key;
 	}
+
+	// although some keyboard layouts replace numbers with their own characters,
+	// users usually expect to call the keys by the numbers
+	// (this is consistent with SDL approach)
+	keyConversionTable[2] = '1';
+	keyConversionTable[3] = '2';
+	keyConversionTable[4] = '3';  
+	keyConversionTable[5] = '4';
+	keyConversionTable[6] = '5';
+	keyConversionTable[7] = '6';
+	keyConversionTable[8] = '7';
+	keyConversionTable[9] = '8';
+	keyConversionTable[10] = '9';
+	keyConversionTable[11] = '0';
 }
 
 #endif
