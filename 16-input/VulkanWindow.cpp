@@ -3106,8 +3106,8 @@ void VulkanWindow::mainLoop()
 			if(w->_keyCallback && event.key.repeat == 0)
 			{
 				ScanCode scanCode = translateScanCode(event.key.keysym.scancode);
-				CharUtf8 keyUtf8 = { uint64_t((event.key.keysym.sym&SDLK_SCANCODE_MASK) ? 0 : event.key.keysym.sym) };
-				w->_keyCallback(*w, KeyState::Pressed, uint16_t(scanCode), keyUtf8);
+				KeyCode key = (event.key.keysym.sym & SDLK_SCANCODE_MASK) ? 0 : event.key.keysym.sym;
+				w->_keyCallback(*w, KeyState::Pressed, uint16_t(scanCode), key);
 			}
 			break;
 		}
@@ -3117,8 +3117,8 @@ void VulkanWindow::mainLoop()
 			if(w->_keyCallback && event.key.repeat == 0)
 			{
 				ScanCode scanCode = translateScanCode(event.key.keysym.scancode);
-				CharUtf8 keyUtf8 = { uint64_t((event.key.keysym.sym&SDLK_SCANCODE_MASK) ? 0 : event.key.keysym.sym) };
-				w->_keyCallback(*w, KeyState::Released, uint16_t(scanCode), keyUtf8);
+				KeyCode key = (event.key.keysym.sym & SDLK_SCANCODE_MASK) ? 0 : event.key.keysym.sym;
+				w->_keyCallback(*w, KeyState::Released, uint16_t(scanCode), key);
 			}
 			break;
 		}
@@ -3603,6 +3603,99 @@ void VulkanWindow::scheduleFrame()
 
 
 #endif
+
+
+
+constexpr VulkanWindow::KeyCode VulkanWindow::fromUtf8(const char* s)
+{
+	// decode single character
+	char ch1 = *s;
+	if(ch1 < 0x80)
+		return ch1;
+
+	// decode 2 character sequence
+	if(ch1 < 0xe0) {
+		if(ch1 < 0xc0)
+			return 0xfffd;  // return "replacement character" indicating the error
+		s++;
+		char ch2 = *s;
+		return (ch1&0x1f)<<6 | (ch2&0x3f);
+	}
+
+	// decode 3 character sequence
+	if(ch1 < 0xf0) {
+		s++;
+		char ch2 = *s;
+		s++;
+		char ch3 = *s;
+		return (ch1&0x0f)<<12 | (ch2&0x3f)<<6 | (ch3&0x3f);
+	}
+
+	// decode 4 character sequence
+	if(ch1 < 0xf8) {
+		s++;
+		char ch2 = *s;
+		s++;
+		char ch3 = *s;
+		s++;
+		char ch4 = *s;
+		return (ch1&0x07)<<18 | (ch2&0x3f)<<12 | (ch3&0x3f)<<6 | (ch4&0x3f);
+	}
+
+	// more than 4 character sequences are forbidden
+	return 0xfffd;  // return "replacement character" indicating the error
+}
+
+
+array<char, 5> VulkanWindow::toCharArray(VulkanWindow::KeyCode k)
+{
+	// write 1 byte sequence
+	array<char, 5> r;
+	if(k < 128) {
+		*reinterpret_cast<uint32_t*>(r.data()) = k;
+		r[4] = 0;
+		return r;
+	}
+
+	// write 2 byte sequence
+	if(k < 2048) {
+		*reinterpret_cast<uint32_t*>(r.data()) = 0xc0 | ((k&0x07c0)>>6) | 0x8000 | ((k&0x3f)<<8);
+		r[4] = 0;
+		return r;
+	}
+
+	// write 3 byte sequence
+	if(k < 65536) {
+		*reinterpret_cast<uint32_t*>(r.data()) = 0xe0 | ((k&0xf000)>>12) | 0x8000 | ((k&0x0fc0)<<2) |
+		                                         0x800000 | ((k&0x3f)<<16);
+		r[4] = 0;
+		return r;
+	}
+
+	// write 4 byte sequence
+	if(k < 2097152) {
+		*reinterpret_cast<uint32_t*>(r.data()) = 0xf0 | ((k&0x1c0000)>>18) | 0x8000 | ((k&0x03f000)>>4) |
+		                                         0x800000 | ((k&0x0fc0)<<10) | 0x80000000 | ((k&0x3f)<<24);
+		r[4] = 0;
+		return r;
+	}
+
+	// more than 4 character sequences are forbidden
+	// (return "replacement character" (value 0xfffd) indicating the error)
+	*reinterpret_cast<uint32_t*>(r.data()) = 0xe0 | (0xf000>>12) | 0x8000 | (0x0fc0<<2) |
+	                                         0x800000 | 0x3d;
+	r[4] = 0;
+	return r;
+}
+
+
+string VulkanWindow::toString(KeyCode k)
+{
+	string s;
+	s.reserve(4);  // this shall allocate at least 4 chars and one null byte, e.g. at least 5 bytes
+	s.assign(toCharArray(k).data());
+	return s;
+}
 
 
 
