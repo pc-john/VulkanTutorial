@@ -49,7 +49,7 @@ static vector<VulkanWindow*> framePendingWindows;
 
 // scan code to key conversion table
 // (the table is updated upon each keyboard layout change)
-static VulkanWindow::CharUtf8 keyConversionTable[128];
+static VulkanWindow::KeyCode keyConversionTable[128];
 
 // Win32 UTF-8 string to wstring conversion
 # if defined(_UNICODE)
@@ -72,13 +72,15 @@ static wstring utf8toWString(const char* s)
 }
 # endif
 
-// Win32 wchar_t (UTF-16) to UTF-8 character conversion
-static VulkanWindow::CharUtf8 wchar16ToUtf8(WCHAR wch16)
+// Win32 wchar_t (UTF-16LE) to Unicode character number (code point) conversion
+static VulkanWindow::KeyCode wchar16ToKeyCode(WCHAR wch16)
 {
-	VulkanWindow::CharUtf8 chUtf8 = { 0 };
-	int r = WideCharToMultiByte(CP_UTF8, 0, &wch16, 1, reinterpret_cast<LPSTR>(&chUtf8),
-	                            sizeof(chUtf8), nullptr, nullptr);
-	return (r>=1) ? chUtf8 : VulkanWindow::CharUtf8{0};
+	// make sure that we are not dealing with two WCHARs (surrogate pair)
+	if((wch16 & 0xf800) == 0xd800)
+		return 0xfffd;  // return "replacement character" indicating the error
+
+	// Win32 uses UTF-16LE (little endian) that can be converted directly to KeyCode
+	return VulkanWindow::KeyCode(wch16);
 };
 
 // remove VulkanWindow from framePendingWindows; VulkanWindow MUST be in framePendingWindows
@@ -120,27 +122,27 @@ static void initKeyConversionTable()
 		// get scan code
 		int vk = MapVirtualKeyW(scanCode, MAPVK_VSC_TO_VK);
 		if(vk == 0) {
-			keyConversionTable[scanCode].asValue = 0;
+			keyConversionTable[scanCode] = 0;
 			continue;
 		}
 
 		// get virtual code
 		int wch16 = (MapVirtualKeyW(vk, MAPVK_VK_TO_CHAR) & 0xffff);
 		if(wch16 == 0) {
-			keyConversionTable[scanCode].asValue = 0;
+			keyConversionTable[scanCode] = 0;
 			continue;
 		}
 
 		// convert WCHAR (=UTF-16 on Win32) to UTF-8
-		VulkanWindow::CharUtf8 chUtf8 = wchar16ToUtf8(wch16);
+		VulkanWindow::KeyCode key = wchar16ToKeyCode(wch16);
 
 		// normalize case
 		// (convert A..Z into a..z)
-		if(chUtf8.asCharArray[0] >= 'A' && chUtf8.asCharArray[0] <= 'Z')
-			chUtf8.asCharArray[0] += 32;
+		if(key >= 'A' && key <= 'Z')
+			key += 32;
 
 		// update table
-		keyConversionTable[scanCode] = chUtf8;
+		keyConversionTable[scanCode] = key;
 	}
 }
 
@@ -683,14 +685,14 @@ void VulkanWindow::init()
 						scanCode = getScanCodeOfSpecialKey(wParam);
 
 					// key code
-					CharUtf8 key;
+					KeyCode key;
 					if(nativeScanCode < 128)
 						key = keyConversionTable[nativeScanCode];
 					else
 					{
 						UINT nativeKeyCode = wParam & 0xff;
 						UINT wch16 = (MapVirtualKeyW(nativeKeyCode, MAPVK_VK_TO_CHAR) & 0xffff);
-						key = wchar16ToUtf8(wch16);
+						key = wchar16ToKeyCode(wch16);
 					}
 
 					// callback
@@ -711,14 +713,14 @@ void VulkanWindow::init()
 						scanCode = getScanCodeOfSpecialKey(wParam);
 
 					// key code
-					CharUtf8 key;
+					KeyCode key;
 					if(nativeScanCode < 128)
 						key = keyConversionTable[nativeScanCode];
 					else
 					{
 						UINT nativeKeyCode = wParam & 0xff;
 						UINT wch16 = (MapVirtualKeyW(nativeKeyCode, MAPVK_VK_TO_CHAR) & 0xffff);
-						key = wchar16ToUtf8(wch16);
+						key = wchar16ToKeyCode(wch16);
 					}
 
 					// callback
