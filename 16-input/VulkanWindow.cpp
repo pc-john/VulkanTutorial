@@ -2557,16 +2557,30 @@ void VulkanWindow::mainLoop()
 			// callback
 			if(w->_keyCallback)
 			{
+				// get scan code
 				ScanCode scanCode = ScanCode(e.xkey.keycode - 8);
-				KeySym keySym;
-				e.xkey.state &= ~(ShiftMask | LockMask | ControlMask |  // ignore shift state, Caps Lock and Ctrl
-				                  Mod1Mask |  // ignore Alt
-				                  Mod2Mask |  // ignore Num Lock
-				                  Mod3Mask |  // ignore Scroll Lock
-				                  Mod4Mask |  // ignore WinKey  );
-				                  Mod5Mask);  // ignore unknown modifier
-				XLookupString(&e.xkey, nullptr, 0, &keySym, nullptr);
-				uint32_t chUtf32 = xkb_keysym_to_utf32(keySym);
+
+				// get utf32 character representing the keyboard key
+				uint32_t chUtf32;
+				if(scanCode >= ScanCode::One && scanCode <= ScanCode::Zero) {
+					if(scanCode == ScanCode::Zero)
+						chUtf32 = uint32_t(Key::Zero);
+					else
+						chUtf32 = uint32_t(scanCode) - uint32_t(ScanCode::One) + Key::One;
+				}
+				else {
+					KeySym keySym;
+					e.xkey.state &= ~(ShiftMask | LockMask | ControlMask |  // ignore shift state, Caps Lock and Ctrl
+					                  Mod1Mask |  // ignore Alt
+					                  Mod2Mask |  // ignore Num Lock
+					                  Mod3Mask |  // ignore Scroll Lock
+					                  Mod4Mask |  // ignore WinKey  );
+					                  Mod5Mask);  // ignore unknown modifier
+					XLookupString(&e.xkey, nullptr, 0, &keySym, nullptr);
+					chUtf32 = xkb_keysym_to_utf32(keySym);
+				}
+
+				// callback
 				w->_keyCallback(*w, KeyState::Pressed, uint16_t(scanCode), KeyCode(chUtf32));
 			}
 			continue;
@@ -2588,16 +2602,30 @@ void VulkanWindow::mainLoop()
 			// callback
 			if(w->_keyCallback)
 			{
+				// get scan code
 				ScanCode scanCode = ScanCode(e.xkey.keycode - 8);
-				KeySym keySym;
-				e.xkey.state &= ~(ShiftMask | LockMask | ControlMask |  // ignore shift state, Caps Lock and Ctrl
-				                  Mod1Mask |  // ignore Alt
-				                  Mod2Mask |  // ignore Num Lock
-				                  Mod3Mask |  // ignore Scroll Lock
-				                  Mod4Mask |  // ignore WinKey  );
-				                  Mod5Mask);  // ignore unknown modifier
-				XLookupString(&e.xkey, nullptr, 0, &keySym, nullptr);
-				uint32_t chUtf32 = xkb_keysym_to_utf32(keySym);
+
+				// get utf32 character representing the keyboard key
+				uint32_t chUtf32;
+				if(scanCode >= ScanCode::One && scanCode <= ScanCode::Zero) {
+					if(scanCode == ScanCode::Zero)
+						chUtf32 = uint32_t(Key::Zero);
+					else
+						chUtf32 = uint32_t(scanCode) - uint32_t(ScanCode::One) + Key::One;
+				}
+				else {
+					KeySym keySym;
+					e.xkey.state &= ~(ShiftMask | LockMask | ControlMask |  // ignore shift state, Caps Lock and Ctrl
+					                  Mod1Mask |  // ignore Alt
+					                  Mod2Mask |  // ignore Num Lock
+					                  Mod3Mask |  // ignore Scroll Lock
+					                  Mod4Mask |  // ignore WinKey  );
+					                  Mod5Mask);  // ignore unknown modifier
+					XLookupString(&e.xkey, nullptr, 0, &keySym, nullptr);
+					chUtf32 = xkb_keysym_to_utf32(keySym);
+				}
+
+				// callback
 				w->_keyCallback(*w, KeyState::Released, uint16_t(scanCode), KeyCode(chUtf32));
 			}
 			continue;
