@@ -3511,6 +3511,19 @@ bool QtRenderingWindow::event(QEvent* event)
 				return true;
 
 			};
+		auto convertQtKeyToUtf32 =
+			[](int qtKey) -> uint32_t
+			{
+				switch(qtKey) {
+				case Qt::Key_Escape: return 0x1b;
+				case Qt::Key_Tab: return '\t';
+				case Qt::Key_Backspace: return 0x08;
+				case Qt::Key_Return: return '\n';
+				case Qt::Key_Enter: return '\n';
+				case Qt::Key_Space: return ' ';
+				default: return 0;
+				}
+			};
 
 		// handle verious events
 		switch(event->type()) {
@@ -3592,12 +3605,29 @@ bool QtRenderingWindow::event(QEvent* event)
 			if(vulkanWindow->_keyCallback) {
 				QKeyEvent *k = static_cast<QKeyEvent*>(event);
 				if(!k->isAutoRepeat()) {
+
+					// scan code
 # ifdef _WIN32
 					VulkanWindow::ScanCode scanCode = translateScanCode(k->nativeScanCode());
 # else
 					VulkanWindow::ScanCode scanCode = VulkanWindow::ScanCode(k->nativeScanCode() - 8);
 # endif
-					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyState::Pressed, uint16_t(scanCode), k->nativeVirtualKey());
+
+					// key code
+					QString s = QKeySequence(k->key()).toString();
+					uint32_t chUtf32;
+					if(s.isEmpty())
+						chUtf32 = 0;
+					else if(s.length() > 1)
+						chUtf32 = convertQtKeyToUtf32(k->key());
+					else {
+						s = s.toLower();
+						QList<uint> l = s.toUcs4();
+						chUtf32 = (l.isEmpty()) ? 0 : l[0];
+					}
+
+					// callback
+					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyState::Pressed, uint16_t(scanCode), VulkanWindow::KeyCode(chUtf32));
 				}
 			}
 			return true;
@@ -3606,12 +3636,29 @@ bool QtRenderingWindow::event(QEvent* event)
 			if(vulkanWindow->_keyCallback) {
 				QKeyEvent *k = static_cast<QKeyEvent*>(event);
 				if(!k->isAutoRepeat()) {
+
+					// scan code
 # ifdef _WIN32
 					VulkanWindow::ScanCode scanCode = translateScanCode(k->nativeScanCode());
 # else
 					VulkanWindow::ScanCode scanCode = VulkanWindow::ScanCode(k->nativeScanCode() - 8);
 # endif
-					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyState::Released, uint16_t(scanCode), k->nativeVirtualKey());
+
+					// key code
+					QString s = QKeySequence(k->key()).toString();
+					uint32_t chUtf32;
+					if(s.isEmpty())
+						chUtf32 = 0;
+					else if(s.length() > 1)
+						chUtf32 = convertQtKeyToUtf32(k->key());
+					else {
+						s = s.toLower();
+						QList<uint> l = s.toUcs4();
+						chUtf32 = (l.isEmpty()) ? 0 : l[0];
+					}
+
+					// callback
+					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyState::Released, uint16_t(scanCode), VulkanWindow::KeyCode(chUtf32));
 				}
 			}
 			return true;
