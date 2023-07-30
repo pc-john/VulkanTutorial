@@ -7,6 +7,7 @@
 # include <map>
 #elif defined(USE_PLATFORM_XLIB)
 # include <X11/Xutil.h>
+# include <xkbcommon/xkbcommon.h>
 # include <map>
 #elif defined(USE_PLATFORM_WAYLAND)
 # include "xdg-shell-client-protocol.h"
@@ -2554,11 +2555,19 @@ void VulkanWindow::mainLoop()
 		if(e.type == KeyPress)
 		{
 			// callback
-			if(w->_keyCallback) {
-				KeySym keySym;
-				XLookupString(&e.xkey, nullptr, 0, &keySym, nullptr);
+			if(w->_keyCallback)
+			{
 				ScanCode scanCode = ScanCode(e.xkey.keycode - 8);
-				w->_keyCallback(*w, KeyState::Pressed, uint16_t(scanCode), keySym);
+				KeySym keySym;
+				e.xkey.state &= ~(ShiftMask | LockMask | ControlMask |  // ignore shift state, Caps Lock and Ctrl
+				                  Mod1Mask |  // ignore Alt
+				                  Mod2Mask |  // ignore Num Lock
+				                  Mod3Mask |  // ignore Scroll Lock
+				                  Mod4Mask |  // ignore WinKey  );
+				                  Mod5Mask);  // ignore unknown modifier
+				XLookupString(&e.xkey, nullptr, 0, &keySym, nullptr);
+				uint32_t chUtf32 = xkb_keysym_to_utf32(keySym);
+				w->_keyCallback(*w, KeyState::Pressed, uint16_t(scanCode), KeyCode(chUtf32));
 			}
 			continue;
 		}
@@ -2577,11 +2586,19 @@ void VulkanWindow::mainLoop()
 			}
 
 			// callback
-			if(w->_keyCallback) {
-				KeySym keySym;
-				XLookupString(&e.xkey, nullptr, 0, &keySym, nullptr);
+			if(w->_keyCallback)
+			{
 				ScanCode scanCode = ScanCode(e.xkey.keycode - 8);
-				w->_keyCallback(*w, KeyState::Released, uint16_t(scanCode), keySym);
+				KeySym keySym;
+				e.xkey.state &= ~(ShiftMask | LockMask | ControlMask |  // ignore shift state, Caps Lock and Ctrl
+				                  Mod1Mask |  // ignore Alt
+				                  Mod2Mask |  // ignore Num Lock
+				                  Mod3Mask |  // ignore Scroll Lock
+				                  Mod4Mask |  // ignore WinKey  );
+				                  Mod5Mask);  // ignore unknown modifier
+				XLookupString(&e.xkey, nullptr, 0, &keySym, nullptr);
+				uint32_t chUtf32 = xkb_keysym_to_utf32(keySym);
+				w->_keyCallback(*w, KeyState::Released, uint16_t(scanCode), KeyCode(chUtf32));
 			}
 			continue;
 		}

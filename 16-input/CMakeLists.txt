@@ -37,7 +37,7 @@ set_property(SOURCE VulkanWindow.cpp APPEND PROPERTY COMPILE_DEFINITIONS ${vulka
 set_property(TARGET ${APP_NAME} PROPERTY CXX_STANDARD 17)
 
 # xkbcommon
-if(${GUI_TYPE} STREQUAL "Wayland")
+if(${GUI_TYPE} STREQUAL "Wayland" OR ${GUI_TYPE} STREQUAL "Xlib")
 	find_package(xkbcommon REQUIRED)
 	target_link_libraries(${APP_NAME} xkbcommon::xkbcommon)
 endif()
