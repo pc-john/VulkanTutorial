@@ -7,7 +7,6 @@
 # include <map>
 #elif defined(USE_PLATFORM_XLIB)
 # include <X11/Xutil.h>
-# include <xkbcommon/xkbcommon.h>
 # include <map>
 #elif defined(USE_PLATFORM_WAYLAND)
 # include "xdg-shell-client-protocol.h"
