@@ -65,73 +65,12 @@ public:
 		MediaSelect = 171, BrowserHome = 172,
 		Search = 217,
 	};
-	using KeyCode = uint32_t;  //< Single unicode character. It is a number representing particular code point as defined by Unicode Standard.
-	static constexpr KeyCode fromUtf8(const char* s);
-	static constexpr KeyCode fromAscii(char ch);
-	static std::string toString(KeyCode k);
-	static std::array<char, 5> toCharArray(KeyCode k);
-	struct Key {
-		static constexpr const KeyCode Null = 0;
-		static constexpr const KeyCode A = 'A';  static constexpr const KeyCode B = 'B';
-		static constexpr const KeyCode C = 'C';  static constexpr const KeyCode D = 'D';
-		static constexpr const KeyCode E = 'E';  static constexpr const KeyCode F = 'F';
-		static constexpr const KeyCode G = 'G';  static constexpr const KeyCode H = 'H';
-		static constexpr const KeyCode I = 'I';  static constexpr const KeyCode J = 'J';
-		static constexpr const KeyCode K = 'K';  static constexpr const KeyCode L = 'L';
-		static constexpr const KeyCode M = 'M';  static constexpr const KeyCode N = 'N';
-		static constexpr const KeyCode O = 'O';  static constexpr const KeyCode P = 'P';
-		static constexpr const KeyCode Q = 'Q';  static constexpr const KeyCode R = 'R';
-		static constexpr const KeyCode S = 'S';  static constexpr const KeyCode T = 'T';
-		static constexpr const KeyCode U = 'U';  static constexpr const KeyCode V = 'V';
-		static constexpr const KeyCode W = 'W';  static constexpr const KeyCode X = 'X';
-		static constexpr const KeyCode Y = 'Y';  static constexpr const KeyCode Z = 'Z';
-		static constexpr const KeyCode a = 'a';  static constexpr const KeyCode b = 'b';
-		static constexpr const KeyCode c = 'c';  static constexpr const KeyCode d = 'd';
-		static constexpr const KeyCode e = 'e';  static constexpr const KeyCode f = 'f';
-		static constexpr const KeyCode g = 'g';  static constexpr const KeyCode h = 'h';
-		static constexpr const KeyCode i = 'i';  static constexpr const KeyCode j = 'j';
-		static constexpr const KeyCode k = 'k';  static constexpr const KeyCode l = 'l';
-		static constexpr const KeyCode m = 'm';  static constexpr const KeyCode n = 'n';
-		static constexpr const KeyCode o = 'o';  static constexpr const KeyCode p = 'p';
-		static constexpr const KeyCode q = 'q';  static constexpr const KeyCode r = 'r';
-		static constexpr const KeyCode s = 's';  static constexpr const KeyCode t = 't';
-		static constexpr const KeyCode u = 'u';  static constexpr const KeyCode v = 'v';
-		static constexpr const KeyCode w = 'w';  static constexpr const KeyCode x = 'x';
-		static constexpr const KeyCode y = 'y';  static constexpr const KeyCode z = 'z';
-		static constexpr const KeyCode One   = '1';  static constexpr const KeyCode Two   = '2';
-		static constexpr const KeyCode Three = '3';  static constexpr const KeyCode Four  = '4';
-		static constexpr const KeyCode Five  = '5';  static constexpr const KeyCode Six   = '6';
-		static constexpr const KeyCode Seven = '7';  static constexpr const KeyCode Eight = '8';
-		static constexpr const KeyCode Nine  = '9';  static constexpr const KeyCode Zero  = '0';
-		static constexpr const KeyCode Exclam = '!';  static constexpr const KeyCode At = '@';
-		static constexpr const KeyCode Hash = '#';  static constexpr const KeyCode Dollar = '$';
-		static constexpr const KeyCode Percent = '%';  static constexpr const KeyCode Caret = '^';
-		static constexpr const KeyCode Ampersand = '&';  static constexpr const KeyCode Asterisk = '*';
-		static constexpr const KeyCode LeftParenthesis = '(';  static constexpr const KeyCode RightParenthesis = ')';
-		static constexpr const KeyCode LeftSquareBracket = '[';  static constexpr const KeyCode RightSquareBracket = ']';
-		static constexpr const KeyCode LeftCurlyBracket = '{';  static constexpr const KeyCode RightCurlyBracket = '}';
-		static constexpr const KeyCode Space = ' ';  static constexpr const KeyCode Backspace = 0x08;
-		static constexpr const KeyCode Enter = '\n';  static constexpr const KeyCode Escape = 0x1b;
-		static constexpr const KeyCode Plus = '+';  static constexpr const KeyCode Minus = '-';
-		static constexpr const KeyCode Slash = '/';  static constexpr const KeyCode Backslash = '\\';
-		static constexpr const KeyCode Less = '<';  static constexpr const KeyCode Greater = '>';
-		static constexpr const KeyCode Colon = ':';  static constexpr const KeyCode Semicolon = ';';
-		static constexpr const KeyCode Dot = '.';  static constexpr const KeyCode Comma = ',';
-		static constexpr const KeyCode Equal = '=';  static constexpr const KeyCode Underscore = '_';
-		static constexpr const KeyCode Question = '?';  static constexpr const KeyCode Bar = '|';
-		static constexpr const KeyCode DoubleQuote = '"';  static constexpr const KeyCode Apostrophe = '\'';
-		static constexpr const KeyCode GraveAccent = '`';  static constexpr const KeyCode Tilde = '~';
-		static constexpr const KeyCode Tab = '\t';
-		static constexpr const KeyCode Copyright = 0xa9;  static constexpr const KeyCode Registered = 0xae;
-		static constexpr const KeyCode Section = 0xa7;  static constexpr const KeyCode Paragraph = Section;
-		static constexpr const KeyCode Pound = 0xa3;  static constexpr const KeyCode Euro = 0x20ac;
-	};
 
 	// input function prototypes
 	typedef void MouseMoveCallback(VulkanWindow& window, const MouseState& mouseState);
 	typedef void MouseButtonCallback(VulkanWindow& window, MouseButton::EnumType button, ButtonState buttonState, const MouseState& mouseState);
 	typedef void MouseWheelCallback(VulkanWindow& window, int wheelX, int wheelY, const MouseState& mouseState);
-	typedef void KeyCallback(VulkanWindow& window, KeyState keyState, uint16_t scanCode, KeyCode key);
+	typedef void KeyCallback(VulkanWindow& window, KeyState newKeyState, ScanCode scanCode);
 
 protected:
 
@@ -345,7 +284,6 @@ inline std::vector<const char*>& VulkanWindow::appendRequiredExtensions(std::vec
 inline uint32_t VulkanWindow::requiredExtensionCount()  { return uint32_t(_requiredInstanceExtensions.size()); }
 inline const char* const* VulkanWindow::requiredExtensionNames()  { return _requiredInstanceExtensions.data(); }
 #endif
-inline constexpr VulkanWindow::KeyCode VulkanWindow::fromAscii(char ch)  { return VulkanWindow::KeyCode(ch); }
 
 
 // nifty counter / Schwarz counter

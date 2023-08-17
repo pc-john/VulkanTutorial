@@ -48,10 +48,6 @@ using namespace std;
 // (the windows have _framePendingState set to FramePendingState::Pending or TentativePending)
 static vector<VulkanWindow*> framePendingWindows;
 
-// scan code to key conversion table
-// (the table is updated upon each keyboard layout change)
-static VulkanWindow::KeyCode keyConversionTable[128];
-
 // Win32 UTF-8 string to wstring conversion
 # if defined(_UNICODE)
 static wstring utf8toWString(const char* s)
@@ -72,17 +68,6 @@ static wstring utf8toWString(const char* s)
 	return r;
 }
 # endif
-
-// Win32 wchar_t (UTF-16LE) to Unicode character number (code point) conversion
-static VulkanWindow::KeyCode wchar16ToKeyCode(WCHAR wch16)
-{
-	// make sure that we are not dealing with two WCHARs (surrogate pair)
-	if((wch16 & 0xf800) == 0xd800)
-		return 0xfffd;  // return "replacement character" indicating the error
-
-	// Win32 uses UTF-16LE (little endian) that can be converted directly to KeyCode
-	return VulkanWindow::KeyCode(wch16);
-};
 
 // remove VulkanWindow from framePendingWindows; VulkanWindow MUST be in framePendingWindows
 static void removeFromFramePendingWindows(VulkanWindow* w)
@@ -114,51 +99,6 @@ static VulkanWindow::ScanCode getScanCodeOfSpecialKey(WPARAM wParam)
 	case VK_LAUNCH_APP2: return VulkanWindow::ScanCode::Calculator;
 	default: return VulkanWindow::ScanCode::Unknown;
 	}
-}
-
-static void initKeyConversionTable()
-{
-	for(uint8_t scanCode=0; scanCode<128; scanCode++)
-	{
-		// get scan code
-		int vk = MapVirtualKeyW(scanCode, MAPVK_VSC_TO_VK);
-		if(vk == 0) {
-			keyConversionTable[scanCode] = 0;
-			continue;
-		}
-
-		// get virtual code
-		int wch16 = (MapVirtualKeyW(vk, MAPVK_VK_TO_CHAR) & 0xffff);
-		if(wch16 == 0) {
-			keyConversionTable[scanCode] = 0;
-			continue;
-		}
-
-		// convert WCHAR (=UTF-16 on Win32) to UTF-8
-		VulkanWindow::KeyCode key = wchar16ToKeyCode(wch16);
-
-		// normalize case
-		// (convert A..Z into a..z)
-		if(key >= 'A' && key <= 'Z')
-			key += 32;
-
-		// update table
-		keyConversionTable[scanCode] = key;
-	}
-
-	// although some keyboard layouts replace numbers with their own characters,
-	// users usually expect to call the keys by the numbers
-	// (this is consistent with SDL approach)
-	keyConversionTable[2] = '1';
-	keyConversionTable[3] = '2';
-	keyConversionTable[4] = '3';  
-	keyConversionTable[5] = '4';
-	keyConversionTable[6] = '5';
-	keyConversionTable[7] = '6';
-	keyConversionTable[8] = '7';
-	keyConversionTable[9] = '8';
-	keyConversionTable[10] = '9';
-	keyConversionTable[11] = '0';
 }
 
 #endif
@@ -699,19 +639,8 @@ void VulkanWindow::init()
 					if(scanCode == ScanCode::Unknown)
 						scanCode = getScanCodeOfSpecialKey(wParam);
 
-					// key code
-					KeyCode key;
-					if(nativeScanCode < 128)
-						key = keyConversionTable[nativeScanCode];
-					else
-					{
-						UINT nativeKeyCode = wParam & 0xff;
-						UINT wch16 = (MapVirtualKeyW(nativeKeyCode, MAPVK_VK_TO_CHAR) & 0xffff);
-						key = wchar16ToKeyCode(wch16);
-					}
-
 					// callback
-					w->_keyCallback(*w, KeyState::Pressed, uint16_t(scanCode), key);
+					w->_keyCallback(*w, KeyState::Pressed, scanCode);
 				}
 				return 0;
 			}
@@ -727,26 +656,10 @@ void VulkanWindow::init()
 					if(scanCode == ScanCode::Unknown)
 						scanCode = getScanCodeOfSpecialKey(wParam);
 
-					// key code
-					KeyCode key;
-					if(nativeScanCode < 128)
-						key = keyConversionTable[nativeScanCode];
-					else
-					{
-						UINT nativeKeyCode = wParam & 0xff;
-						UINT wch16 = (MapVirtualKeyW(nativeKeyCode, MAPVK_VK_TO_CHAR) & 0xffff);
-						key = wchar16ToKeyCode(wch16);
-					}
-
 					// callback
-					w->_keyCallback(*w, KeyState::Released, uint16_t(scanCode), key);
+					w->_keyCallback(*w, KeyState::Released, scanCode);
 				}
 				return 0;
-			}
-
-			case WM_INPUTLANGCHANGE: {
-				initKeyConversionTable();
-				return DefWindowProc(hwnd, msg, wParam, lParam);
 			}
 
 			// window resize message
@@ -847,11 +760,6 @@ void VulkanWindow::init()
 		);
 	if(!_windowClass)
 		throw runtime_error("Cannot register window class.");
-
-	// init keyboard stuff
-	// (WM_INPUTLANGCHANGE is sent after keyboard layout was changed;
-	// any layout change since application start is reported this way)
-	initKeyConversionTable();
 
 #elif defined(USE_PLATFORM_XLIB)
 
@@ -2150,7 +2058,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 # else
 					ScanCode scanCode = ScanCode(nativeScanCode - 8);
 # endif
-					w->_keyCallback(*w, (action == GLFW_PRESS) ? KeyState::Pressed : KeyState::Released, uint16_t(scanCode), key);
+					w->_keyCallback(*w, (action == GLFW_PRESS) ? KeyState::Pressed : KeyState::Released, scanCode);
 				}
 			}
 		}
@@ -3167,8 +3075,7 @@ void VulkanWindow::mainLoop()
 			if(w->_keyCallback && event.key.repeat == 0)
 			{
 				ScanCode scanCode = translateScanCode(event.key.keysym.scancode);
-				KeyCode key = (event.key.keysym.sym & SDLK_SCANCODE_MASK) ? 0 : event.key.keysym.sym;
-				w->_keyCallback(*w, KeyState::Pressed, uint16_t(scanCode), key);
+				w->_keyCallback(*w, KeyState::Pressed, scanCode);
 			}
 			break;
 		}
@@ -3178,8 +3085,7 @@ void VulkanWindow::mainLoop()
 			if(w->_keyCallback && event.key.repeat == 0)
 			{
 				ScanCode scanCode = translateScanCode(event.key.keysym.scancode);
-				KeyCode key = (event.key.keysym.sym & SDLK_SCANCODE_MASK) ? 0 : event.key.keysym.sym;
-				w->_keyCallback(*w, KeyState::Released, uint16_t(scanCode), key);
+				w->_keyCallback(*w, KeyState::Released, scanCode);
 			}
 			break;
 		}
@@ -3627,7 +3533,7 @@ bool QtRenderingWindow::event(QEvent* event)
 					}
 
 					// callback
-					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyState::Pressed, uint16_t(scanCode), VulkanWindow::KeyCode(chUtf32));
+					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyState::Pressed, scanCode);
 				}
 			}
 			return true;
@@ -3658,7 +3564,7 @@ bool QtRenderingWindow::event(QEvent* event)
 					}
 
 					// callback
-					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyState::Released, uint16_t(scanCode), VulkanWindow::KeyCode(chUtf32));
+					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyState::Released, scanCode);
 				}
 			}
 			return true;
@@ -3711,99 +3617,6 @@ void VulkanWindow::scheduleFrame()
 
 
 #endif
-
-
-
-constexpr VulkanWindow::KeyCode VulkanWindow::fromUtf8(const char* s)
-{
-	// decode single character
-	char ch1 = *s;
-	if(ch1 < 0x80)
-		return ch1;
-
-	// decode 2 character sequence
-	if(ch1 < 0xe0) {
-		if(ch1 < 0xc0)
-			return 0xfffd;  // return "replacement character" indicating the error
-		s++;
-		char ch2 = *s;
-		return (ch1&0x1f)<<6 | (ch2&0x3f);
-	}
-
-	// decode 3 character sequence
-	if(ch1 < 0xf0) {
-		s++;
-		char ch2 = *s;
-		s++;
-		char ch3 = *s;
-		return (ch1&0x0f)<<12 | (ch2&0x3f)<<6 | (ch3&0x3f);
-	}
-
-	// decode 4 character sequence
-	if(ch1 < 0xf8) {
-		s++;
-		char ch2 = *s;
-		s++;
-		char ch3 = *s;
-		s++;
-		char ch4 = *s;
-		return (ch1&0x07)<<18 | (ch2&0x3f)<<12 | (ch3&0x3f)<<6 | (ch4&0x3f);
-	}
-
-	// more than 4 character sequences are forbidden
-	return 0xfffd;  // return "replacement character" indicating the error
-}
-
-
-array<char, 5> VulkanWindow::toCharArray(VulkanWindow::KeyCode k)
-{
-	// write 1 byte sequence
-	array<char, 5> r;
-	if(k < 128) {
-		*reinterpret_cast<uint32_t*>(r.data()) = k;
-		r[4] = 0;
-		return r;
-	}
-
-	// write 2 byte sequence
-	if(k < 2048) {
-		*reinterpret_cast<uint32_t*>(r.data()) = 0xc0 | ((k&0x07c0)>>6) | 0x8000 | ((k&0x3f)<<8);
-		r[4] = 0;
-		return r;
-	}
-
-	// write 3 byte sequence
-	if(k < 65536) {
-		*reinterpret_cast<uint32_t*>(r.data()) = 0xe0 | ((k&0xf000)>>12) | 0x8000 | ((k&0x0fc0)<<2) |
-		                                         0x800000 | ((k&0x3f)<<16);
-		r[4] = 0;
-		return r;
-	}
-
-	// write 4 byte sequence
-	if(k < 2097152) {
-		*reinterpret_cast<uint32_t*>(r.data()) = 0xf0 | ((k&0x1c0000)>>18) | 0x8000 | ((k&0x03f000)>>4) |
-		                                         0x800000 | ((k&0x0fc0)<<10) | 0x80000000 | ((k&0x3f)<<24);
-		r[4] = 0;
-		return r;
-	}
-
-	// more than 4 character sequences are forbidden
-	// (return "replacement character" (value 0xfffd) indicating the error)
-	*reinterpret_cast<uint32_t*>(r.data()) = 0xe0 | (0xf000>>12) | 0x8000 | (0x0fc0<<2) |
-	                                         0x800000 | 0x3d;
-	r[4] = 0;
-	return r;
-}
-
-
-string VulkanWindow::toString(KeyCode k)
-{
-	string s;
-	s.reserve(4);  // this shall allocate at least 4 chars and one null byte, e.g. at least 5 bytes
-	s.assign(toCharArray(k).data());
-	return s;
-}
 
 
 

@@ -34,7 +34,7 @@ public:
 	void mouseMove(VulkanWindow& window, const VulkanWindow::MouseState& mouseState);
 	void mouseButton(VulkanWindow&, size_t button, VulkanWindow::ButtonState buttonState, const VulkanWindow::MouseState& mouseState);
 	void mouseWheel(VulkanWindow& window, int wheelX, int wheelY, const VulkanWindow::MouseState& mouseState);
-	void key(VulkanWindow& window, VulkanWindow::KeyState keyState, uint16_t scanCode, VulkanWindow::KeyCode key);
+	void key(VulkanWindow& window, VulkanWindow::KeyState keyState, VulkanWindow::ScanCode scanCode);
 
 	// Vulkan instance must be destructed as the last Vulkan handle.
 	// It is probably good idea to destroy it after the display connection.
@@ -896,15 +896,14 @@ void App::mouseWheel(VulkanWindow&, int wheelX, int wheelY, const VulkanWindow::
 }
 
 
-void App::key(VulkanWindow&, VulkanWindow::KeyState keyState, uint16_t scanCode, VulkanWindow::KeyCode key)
+void App::key(VulkanWindow&, VulkanWindow::KeyState keyState, VulkanWindow::ScanCode scanCode)
 {
 	if(keyState == VulkanWindow::KeyState::Pressed)
 		cout << "KeyDown";
 	else
 		cout << "KeyUp";
 
-	cout << ", scanCode: " << scanCode << ", keyCode: U+" << hex << key << dec
-	     << ", key: " << VulkanWindow::toCharArray(key).data() << endl;
+	cout << ", scanCode: " << uint16_t(scanCode) << endl;
 }
 
 
@@ -933,7 +932,7 @@ int main(int argc, char* argv[])
 		app.window.setMouseMoveCallback(bind(&App::mouseMove, &app, placeholders::_1, placeholders::_2));
 		app.window.setMouseButtonCallback(bind(&App::mouseButton, &app, placeholders::_1, placeholders::_2, placeholders::_3, placeholders::_4));
 		app.window.setMouseWheelCallback(bind(&App::mouseWheel, &app, placeholders::_1, placeholders::_2, placeholders::_3, placeholders::_4));
-		app.window.setKeyCallback(bind(&App::key, &app, placeholders::_1, placeholders::_2, placeholders::_3, placeholders::_4));
+		app.window.setKeyCallback(bind(&App::key, &app, placeholders::_1, placeholders::_2, placeholders::_3));
 		app.window.show();
 		app.window.mainLoop();
 
