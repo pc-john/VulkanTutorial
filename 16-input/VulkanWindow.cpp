@@ -1123,16 +1123,12 @@ void VulkanWindow::init(void* data)
 			{
 				cout << "scanCode " << scanCode << ", state " << state << endl;
 
-				// process key
-				xkb_keysym_t keySym = xkb_state_key_get_one_sym(_xkbState, scanCode + 8);
-
 				// callback
 				if(windowWithKbFocus->_keyCallback) {
 					windowWithKbFocus->_keyCallback(
 						*windowWithKbFocus,
 						state==WL_KEYBOARD_KEY_STATE_PRESSED ? KeyState::Pressed : KeyState::Released,
-						scanCode,  // scanCode
-						keySym  // keyCode
+						ScanCode(scanCode)
 					);
 				}
 			},
