@@ -2465,31 +2465,8 @@ void VulkanWindow::mainLoop()
 			// callback
 			if(w->_keyCallback)
 			{
-				// get scan code
 				ScanCode scanCode = ScanCode(e.xkey.keycode - 8);
-
-				// get utf32 character representing the keyboard key
-				uint32_t chUtf32;
-				if(scanCode >= ScanCode::One && scanCode <= ScanCode::Zero) {
-					if(scanCode == ScanCode::Zero)
-						chUtf32 = uint32_t(Key::Zero);
-					else
-						chUtf32 = uint32_t(scanCode) - uint32_t(ScanCode::One) + Key::One;
-				}
-				else {
-					KeySym keySym;
-					e.xkey.state &= ~(ShiftMask | LockMask | ControlMask |  // ignore shift state, Caps Lock and Ctrl
-					                  Mod1Mask |  // ignore Alt
-					                  Mod2Mask |  // ignore Num Lock
-					                  Mod3Mask |  // ignore Scroll Lock
-					                  Mod4Mask |  // ignore WinKey  );
-					                  Mod5Mask);  // ignore unknown modifier
-					XLookupString(&e.xkey, nullptr, 0, &keySym, nullptr);
-					chUtf32 = xkb_keysym_to_utf32(keySym);
-				}
-
-				// callback
-				w->_keyCallback(*w, KeyState::Pressed, uint16_t(scanCode), KeyCode(chUtf32));
+				w->_keyCallback(*w, KeyState::Pressed, scanCode);
 			}
 			continue;
 		}
@@ -2510,31 +2487,8 @@ void VulkanWindow::mainLoop()
 			// callback
 			if(w->_keyCallback)
 			{
-				// get scan code
 				ScanCode scanCode = ScanCode(e.xkey.keycode - 8);
-
-				// get utf32 character representing the keyboard key
-				uint32_t chUtf32;
-				if(scanCode >= ScanCode::One && scanCode <= ScanCode::Zero) {
-					if(scanCode == ScanCode::Zero)
-						chUtf32 = uint32_t(Key::Zero);
-					else
-						chUtf32 = uint32_t(scanCode) - uint32_t(ScanCode::One) + Key::One;
-				}
-				else {
-					KeySym keySym;
-					e.xkey.state &= ~(ShiftMask | LockMask | ControlMask |  // ignore shift state, Caps Lock and Ctrl
-					                  Mod1Mask |  // ignore Alt
-					                  Mod2Mask |  // ignore Num Lock
-					                  Mod3Mask |  // ignore Scroll Lock
-					                  Mod4Mask |  // ignore WinKey  );
-					                  Mod5Mask);  // ignore unknown modifier
-					XLookupString(&e.xkey, nullptr, 0, &keySym, nullptr);
-					chUtf32 = xkb_keysym_to_utf32(keySym);
-				}
-
-				// callback
-				w->_keyCallback(*w, KeyState::Released, uint16_t(scanCode), KeyCode(chUtf32));
+				w->_keyCallback(*w, KeyState::Released, scanCode);
 			}
 			continue;
 		}
@@ -3519,19 +3473,6 @@ bool QtRenderingWindow::event(QEvent* event)
 					VulkanWindow::ScanCode scanCode = VulkanWindow::ScanCode(k->nativeScanCode() - 8);
 # endif
 
-					// key code
-					QString s = QKeySequence(k->key()).toString();
-					uint32_t chUtf32;
-					if(s.isEmpty())
-						chUtf32 = 0;
-					else if(s.length() > 1)
-						chUtf32 = convertQtKeyToUtf32(k->key());
-					else {
-						s = s.toLower();
-						QList<uint> l = s.toUcs4();
-						chUtf32 = (l.isEmpty()) ? 0 : l[0];
-					}
-
 					// callback
 					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyState::Pressed, scanCode);
 				}
@@ -3549,19 +3490,6 @@ bool QtRenderingWindow::event(QEvent* event)
 # else
 					VulkanWindow::ScanCode scanCode = VulkanWindow::ScanCode(k->nativeScanCode() - 8);
 # endif
-
-					// key code
-					QString s = QKeySequence(k->key()).toString();
-					uint32_t chUtf32;
-					if(s.isEmpty())
-						chUtf32 = 0;
-					else if(s.length() > 1)
-						chUtf32 = convertQtKeyToUtf32(k->key());
-					else {
-						s = s.toLower();
-						QList<uint> l = s.toUcs4();
-						chUtf32 = (l.isEmpty()) ? 0 : l[0];
-					}
 
 					// callback
 					vulkanWindow->_keyCallback(*vulkanWindow, VulkanWindow::KeyState::Released, scanCode);
