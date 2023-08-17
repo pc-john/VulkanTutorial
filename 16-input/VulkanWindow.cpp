@@ -4,7 +4,6 @@
 # include <windows.h>
 # include <windowsx.h>
 # include <tchar.h>
-# include <map>
 #elif defined(USE_PLATFORM_XLIB)
 # include <X11/Xutil.h>
 # include <map>
@@ -18,13 +17,9 @@
 #elif defined(USE_PLATFORM_SDL2)
 # include "SDL.h"
 # include "SDL_vulkan.h"
-# include <algorithm>
-# include <cmath>
-# include <memory>
 #elif defined(USE_PLATFORM_GLFW)
 # define GLFW_INCLUDE_NONE  // do not include OpenGL headers
 # include <GLFW/glfw3.h>
-# include <cmath>
 #elif defined(USE_PLATFORM_QT)
 # include <QGuiApplication>
 # include <QWindow>
@@ -33,8 +28,6 @@
 # include <QWheelEvent>
 # include <fstream>
 #endif
-#include <vulkan/vulkan.hpp>
-#include <cstring>
 #include <stdexcept>
 #include <iostream>  // for debugging
 
