@@ -17,9 +17,11 @@
 #elif defined(USE_PLATFORM_SDL2)
 # include "SDL.h"
 # include "SDL_vulkan.h"
+# include <cmath>
 #elif defined(USE_PLATFORM_GLFW)
 # define GLFW_INCLUDE_NONE  // do not include OpenGL headers
 # include <GLFW/glfw3.h>
+# include <cmath>
 #elif defined(USE_PLATFORM_QT)
 # include <QGuiApplication>
 # include <QWindow>
