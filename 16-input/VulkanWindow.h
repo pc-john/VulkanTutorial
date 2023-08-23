@@ -126,6 +126,11 @@ protected:
 	static inline struct wl_compositor* _compositor = nullptr;
 	static inline struct xdg_wm_base* _xdgWmBase = nullptr;
 	static inline struct zxdg_decoration_manager_v1* _zxdgDecorationManagerV1 = nullptr;
+	static inline struct wl_shm* _shm = nullptr;
+	static inline struct wl_cursor_theme* _cursorTheme = nullptr;
+	static inline struct wl_surface* _cursorSurface = nullptr;
+	static inline int _cursorHotspotX;
+	static inline int _cursorHotspotY;
 	static inline struct wl_seat* _seat = nullptr;
 	static inline struct wl_pointer* _pointer = nullptr;
 	static inline struct wl_keyboard* _keyboard = nullptr;

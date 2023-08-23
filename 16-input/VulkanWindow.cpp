@@ -10,6 +10,8 @@
 #elif defined(USE_PLATFORM_WAYLAND)
 # include "xdg-shell-client-protocol.h"
 # include "xdg-decoration-client-protocol.h"
+# include <wayland-cursor.h>
+# include <climits>
 # include <map>
 #elif defined(USE_PLATFORM_SDL2)
 # include "SDL.h"
@@ -902,8 +904,10 @@ void VulkanWindow::init(void* data)
 				else if(strcmp(interface, zxdg_decoration_manager_v1_interface.name) == 0)
 					_zxdgDecorationManagerV1 = static_cast<zxdg_decoration_manager_v1*>(
 						wl_registry_bind(registry, name, &zxdg_decoration_manager_v1_interface, 1));
-				else if(strcmp(interface, "wl_seat") == 0)
+				else if(strcmp(interface, wl_seat_interface.name) == 0)
 					_seat = static_cast<wl_seat*>(wl_registry_bind(registry, name, &wl_seat_interface, 1));
+				else if(strcmp(interface, wl_shm_interface.name) == 0)
+					_shm = static_cast<wl_shm*>(wl_registry_bind(registry, name, &wl_shm_interface, 1));
 			},
 		.global_remove =
 			[](void*, wl_registry*, uint32_t) {
@@ -929,6 +933,48 @@ void VulkanWindow::init(void* data)
 		throw runtime_error("xdg_wm_base_add_listener() failed.");
 	if(_seat == nullptr)
 		throw runtime_error("Cannot get Wayland wl_seat object.");
+	if(_shm == nullptr)
+		throw runtime_error("Cannot get Wayland wl_shm object.");
+
+	// cursor size
+	const char* cursorSizeString = getenv("XCURSOR_SIZE");
+	char* endp = nullptr;
+	int cursorSize = 0;
+	if(cursorSizeString) {
+		auto cursorSizeLong = strtol(cursorSizeString, &endp, 10);
+		if(endp-cursorSizeString == strlen(cursorSizeString) &&
+		   cursorSizeLong > 0 && cursorSizeLong <= INT_MAX)
+		{
+			cursorSize = int(cursorSizeLong);
+		}
+	}
+	if(cursorSize == 0)
+		cursorSize = 24;
+
+	// cursor theme name
+	const char* cursorThemeName = getenv("XCURSOR_THEME");
+
+	// load cursor theme
+	_cursorTheme = wl_cursor_theme_load(cursorThemeName, cursorSize, _shm);
+	if(_cursorTheme == nullptr)
+		throw runtime_error("Failed to load default cursor theme.");
+
+	// cursor surface
+	// (we need cursor for VulkanWindow, otherwise no cursor might be shown inside the window)
+	_cursorSurface = wl_compositor_create_surface(_compositor);
+	if(!_cursorSurface)
+		throw runtime_error("wl_compositor_create_surface() failed to create cursor surface.");
+	wl_cursor* cursor = wl_cursor_theme_get_cursor(_cursorTheme, "left_ptr");
+	if(!cursor)
+		throw runtime_error("Cursor error: Cannot load \"left_ptr\" cursor.");
+	wl_cursor_image* cursorImage = cursor->images[0];
+	_cursorHotspotX = cursorImage->hotspot_x;
+	_cursorHotspotY = cursorImage->hotspot_y;
+	wl_buffer* cursorBuffer = wl_cursor_image_get_buffer(cursorImage);
+	if(!cursorBuffer)
+		throw runtime_error("wl_cursor_image_get_buffer() failed.");
+	wl_surface_attach(_cursorSurface, cursorBuffer, 0, 0);
+	wl_surface_commit(_cursorSurface);
 
 	// pointer
 	pointerListener = {
@@ -936,6 +982,10 @@ void VulkanWindow::init(void* data)
 			[](void* data, wl_pointer* pointer, uint32_t serial, wl_surface* surface,
 			   wl_fixed_t surface_x, wl_fixed_t surface_y)
 			{
+				// set cursor
+				wl_pointer_set_cursor(pointer, serial, _cursorSurface, _cursorHotspotX, _cursorHotspotY);
+
+				// get window pointer
 				auto it = surface2windowMap.find(surface);
 				if(it == surface2windowMap.end()) {
 					// unknown window
@@ -944,6 +994,7 @@ void VulkanWindow::init(void* data)
 				}
 				windowUnderPointer = it->second;
 
+				// update mouse state
 				int x = surface_x >> 8;
 				int y = surface_y >> 8;
 				if(windowUnderPointer->_mouseState.posX != x ||
@@ -1041,8 +1092,6 @@ void VulkanWindow::init(void* data)
 			[](void* data, wl_keyboard* keyboard, uint32_t serial, wl_surface* surface,
 			   wl_array* keys)
 			{
-				cout << "enter keyboard" <<endl;
-
 				auto it = surface2windowMap.find(surface);
 				if(it == surface2windowMap.end()) {
 					// unknown window
@@ -1073,7 +1122,6 @@ void VulkanWindow::init(void* data)
 			[](void* data, wl_keyboard* keyboard, uint32_t serial, uint32_t mods_depressed,
 			   uint32_t mods_latched, uint32_t mods_locked, uint32_t group)
 			{
-				cout << "modifier" << endl;
 			},
 	};
 
@@ -1200,6 +1248,18 @@ void VulkanWindow::finalize() noexcept
 	if(_keyboard) {
 		wl_keyboard_release(_keyboard);
 		_keyboard = nullptr;
+	}
+	if(_cursorSurface) {
+		wl_surface_destroy(_cursorSurface);
+		_cursorSurface = nullptr;
+	}
+	if(_cursorTheme) {
+		wl_cursor_theme_destroy(_cursorTheme);
+		_cursorTheme = nullptr;
+	}
+	if(_shm) {
+		wl_shm_destroy(_shm);
+		_shm = nullptr;
 	}
 	if(_seat) {
 		wl_seat_release(_seat);
