@@ -40,6 +40,31 @@ if(PKG_CONFIG_FOUND AND Wayland_PROTOCOLS_FOUND)
 endif()
 set(Wayland_PROTOCOLS_DIR "${Wayland_PROTOCOLS_DIR}" CACHE PATH "Wayland protocols directory.")
 
+# handle required variables and set ${CMAKE_FIND_PACKAGE_NAME}_FOUND variable
+include(FindPackageHandleStandardArgs)
+if(Wayland_client_INCLUDE_DIR OR NOT Wayland_server_INCLUDE_DIR)
+	set(Wayland_include_var Wayland_client_INCLUDE_DIR)
+else()
+	set(Wayland_include_var Wayland_server_INCLUDE_DIR)
+endif()
+if(Wayland_client_LIBRARY OR NOT Wayland_server_LIBRARY)
+	set(Wayland_library_var Wayland_client_LIBRARY)
+else()
+	set(Wayland_library_var Wayland_server_LIBRARY)
+endif()
+string(CONCAT errorMessage
+	"Finding of package ${CMAKE_FIND_PACKAGE_NAME} failed. Make sure Wayland development files "
+	"are installed. Then, make sure relevant Wayland_* variables are set properly. "
+	"Either client or server include dir must be specified, and either client or server library "
+	"needs to be provided. Wayland_client_INCLUDE_DIR and Wayland_client_LIBRARY is what most "
+	"people will use. Wayland_PROTOCOLS_DIR also must be set.")
+find_package_handle_standard_args(
+	${CMAKE_FIND_PACKAGE_NAME}
+	REQUIRED_VARS ${Wayland_include_var} ${Wayland_library_var} Wayland_PROTOCOLS_DIR
+	REASON_FAILURE_MESSAGE ${errorMessage}
+)
+unset(Wayland_library_var)
+
 # Wayland::client target
 if(Wayland_client_INCLUDE_DIR AND Wayland_client_LIBRARY)
 	set(Wayland_client_FOUND TRUE)

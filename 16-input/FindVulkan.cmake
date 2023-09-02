@@ -33,12 +33,31 @@ find_program(Vulkan_GLSLANG_VALIDATOR_EXECUTABLE
 		/usr/bin
 )
 
+# find glslc
+find_program(Vulkan_GLSLC_EXECUTABLE
+	NAMES
+		glslc
+	PATHS
+		"$ENV{VULKAN_SDK}/bin"
+		"$ENV{VULKAN_SDK}/bin32"
+		/usr/bin
+)
+
 
 set(Vulkan_LIBRARIES ${Vulkan_LIBRARY})
 set(Vulkan_INCLUDE_DIRS ${Vulkan_INCLUDE_DIR})
 
+# handle required variables and set Vulkan_FOUND variable
 include(FindPackageHandleStandardArgs)
-find_package_handle_standard_args(Vulkan DEFAULT_MSG Vulkan_LIBRARY Vulkan_INCLUDE_DIR)
+string(CONCAT errorMessage
+	"Finding of package ${CMAKE_FIND_PACKAGE_NAME} failed. Make sure Vulkan development files "
+	"or Vulkan SDK is installed. Then, make sure Vulkan_INCLUDE_DIR and Vulkan_LIBRARY "
+	"and other relevant Vulkan_* variables are set properly.")
+find_package_handle_standard_args(
+	${CMAKE_FIND_PACKAGE_NAME}
+	REQUIRED_VARS Vulkan_LIBRARY Vulkan_INCLUDE_DIR
+	REASON_FAILURE_MESSAGE ${errorMessage}
+)
 
 
 # Vulkan::Vulkan target
@@ -53,6 +72,12 @@ endif()
 if(Vulkan_FOUND AND Vulkan_GLSLANG_VALIDATOR_EXECUTABLE AND NOT TARGET Vulkan::glslangValidator)
 	add_executable(Vulkan::glslangValidator IMPORTED)
 	set_property(TARGET Vulkan::glslangValidator PROPERTY IMPORTED_LOCATION "${Vulkan_GLSLANG_VALIDATOR_EXECUTABLE}")
+endif()
+
+# Vulkan::glslc target
+if(Vulkan_FOUND AND Vulkan_GLSLC_EXECUTABLE AND NOT TARGET Vulkan::glslc)
+  add_executable(Vulkan::glslc IMPORTED)
+  set_property(TARGET Vulkan::glslc PROPERTY IMPORTED_LOCATION "${Vulkan_GLSLC_EXECUTABLE}")
 endif()
 
 

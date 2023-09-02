@@ -42,28 +42,6 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 		/opt/local/include
 	)
 
-	# message error level
-	if(${CMAKE_FIND_PACKAGE_NAME}_FIND_REQUIRED)
-		set(errorLevel FATAL_ERROR)
-	else()
-		set(errorLevel SEND_ERROR)
-	endif()
-
-	# check GLFW version
-	if(${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR AND EXISTS "${${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR}/GLFW/glfw3.h")
-		file(READ "${${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR}/GLFW/glfw3.h" fileContent)
-		string(REGEX MATCH "GLFW_VERSION_MAJOR[ ]+([0-9]*)" _ "${fileContent}")
-		set(major "${CMAKE_MATCH_1}")
-		string(REGEX MATCH "GLFW_VERSION_MINOR[ ]+([0-9]*)" _ "${fileContent}")
-		set(minor "${CMAKE_MATCH_1}")
-		if("${major}.${minor}" VERSION_LESS ${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSION})
-			string(REGEX MATCH "GLFW_VERSION_REVISION[ ]+([0-9]*)" _ "${fileContent}")
-			message(${errorLevel} "GLFW ${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSION} or newer was not found.\n"
-			        "Detected version: ${major}.${minor}.${CMAKE_MATCH_1}.\n")
-			return()
-		endif()
-	endif()
-
 	# find GLFW library
 	if(WIN32)
 		find_library(${CMAKE_FIND_PACKAGE_NAME}_LIBRARY
@@ -91,37 +69,42 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 		)
 	endif()
 
-	# set *_FOUND flag
-	if(${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR AND ${CMAKE_FIND_PACKAGE_NAME}_LIBRARY)
-		set(${CMAKE_FIND_PACKAGE_NAME}_FOUND True)
-	else()
-		# generate error message
-		if(${CMAKE_FIND_PACKAGE_NAME}_CONSIDERED_VERSIONS)
-			message(${errorLevel} "GLFW ${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSION} or newer was not found.\n"
-			        "Considered versions: ${${CMAKE_FIND_PACKAGE_NAME}_CONSIDERED_VERSIONS}\n"
-			        "Considered configs: ${${CMAKE_FIND_PACKAGE_NAME}_CONSIDERED_CONFIGS}\n")
-		else()
-			message(${errorLevel} "Finding of package ${CMAKE_FIND_PACKAGE_NAME} failed. "
-			        "Make sure it is installed, it is of the version "
-			        "${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSION} or newer, and either "
-			        "(1) ${CMAKE_FIND_PACKAGE_NAME}_DIR is set to the directory of "
-			        "${CMAKE_FIND_PACKAGE_NAME}Config.cmake and ${CMAKE_FIND_PACKAGE_NAME}-config.cmake "
-			        "or (2) ${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR and "
-			        "${CMAKE_FIND_PACKAGE_NAME}_LIBRARY are set properly.")
-		endif()
-		return()
+	# check GLFW version
+	if(${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR AND EXISTS "${${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR}/GLFW/glfw3.h")
+		file(READ "${${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR}/GLFW/glfw3.h" fileContent)
+		string(REGEX MATCH "GLFW_VERSION_MAJOR[ ]+([0-9]*)" _ "${fileContent}")
+		set(major "${CMAKE_MATCH_1}")
+		string(REGEX MATCH "GLFW_VERSION_MINOR[ ]+([0-9]*)" _ "${fileContent}")
+		set(minor "${CMAKE_MATCH_1}")
+		string(REGEX MATCH "GLFW_VERSION_REVISION[ ]+([0-9]*)" _ "${fileContent}")
+		set(revision "${CMAKE_MATCH_1}")
+		set(version "${major}.${minor}.${revision}")
 	endif()
 
+	# handle required variables and set ${CMAKE_FIND_PACKAGE_NAME}_FOUND variable
+	include(FindPackageHandleStandardArgs)
+	string(CONCAT errorMessage
+		"Finding of package ${CMAKE_FIND_PACKAGE_NAME} failed. Make sure it is installed, "
+		"it is of the version ${${CMAKE_FIND_PACKAGE_NAME}_FIND_VERSION} or newer, "
+		"and either (1) ${CMAKE_FIND_PACKAGE_NAME}_DIR is set to the directory of "
+		"${CMAKE_FIND_PACKAGE_NAME}Config.cmake and ${CMAKE_FIND_PACKAGE_NAME}-config.cmake "
+		"or (2) ${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR and ${CMAKE_FIND_PACKAGE_NAME}_LIBRARY "
+		"and other relevant ${CMAKE_FIND_PACKAGE_NAME}_* variables are set properly.")
+	find_package_handle_standard_args(
+		${CMAKE_FIND_PACKAGE_NAME}
+		REQUIRED_VARS ${CMAKE_FIND_PACKAGE_NAME}_LIBRARY ${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR
+		VERSION_VAR version
+		REASON_FAILURE_MESSAGE ${errorMessage}
+	)
+
 	# target
-	if(${CMAKE_FIND_PACKAGE_NAME}_FOUND OR ${CMAKE_FIND_PACKAGE_NAME}_FIND_REQUIRED)
-		if(NOT TARGET glfw)
-			add_library(glfw INTERFACE IMPORTED)
-			set_target_properties(glfw PROPERTIES
-				INTERFACE_INCLUDE_DIRECTORIES "${${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR}"
-				INTERFACE_LINK_LIBRARIES "${${CMAKE_FIND_PACKAGE_NAME}_LIBRARY}"
-			)
-			set(${CMAKE_FIND_PACKAGE_NAME}_DIR "${CMAKE_FIND_PACKAGE_NAME}_DIR-NOTFOUND" CACHE PATH "${CMAKE_FIND_PACKAGE_NAME} config directory." FORCE)
-		endif()
+	if(${CMAKE_FIND_PACKAGE_NAME}_FOUND AND NOT TARGET glfw)
+		add_library(glfw INTERFACE IMPORTED)
+		set_target_properties(glfw PROPERTIES
+			INTERFACE_INCLUDE_DIRECTORIES "${${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR}"
+			INTERFACE_LINK_LIBRARIES "${${CMAKE_FIND_PACKAGE_NAME}_LIBRARY}"
+		)
+		set(${CMAKE_FIND_PACKAGE_NAME}_DIR "${CMAKE_FIND_PACKAGE_NAME}_DIR-NOTFOUND" CACHE PATH "${CMAKE_FIND_PACKAGE_NAME} config directory." FORCE)
 	endif()
 
 endif()

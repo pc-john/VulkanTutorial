@@ -75,22 +75,28 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 		)
 	endif()
 
+	# handle required variables and set ${CMAKE_FIND_PACKAGE_NAME}_FOUND variable
+	include(FindPackageHandleStandardArgs)
+	string(CONCAT errorMessage
+		"Finding of package ${CMAKE_FIND_PACKAGE_NAME} failed. Make sure it is installed "
+	    "and either (1) ${CMAKE_FIND_PACKAGE_NAME}_DIR is set to the directory of "
+		"${CMAKE_FIND_PACKAGE_NAME}Config.cmake and ${CMAKE_FIND_PACKAGE_NAME}-config.cmake "
+		"or (2) ${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR and ${CMAKE_FIND_PACKAGE_NAME}_LIBRARY "
+		"and other relevant ${CMAKE_FIND_PACKAGE_NAME}_* variables are set properly.")
+	find_package_handle_standard_args(
+		${CMAKE_FIND_PACKAGE_NAME}
+		REQUIRED_VARS ${CMAKE_FIND_PACKAGE_NAME}_LIBRARY ${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR
+		REASON_FAILURE_MESSAGE ${errorMessage}
+	)
+
 	# set output variables
 	if(${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR AND ${CMAKE_FIND_PACKAGE_NAME}_LIBRARY)
-		set(${CMAKE_FIND_PACKAGE_NAME}_FOUND True)
 		set(SDL2_INCLUDE_DIRS "${SDL2_INCLUDE_DIR}")
 		if(SDL2_MAIN_LIBRARY)
 			set(SDL2_LIBRARIES    "${SDL2_LIBRARY}" "${SDL2_MAIN_LIBRARY}")
 		else()
 			set(SDL2_LIBRARIES    "${SDL2_LIBRARY}")
 		endif()
-	else()
-		# error message
-		message(FATAL_ERROR "Finding of package ${CMAKE_FIND_PACKAGE_NAME} failed. Make sure it is installed "
-		                    "and either (1) ${CMAKE_FIND_PACKAGE_NAME}_DIR is set to the directory of "
-		                    "${CMAKE_FIND_PACKAGE_NAME}Config.cmake and ${CMAKE_FIND_PACKAGE_NAME}-config.cmake "
-		                    "or (2) ${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR and ${CMAKE_FIND_PACKAGE_NAME}_LIBRARY "
-		                    "and other relevant ${CMAKE_FIND_PACKAGE_NAME}_* variables are set properly.")  # FATAL_ERROR will stop CMake processing
 	endif()
 
 endif()
