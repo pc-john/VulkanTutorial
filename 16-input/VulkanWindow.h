@@ -113,9 +113,6 @@ protected:
 	struct zxdg_toplevel_decoration_v1* _decoration = nullptr;
 	struct wl_callback* _scheduledFrameCallback = nullptr;
 
-	// wl and xdg listeners
-	struct WaylandListeners* _listeners = nullptr;
-
 	// state
 	bool _forcedFrame;
 	std::string _title;

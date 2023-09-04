@@ -35,6 +35,17 @@
 using namespace std;
 
 
+class VulkanWindowPrivate : public VulkanWindow {
+public:
+#if defined(USE_PLATFORM_WAYLAND)
+	static void xdgSurfaceListenerConfigure(void* data, xdg_surface* xdgSurface, uint32_t serial);
+	static void xdgToplevelListenerConfigure(void* data, xdg_toplevel* toplevel, int32_t width, int32_t height, wl_array*);
+	static void xdgToplevelListenerClose(void* data, xdg_toplevel* xdgTopLevel);
+	static void frameListenerDone(void *data, wl_callback* cb, uint32_t time);
+#endif
+};
+
+
 #if defined(USE_PLATFORM_WIN32)
 
 // list of windows waiting for frame rendering
@@ -245,16 +256,18 @@ static VulkanWindow* windowUnderPointer = nullptr;
 static VulkanWindow* windowWithKbFocus = nullptr;
 
 // listeners
-struct WaylandListeners {
-	VulkanWindow* vulkanWindow;
-	xdg_surface_listener xdgSurfaceListener;
-	xdg_toplevel_listener xdgToplevelListener;
-	wl_callback_listener frameListener;
-};
-
-// global listeners
 static wl_registry_listener registryListener;
 static xdg_wm_base_listener xdgWmBaseListener;
+static xdg_surface_listener xdgSurfaceListener {
+	VulkanWindowPrivate::xdgSurfaceListenerConfigure,
+};
+static xdg_toplevel_listener xdgToplevelListener {
+	VulkanWindowPrivate::xdgToplevelListenerConfigure,
+	VulkanWindowPrivate::xdgToplevelListenerClose,
+};
+static wl_callback_listener frameListener {
+	VulkanWindowPrivate::frameListenerDone,
+};
 static wl_seat_listener seatListener;
 static wl_pointer_listener pointerListener;
 static wl_keyboard_listener keyboardListener;
@@ -1327,10 +1340,6 @@ void VulkanWindow::finalize() noexcept
 VulkanWindow::~VulkanWindow()
 {
 	destroy();
-
-#if defined(USE_PLATFORM_WAYLAND)
-	delete _listeners;
-#endif
 }
 
 
@@ -1523,17 +1532,19 @@ VulkanWindow::VulkanWindow(VulkanWindow&& other)
 	other._wlSurface = nullptr;
 	_xdgSurface = other._xdgSurface;
 	other._xdgSurface = nullptr;
+	if(_xdgSurface)
+		xdg_surface_set_user_data(_xdgSurface, this);
 	_xdgTopLevel = other._xdgTopLevel;
 	other._xdgTopLevel = nullptr;
+	if(_xdgTopLevel)
+		xdg_toplevel_set_user_data(_xdgTopLevel, this);
 	_decoration = other._decoration;
 	other._decoration = nullptr;
 	_scheduledFrameCallback = other._scheduledFrameCallback;
 	other._scheduledFrameCallback = nullptr;
-	_listeners = other._listeners;
-	if(_listeners) {
-		other._listeners = nullptr;
-		_listeners->vulkanWindow = this;
-	}
+	if(_scheduledFrameCallback)
+		wl_callback_set_user_data(_scheduledFrameCallback, this);
+
 	_forcedFrame = other._forcedFrame;
 	_title = move(other._title);
 
@@ -1644,19 +1655,18 @@ VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
 	other._wlSurface = nullptr;
 	_xdgSurface = other._xdgSurface;
 	other._xdgSurface = nullptr;
+	if(_xdgSurface)
+		xdg_surface_set_user_data(_xdgSurface, this);
 	_xdgTopLevel = other._xdgTopLevel;
 	other._xdgTopLevel = nullptr;
+	if(_xdgTopLevel)
+		xdg_toplevel_set_user_data(_xdgTopLevel, this);
 	_decoration = other._decoration;
 	other._decoration = nullptr;
 	_scheduledFrameCallback = other._scheduledFrameCallback;
 	other._scheduledFrameCallback = nullptr;
-	WaylandListeners* tmp = _listeners;
-	_listeners = other._listeners;
-	other._listeners = tmp;
-	if(_listeners)
-		_listeners->vulkanWindow = this;
-	if(other._listeners)
-		other._listeners->vulkanWindow = &other;
+	if(_scheduledFrameCallback)
+		wl_callback_set_user_data(_scheduledFrameCallback, this);
 	_forcedFrame = other._forcedFrame;
 	_title = move(other._title);
 
@@ -1834,10 +1844,6 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	// init variables
 	_forcedFrame = false;
 	_title = title;
-	if(!_listeners) {
-		 _listeners = new WaylandListeners;
-		 _listeners->vulkanWindow = this;
-	}
 
 	// create wl surface
 	_wlSurface = wl_compositor_create_surface(_compositor);
@@ -1846,18 +1852,6 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 
 	// update surface2windowMap
 	surface2windowMap.insert_or_assign(_wlSurface, this);
-
-	// frame listener
-	_listeners->frameListener = {
-		.done =
-			[](void *data, wl_callback* cb, uint32_t time)
-			{
-				cout << "c" << flush;
-				VulkanWindow* w = reinterpret_cast<WaylandListeners*>(data)->vulkanWindow;
-				w->_scheduledFrameCallback = nullptr;
-				w->renderFrame();
-			}
-	};
 
 	// create surface
 	_surface =
@@ -2593,24 +2587,7 @@ void VulkanWindow::show()
 	_xdgSurface = xdg_wm_base_get_xdg_surface(_xdgWmBase, _wlSurface);
 	if(_xdgSurface == nullptr)
 		throw runtime_error("xdg_wm_base_get_xdg_surface() failed.");
-	_listeners->xdgSurfaceListener = {
-		.configure =
-			[](void* data, xdg_surface* xdgSurface, uint32_t serial) {
-				cout << "surface configure" << endl;
-				VulkanWindow* w = reinterpret_cast<WaylandListeners*>(data)->vulkanWindow;
-				xdg_surface_ack_configure(xdgSurface, serial);
-				wl_surface_commit(w->_wlSurface);
-
-				// we need to explicitly generate frame
-				// the first frame otherwise the window is not shown
-				// and no frame callbacks will be delivered through _frameListener
-				if(w->_forcedFrame) {
-					w->_forcedFrame = false;
-					w->renderFrame();
-				}
-			},
-	};
-	if(xdg_surface_add_listener(_xdgSurface, &_listeners->xdgSurfaceListener, _listeners))
+	if(xdg_surface_add_listener(_xdgSurface, &xdgSurfaceListener, this))
 		throw runtime_error("xdg_surface_add_listener() failed.");
 
 	// create xdg toplevel
@@ -2622,43 +2599,61 @@ void VulkanWindow::show()
 		zxdg_toplevel_decoration_v1_set_mode(_decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 	}
 	xdg_toplevel_set_title(_xdgTopLevel, _title.c_str());
-	_listeners->xdgToplevelListener = {
-		.configure =
-			[](void* data, xdg_toplevel* toplevel, int32_t width, int32_t height, wl_array*) -> void
-			{
-				cout << "toplevel configure (width=" << width << ", height=" << height << ")" << endl;
-
-				// if width or height of the window changed,
-				// schedule swapchain resize and force new frame rendering
-				// (width and height of zero means that the compositor does not know the window dimension)
-				VulkanWindow* w = reinterpret_cast<WaylandListeners*>(data)->vulkanWindow;
-				if(uint32_t(width) != w->_surfaceExtent.width && width != 0) {
-					w->_surfaceExtent.width = width;
-					if(uint32_t(height) != w->_surfaceExtent.height && height != 0)
-						w->_surfaceExtent.height = height;
-					w->scheduleSwapchainResize();
-				}
-				else if(uint32_t(height) != w->_surfaceExtent.height && height != 0) {
-					w->_surfaceExtent.height = height;
-					w->scheduleSwapchainResize();
-				}
-			},
-		.close =
-			[](void* data, xdg_toplevel* xdgTopLevel) {
-				VulkanWindow* w = reinterpret_cast<WaylandListeners*>(data)->vulkanWindow;
-				if(w->_closeCallback)
-					w->_closeCallback(*w);  // VulkanWindow object might be already destroyed when returning from the callback
-				else {
-					w->hide();
-					VulkanWindow::exitMainLoop();
-				}
-			},
-	};
-	if(xdg_toplevel_add_listener(_xdgTopLevel, &_listeners->xdgToplevelListener, _listeners))
+	if(xdg_toplevel_add_listener(_xdgTopLevel, &xdgToplevelListener, this))
 		throw runtime_error("xdg_toplevel_add_listener() failed.");
 	wl_surface_commit(_wlSurface);
 	_forcedFrame = true;
 	_swapchainResizePending = true;
+}
+
+
+void VulkanWindowPrivate::xdgSurfaceListenerConfigure(void* data, xdg_surface* xdgSurface, uint32_t serial)
+{
+	cout << "surface configure" << endl;
+	VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(data);
+	xdg_surface_ack_configure(xdgSurface, serial);
+	wl_surface_commit(w->_wlSurface);
+
+	// we need to explicitly generate frame
+	// the first frame otherwise the window is not shown
+	// and no frame callbacks will be delivered through _frameListener
+	if(w->_forcedFrame) {
+		w->_forcedFrame = false;
+		w->renderFrame();
+	}
+}
+
+
+void VulkanWindowPrivate::xdgToplevelListenerConfigure(void* data, xdg_toplevel* toplevel, int32_t width, int32_t height, wl_array*)
+{
+	cout << "toplevel configure (width=" << width << ", height=" << height << ")" << endl;
+
+	// if width or height of the window changed,
+	// schedule swapchain resize and force new frame rendering
+	// (width and height of zero means that the compositor does not know the window dimension)
+	VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(data);
+	if(uint32_t(width) != w->_surfaceExtent.width && width != 0) {
+		w->_surfaceExtent.width = width;
+		if(uint32_t(height) != w->_surfaceExtent.height && height != 0)
+			w->_surfaceExtent.height = height;
+		w->scheduleSwapchainResize();
+	}
+	else if(uint32_t(height) != w->_surfaceExtent.height && height != 0) {
+		w->_surfaceExtent.height = height;
+		w->scheduleSwapchainResize();
+	}
+}
+
+
+void VulkanWindowPrivate::xdgToplevelListenerClose(void* data, xdg_toplevel* xdgTopLevel)
+{
+	VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(data);
+	if(w->_closeCallback)
+		w->_closeCallback(*w);  // VulkanWindow object might be already destroyed when returning from the callback
+	else {
+		w->hide();
+		VulkanWindow::exitMainLoop();
+	}
 }
 
 
@@ -2731,8 +2726,17 @@ void VulkanWindow::scheduleFrame()
 
 	cout << "s" << flush;
 	_scheduledFrameCallback = wl_surface_frame(_wlSurface);
-	wl_callback_add_listener(_scheduledFrameCallback, &_listeners->frameListener, _listeners);
+	wl_callback_add_listener(_scheduledFrameCallback, &frameListener, this);
 	wl_surface_commit(_wlSurface);
+}
+
+
+void VulkanWindowPrivate::frameListenerDone(void *data, wl_callback* cb, uint32_t time)
+{
+	cout << "cb" << flush;
+	VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(data);
+	w->_scheduledFrameCallback = nullptr;
+	w->renderFrame();
 }
 
 
