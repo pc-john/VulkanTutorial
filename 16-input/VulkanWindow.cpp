@@ -45,6 +45,19 @@ public:
 	static void xdgToplevelListenerConfigure(void* data, xdg_toplevel* toplevel, int32_t width, int32_t height, wl_array*);
 	static void xdgToplevelListenerClose(void* data, xdg_toplevel* xdgTopLevel);
 	static void frameListenerDone(void *data, wl_callback* cb, uint32_t time);
+	static void pointerListenerEnter(void* data, wl_pointer* pointer, uint32_t serial, wl_surface* surface,
+	                                 wl_fixed_t surface_x, wl_fixed_t surface_y);
+	static void pointerListenerLeave(void* data, wl_pointer* pointer, uint32_t serial, wl_surface* surface);
+	static void pointerListenerMotion(void* data, wl_pointer* pointer, uint32_t time, wl_fixed_t surface_x, wl_fixed_t surface_y);
+	static void pointerListenerButton(void* data, wl_pointer* pointer, uint32_t serial, uint32_t time, uint32_t button, uint32_t state);
+	static void pointerListenerAxis(void* data, wl_pointer* pointer, uint32_t time, uint32_t axis, wl_fixed_t value);
+	static void keyboardListenerKeymap(void* data, wl_keyboard* keyboard, uint32_t format, int32_t fd, uint32_t size);
+	static void keyboardListenerEnter(void* data, wl_keyboard* keyboard, uint32_t serial, wl_surface* surface, wl_array* keys);
+	static void keyboardListenerLeave(void* data, wl_keyboard* keyboard, uint32_t serial, wl_surface* surface);
+	static void keyboardListenerKey(void* data, wl_keyboard* keyboard, uint32_t serial, uint32_t time, uint32_t scanCode, uint32_t state);
+	static void keyboardListenerModifiers(void* data, wl_keyboard* keyboard, uint32_t serial, uint32_t mods_depressed,
+	                                      uint32_t mods_latched, uint32_t mods_locked, uint32_t group);
+	static void seatListenerCapabilities(void* data, wl_seat* seat, uint32_t capabilities);
 #endif
 };
 
@@ -256,8 +269,8 @@ static bool running;  // bool indicating that application is running and it shal
 static bool externalDisplayHandle;
 static bool running;  // bool indicating that application is running and it shall not leave main loop
 static map<wl_surface*, VulkanWindow*> surface2windowMap;
-static VulkanWindow* windowUnderPointer = nullptr;
-static VulkanWindow* windowWithKbFocus = nullptr;
+static VulkanWindowPrivate* windowUnderPointer = nullptr;
+static VulkanWindowPrivate* windowWithKbFocus = nullptr;
 
 // listeners
 static wl_registry_listener registryListener {
@@ -277,9 +290,23 @@ static xdg_toplevel_listener xdgToplevelListener {
 static wl_callback_listener frameListener {
 	VulkanWindowPrivate::frameListenerDone,
 };
-static wl_seat_listener seatListener;
-static wl_pointer_listener pointerListener;
-static wl_keyboard_listener keyboardListener;
+static wl_seat_listener seatListener {
+	VulkanWindowPrivate::seatListenerCapabilities,
+};
+static wl_pointer_listener pointerListener {
+	VulkanWindowPrivate::pointerListenerEnter,
+	VulkanWindowPrivate::pointerListenerLeave,
+	VulkanWindowPrivate::pointerListenerMotion,
+	VulkanWindowPrivate::pointerListenerButton,
+	VulkanWindowPrivate::pointerListenerAxis,
+};
+static wl_keyboard_listener keyboardListener {
+	VulkanWindowPrivate::keyboardListenerKeymap,
+	VulkanWindowPrivate::keyboardListenerEnter,
+	VulkanWindowPrivate::keyboardListenerLeave,
+	VulkanWindowPrivate::keyboardListenerKey,
+	VulkanWindowPrivate::keyboardListenerModifiers,
+};
 
 // registry global object notification
 void VulkanWindowPrivate::registryListenerGlobal(void*, wl_registry* registry, uint32_t name, const char* interface, uint32_t version)
@@ -946,20 +973,24 @@ void VulkanWindow::init(void* data)
 		throw runtime_error("Cannot get Wayland registry object.");
 	if(wl_registry_add_listener(_registry, &registryListener, nullptr))
 		throw runtime_error("wl_registry_add_listener() failed.");
-
-	// get and init global objects
 	if(wl_display_roundtrip(_display) == -1)
 		throw runtime_error("wl_display_roundtrip() failed.");
+
+	// make sure we have all required global objects
 	if(_compositor == nullptr)
 		throw runtime_error("Cannot get Wayland wl_compositor object.");
 	if(_xdgWmBase == nullptr)
 		throw runtime_error("Cannot get Wayland xdg_wm_base object.");
-	if(xdg_wm_base_add_listener(_xdgWmBase, &xdgWmBaseListener, nullptr))
-		throw runtime_error("xdg_wm_base_add_listener() failed.");
-	if(_seat == nullptr)
-		throw runtime_error("Cannot get Wayland wl_seat object.");
 	if(_shm == nullptr)
 		throw runtime_error("Cannot get Wayland wl_shm object.");
+	if(_seat == nullptr)
+		throw runtime_error("Cannot get Wayland wl_seat object.");
+
+	// add listeners
+	if(xdg_wm_base_add_listener(_xdgWmBase, &xdgWmBaseListener, nullptr))
+		throw runtime_error("xdg_wm_base_add_listener() failed.");
+	if(wl_seat_add_listener(_seat, &seatListener, nullptr))
+		throw runtime_error("wl_seat_add_listener() failed.");
 
 	// cursor size
 	const char* cursorSizeString = getenv("XCURSOR_SIZE");
@@ -1001,187 +1032,7 @@ void VulkanWindow::init(void* data)
 	wl_surface_attach(_cursorSurface, cursorBuffer, 0, 0);
 	wl_surface_commit(_cursorSurface);
 
-	// pointer
-	pointerListener = {
-		.enter =
-			[](void* data, wl_pointer* pointer, uint32_t serial, wl_surface* surface,
-			   wl_fixed_t surface_x, wl_fixed_t surface_y)
-			{
-				// set cursor
-				wl_pointer_set_cursor(pointer, serial, _cursorSurface, _cursorHotspotX, _cursorHotspotY);
-
-				// get window pointer
-				auto it = surface2windowMap.find(surface);
-				if(it == surface2windowMap.end()) {
-					// unknown window
-					windowUnderPointer = nullptr;
-					return;
-				}
-				windowUnderPointer = it->second;
-
-				// update mouse state
-				int x = surface_x >> 8;
-				int y = surface_y >> 8;
-				if(windowUnderPointer->_mouseState.posX != x ||
-					windowUnderPointer->_mouseState.posY != y)
-				{
-					windowUnderPointer->_mouseState.relX = 0;
-					windowUnderPointer->_mouseState.relY = 0;
-					windowUnderPointer->_mouseState.posX = x;
-					windowUnderPointer->_mouseState.posY = y;
-					if(windowUnderPointer->_mouseMoveCallback)
-						windowUnderPointer->_mouseMoveCallback(*windowUnderPointer, windowUnderPointer->_mouseState);
-				}
-			},
-		.leave =
-			[](void* data, wl_pointer* pointer, uint32_t serial, wl_surface* surface)
-			{
-				windowUnderPointer = nullptr;
-			},
-		.motion =
-			[](void* data, wl_pointer* pointer, uint32_t time, wl_fixed_t surface_x, wl_fixed_t surface_y)
-			{
-				// handle unknown window
-				if(windowUnderPointer == nullptr)
-					return;
-
-				int x = surface_x >> 8;
-				int y = surface_y >> 8;
-				if(windowUnderPointer->_mouseState.posX != x ||
-					windowUnderPointer->_mouseState.posY != y)
-				{
-					windowUnderPointer->_mouseState.relX = x - windowUnderPointer->_mouseState.posX;
-					windowUnderPointer->_mouseState.relY = y - windowUnderPointer->_mouseState.posY;
-					windowUnderPointer->_mouseState.posX = x;
-					windowUnderPointer->_mouseState.posY = y;
-					if(windowUnderPointer->_mouseMoveCallback)
-						windowUnderPointer->_mouseMoveCallback(*windowUnderPointer, windowUnderPointer->_mouseState);
-				}
-			},
-		.button =
-			[](void* data, wl_pointer* pointer, uint32_t serial, uint32_t time, uint32_t button, uint32_t state)
-			{
-				// handle unknown window
-				if(windowUnderPointer == nullptr)
-					return;
-
-				MouseButton::EnumType index;
-				switch(button) {
-				// button codes taken from linux/input-event-codes.h
-				case 0x110: index = MouseButton::Left; break;
-				case 0x111: index = MouseButton::Right; break;
-				case 0x112: index = MouseButton::Middle; break;
-				case 0x113: index = MouseButton::X1; break;
-				case 0x114: index = MouseButton::X2; break;
-				default: index = MouseButton::Unknown;
-				}
-				windowUnderPointer->_mouseState.buttons.set(index, state == WL_POINTER_BUTTON_STATE_PRESSED);
-				if(windowUnderPointer->_mouseButtonCallback) {
-					ButtonState buttonState =
-						(state == WL_POINTER_BUTTON_STATE_PRESSED) ? ButtonState::Pressed : ButtonState::Released;
-					windowUnderPointer->_mouseButtonCallback(
-						*windowUnderPointer, index, buttonState, windowUnderPointer->_mouseState);
-				}
-			},
-		.axis =
-			[](void* data, wl_pointer* pointer, uint32_t time, uint32_t axis, wl_fixed_t value)
-			{
-				// handle unknown window
-				if(windowUnderPointer == nullptr)
-					return;
-
-				int v = (value * 8) / 256;
-				int wheelX, wheelY;
-				if(axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
-					wheelX = 0;
-					wheelY = -v;
-				}
-				else if(axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL) {
-					wheelX = v;
-					wheelY = 0;
-				}
-				if(windowUnderPointer->_mouseWheelCallback)
-					windowUnderPointer->_mouseWheelCallback(*windowUnderPointer, wheelX, wheelY,
-					                                        windowUnderPointer->_mouseState);
-			},
-	};
-
-	// keyboard
-	keyboardListener = {
-		.keymap =
-			[](void* data, wl_keyboard* keyboard, uint32_t format, int32_t fd, uint32_t size)
-			{
-				cout << "keyboard keymap format: " << format << endl;
-			},
-		.enter =
-			[](void* data, wl_keyboard* keyboard, uint32_t serial, wl_surface* surface,
-			   wl_array* keys)
-			{
-				auto it = surface2windowMap.find(surface);
-				if(it == surface2windowMap.end()) {
-					// unknown window
-					windowWithKbFocus = nullptr;
-					return;
-				}
-				windowWithKbFocus = it->second;
-			},
-		.leave =
-			[](void* data, wl_keyboard* keyboard, uint32_t serial, wl_surface* surface)
-			{
-				windowWithKbFocus = nullptr;
-			},
-		.key =
-			[](void* data, wl_keyboard* keyboard, uint32_t serial, uint32_t time,
-			   uint32_t scanCode, uint32_t state)
-			{
-				// callback
-				if(windowWithKbFocus->_keyCallback) {
-					windowWithKbFocus->_keyCallback(
-						*windowWithKbFocus,
-						state==WL_KEYBOARD_KEY_STATE_PRESSED ? KeyState::Pressed : KeyState::Released,
-						ScanCode(scanCode)
-					);
-				}
-			},
-		.modifiers =
-			[](void* data, wl_keyboard* keyboard, uint32_t serial, uint32_t mods_depressed,
-			   uint32_t mods_latched, uint32_t mods_locked, uint32_t group)
-			{
-			},
-	};
-
-	// seat listener
-	seatListener = {
-		.capabilities =
-			[](void* data, wl_seat* seat, uint32_t capabilities) {
-				if(capabilities & WL_SEAT_CAPABILITY_POINTER) {
-					if(_pointer == nullptr) {
-						_pointer = wl_seat_get_pointer(seat);
-						if(wl_pointer_add_listener(_pointer, &pointerListener, nullptr))
-							throw runtime_error("wl_pointer_add_listener() failed.");
-					}
-				}
-				else
-					if(_pointer != nullptr) {
-						wl_pointer_release(_pointer);
-						_pointer = nullptr;
-					}
-				if(capabilities & WL_SEAT_CAPABILITY_KEYBOARD) {
-					if(_keyboard == nullptr) {
-						_keyboard = wl_seat_get_keyboard(seat);
-						if(wl_keyboard_add_listener(_keyboard, &keyboardListener, nullptr))
-							throw runtime_error("wl_keyboard_add_listener() failed.");
-					}
-				}
-				else
-					if(_keyboard != nullptr) {
-						wl_keyboard_release(_keyboard);
-						_keyboard = nullptr;
-					}
-			},
-	};
-	if(wl_seat_add_listener(_seat, &seatListener, nullptr))
-		throw runtime_error("wl_seat_add_listener() failed.");
+	// process wm_base and wl_seat listeners
 	if(wl_display_roundtrip(_display) == -1)
 		throw runtime_error("wl_display_roundtrip() failed.");
 
@@ -2749,6 +2600,183 @@ void VulkanWindowPrivate::frameListenerDone(void *data, wl_callback* cb, uint32_
 	VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(data);
 	w->_scheduledFrameCallback = nullptr;
 	w->renderFrame();
+}
+
+
+void VulkanWindowPrivate::seatListenerCapabilities(void* data, wl_seat* seat, uint32_t capabilities)
+{
+	if(capabilities & WL_SEAT_CAPABILITY_POINTER) {
+		if(_pointer == nullptr) {
+			_pointer = wl_seat_get_pointer(seat);
+			if(wl_pointer_add_listener(_pointer, &pointerListener, nullptr))
+				throw runtime_error("wl_pointer_add_listener() failed.");
+		}
+	}
+	else
+		if(_pointer != nullptr) {
+			wl_pointer_release(_pointer);
+			_pointer = nullptr;
+		}
+	if(capabilities & WL_SEAT_CAPABILITY_KEYBOARD) {
+		if(_keyboard == nullptr) {
+			_keyboard = wl_seat_get_keyboard(seat);
+			if(wl_keyboard_add_listener(_keyboard, &keyboardListener, nullptr))
+				throw runtime_error("wl_keyboard_add_listener() failed.");
+		}
+	}
+	else
+		if(_keyboard != nullptr) {
+			wl_keyboard_release(_keyboard);
+			_keyboard = nullptr;
+		}
+}
+
+
+void VulkanWindowPrivate::pointerListenerEnter(void* data, wl_pointer* pointer, uint32_t serial,
+                                               wl_surface* surface, wl_fixed_t surface_x, wl_fixed_t surface_y)
+{
+	// set cursor
+	wl_pointer_set_cursor(pointer, serial, _cursorSurface, _cursorHotspotX, _cursorHotspotY);
+
+	// get window pointer
+	auto it = surface2windowMap.find(surface);
+	if(it == surface2windowMap.end()) {
+		// unknown window
+		windowUnderPointer = nullptr;
+		return;
+	}
+	windowUnderPointer = static_cast<VulkanWindowPrivate*>(it->second);
+
+	// update mouse state
+	int x = surface_x >> 8;
+	int y = surface_y >> 8;
+	if(windowUnderPointer->_mouseState.posX != x ||
+		windowUnderPointer->_mouseState.posY != y)
+	{
+		windowUnderPointer->_mouseState.relX = 0;
+		windowUnderPointer->_mouseState.relY = 0;
+		windowUnderPointer->_mouseState.posX = x;
+		windowUnderPointer->_mouseState.posY = y;
+		if(windowUnderPointer->_mouseMoveCallback)
+			windowUnderPointer->_mouseMoveCallback(*windowUnderPointer, windowUnderPointer->_mouseState);
+	}
+}
+
+
+void VulkanWindowPrivate::pointerListenerLeave(void* data, wl_pointer* pointer, uint32_t serial, wl_surface* surface)
+{
+	windowUnderPointer = nullptr;
+}
+
+
+void VulkanWindowPrivate::pointerListenerMotion(void* data, wl_pointer* pointer, uint32_t time, wl_fixed_t surface_x, wl_fixed_t surface_y)
+{
+	// handle unknown window
+	if(windowUnderPointer == nullptr)
+		return;
+
+	int x = surface_x >> 8;
+	int y = surface_y >> 8;
+	if(windowUnderPointer->_mouseState.posX != x ||
+		windowUnderPointer->_mouseState.posY != y)
+	{
+		windowUnderPointer->_mouseState.relX = x - windowUnderPointer->_mouseState.posX;
+		windowUnderPointer->_mouseState.relY = y - windowUnderPointer->_mouseState.posY;
+		windowUnderPointer->_mouseState.posX = x;
+		windowUnderPointer->_mouseState.posY = y;
+		if(windowUnderPointer->_mouseMoveCallback)
+			windowUnderPointer->_mouseMoveCallback(*windowUnderPointer, windowUnderPointer->_mouseState);
+	}
+}
+
+
+void VulkanWindowPrivate::pointerListenerButton(void* data, wl_pointer* pointer, uint32_t serial, uint32_t time, uint32_t button, uint32_t state)
+{
+	// handle unknown window
+	if(windowUnderPointer == nullptr)
+		return;
+
+	MouseButton::EnumType index;
+	switch(button) {
+	// button codes taken from linux/input-event-codes.h
+	case 0x110: index = MouseButton::Left; break;
+	case 0x111: index = MouseButton::Right; break;
+	case 0x112: index = MouseButton::Middle; break;
+	case 0x113: index = MouseButton::X1; break;
+	case 0x114: index = MouseButton::X2; break;
+	default: index = MouseButton::Unknown;
+	}
+	windowUnderPointer->_mouseState.buttons.set(index, state == WL_POINTER_BUTTON_STATE_PRESSED);
+	if(windowUnderPointer->_mouseButtonCallback) {
+		ButtonState buttonState =
+			(state == WL_POINTER_BUTTON_STATE_PRESSED) ? ButtonState::Pressed : ButtonState::Released;
+		windowUnderPointer->_mouseButtonCallback(
+			*windowUnderPointer, index, buttonState, windowUnderPointer->_mouseState);
+	}
+}
+
+
+void VulkanWindowPrivate::pointerListenerAxis(void* data, wl_pointer* pointer, uint32_t time, uint32_t axis, wl_fixed_t value)
+{
+	// handle unknown window
+	if(windowUnderPointer == nullptr)
+		return;
+
+	int v = (value * 8) / 256;
+	int wheelX, wheelY;
+	if(axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
+		wheelX = 0;
+		wheelY = -v;
+	}
+	else if(axis == WL_POINTER_AXIS_HORIZONTAL_SCROLL) {
+		wheelX = v;
+		wheelY = 0;
+	}
+	if(windowUnderPointer->_mouseWheelCallback)
+		windowUnderPointer->_mouseWheelCallback(*windowUnderPointer, wheelX, wheelY,
+												windowUnderPointer->_mouseState);
+}
+
+
+void VulkanWindowPrivate::keyboardListenerKeymap(void* data, wl_keyboard* keyboard, uint32_t format, int32_t fd, uint32_t size)
+{
+}
+
+
+void VulkanWindowPrivate::keyboardListenerEnter(void* data, wl_keyboard* keyboard, uint32_t serial, wl_surface* surface, wl_array* keys)
+{
+	auto it = surface2windowMap.find(surface);
+	if(it == surface2windowMap.end()) {
+		// unknown window
+		windowWithKbFocus = nullptr;
+		return;
+	}
+	windowWithKbFocus = static_cast<VulkanWindowPrivate*>(it->second);
+}
+
+
+void VulkanWindowPrivate::keyboardListenerLeave(void* data, wl_keyboard* keyboard, uint32_t serial, wl_surface* surface)
+{
+	windowWithKbFocus = nullptr;
+}
+
+
+void VulkanWindowPrivate::keyboardListenerKey(void* data, wl_keyboard* keyboard, uint32_t serial, uint32_t time, uint32_t scanCode, uint32_t state)
+{
+	// callback
+	if(windowWithKbFocus->_keyCallback) {
+		windowWithKbFocus->_keyCallback(
+			*windowWithKbFocus,
+			state==WL_KEYBOARD_KEY_STATE_PRESSED ? KeyState::Pressed : KeyState::Released,
+			ScanCode(scanCode)
+		);
+	}
+}
+
+
+void VulkanWindowPrivate::keyboardListenerModifiers(void* data, wl_keyboard* keyboard, uint32_t serial, uint32_t mods_depressed,
+                                                    uint32_t mods_latched, uint32_t mods_locked, uint32_t group)
+{
 }
 
 
