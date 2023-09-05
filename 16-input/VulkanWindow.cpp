@@ -38,6 +38,9 @@ using namespace std;
 class VulkanWindowPrivate : public VulkanWindow {
 public:
 #if defined(USE_PLATFORM_WAYLAND)
+	static void registryListenerGlobal(void*, wl_registry* registry, uint32_t name, const char* interface, uint32_t version);
+	static void registryListenerGlobalRemove(void*, wl_registry*, uint32_t);
+	static void xdgWmBaseListenerPing(void*, xdg_wm_base* xdg, uint32_t serial);
 	static void xdgSurfaceListenerConfigure(void* data, xdg_surface* xdgSurface, uint32_t serial);
 	static void xdgToplevelListenerConfigure(void* data, xdg_toplevel* toplevel, int32_t width, int32_t height, wl_array*);
 	static void xdgToplevelListenerClose(void* data, xdg_toplevel* xdgTopLevel);
@@ -247,8 +250,9 @@ static bool running;  // bool indicating that application is running and it shal
 #endif
 
 
-// Wayland global variables
 #if defined(USE_PLATFORM_WAYLAND)
+
+// Wayland global variables
 static bool externalDisplayHandle;
 static bool running;  // bool indicating that application is running and it shall not leave main loop
 static map<wl_surface*, VulkanWindow*> surface2windowMap;
@@ -256,8 +260,13 @@ static VulkanWindow* windowUnderPointer = nullptr;
 static VulkanWindow* windowWithKbFocus = nullptr;
 
 // listeners
-static wl_registry_listener registryListener;
-static xdg_wm_base_listener xdgWmBaseListener;
+static wl_registry_listener registryListener {
+	VulkanWindowPrivate::registryListenerGlobal,
+	VulkanWindowPrivate::registryListenerGlobalRemove,
+};
+static xdg_wm_base_listener xdgWmBaseListener {
+	VulkanWindowPrivate::xdgWmBaseListenerPing,
+};
 static xdg_surface_listener xdgSurfaceListener {
 	VulkanWindowPrivate::xdgSurfaceListenerConfigure,
 };
@@ -271,6 +280,36 @@ static wl_callback_listener frameListener {
 static wl_seat_listener seatListener;
 static wl_pointer_listener pointerListener;
 static wl_keyboard_listener keyboardListener;
+
+// registry global object notification
+void VulkanWindowPrivate::registryListenerGlobal(void*, wl_registry* registry, uint32_t name, const char* interface, uint32_t version)
+{
+	if(strcmp(interface, wl_compositor_interface.name) == 0)
+		_compositor = static_cast<wl_compositor*>(
+			wl_registry_bind(registry, name, &wl_compositor_interface, 1));
+	else if(strcmp(interface, xdg_wm_base_interface.name) == 0)
+		_xdgWmBase = static_cast<xdg_wm_base*>(
+			wl_registry_bind(registry, name, &xdg_wm_base_interface, 1));
+	else if(strcmp(interface, zxdg_decoration_manager_v1_interface.name) == 0)
+		_zxdgDecorationManagerV1 = static_cast<zxdg_decoration_manager_v1*>(
+			wl_registry_bind(registry, name, &zxdg_decoration_manager_v1_interface, 1));
+	else if(strcmp(interface, wl_seat_interface.name) == 0)
+		_seat = static_cast<wl_seat*>(wl_registry_bind(registry, name, &wl_seat_interface, 1));
+	else if(strcmp(interface, wl_shm_interface.name) == 0)
+		_shm = static_cast<wl_shm*>(wl_registry_bind(registry, name, &wl_shm_interface, 1));
+}
+
+// registry global object removal notification
+void VulkanWindowPrivate::registryListenerGlobalRemove(void*, wl_registry*, uint32_t)
+{
+}
+
+// ping-pong message
+void VulkanWindowPrivate::xdgWmBaseListenerPing(void*, xdg_wm_base* xdg, uint32_t serial)
+{
+	xdg_wm_base_pong(xdg, serial);
+};
+
 #endif
 
 
@@ -905,27 +944,6 @@ void VulkanWindow::init(void* data)
 	_registry = wl_display_get_registry(_display);
 	if(_registry == nullptr)
 		throw runtime_error("Cannot get Wayland registry object.");
-	registryListener = {
-		.global =
-			[](void*, wl_registry* registry, uint32_t name, const char* interface, uint32_t version) {
-				if(strcmp(interface, wl_compositor_interface.name) == 0)
-					_compositor = static_cast<wl_compositor*>(
-						wl_registry_bind(registry, name, &wl_compositor_interface, 1));
-				else if(strcmp(interface, xdg_wm_base_interface.name) == 0)
-					_xdgWmBase = static_cast<xdg_wm_base*>(
-						wl_registry_bind(registry, name, &xdg_wm_base_interface, 1));
-				else if(strcmp(interface, zxdg_decoration_manager_v1_interface.name) == 0)
-					_zxdgDecorationManagerV1 = static_cast<zxdg_decoration_manager_v1*>(
-						wl_registry_bind(registry, name, &zxdg_decoration_manager_v1_interface, 1));
-				else if(strcmp(interface, wl_seat_interface.name) == 0)
-					_seat = static_cast<wl_seat*>(wl_registry_bind(registry, name, &wl_seat_interface, 1));
-				else if(strcmp(interface, wl_shm_interface.name) == 0)
-					_shm = static_cast<wl_shm*>(wl_registry_bind(registry, name, &wl_shm_interface, 1));
-			},
-		.global_remove =
-			[](void*, wl_registry*, uint32_t) {
-			},
-	};
 	if(wl_registry_add_listener(_registry, &registryListener, nullptr))
 		throw runtime_error("wl_registry_add_listener() failed.");
 
@@ -936,12 +954,6 @@ void VulkanWindow::init(void* data)
 		throw runtime_error("Cannot get Wayland wl_compositor object.");
 	if(_xdgWmBase == nullptr)
 		throw runtime_error("Cannot get Wayland xdg_wm_base object.");
-	xdgWmBaseListener = {
-		.ping =
-			[](void*, xdg_wm_base* xdg, uint32_t serial) {
-				xdg_wm_base_pong(xdg, serial);
-			}
-	};
 	if(xdg_wm_base_add_listener(_xdgWmBase, &xdgWmBaseListener, nullptr))
 		throw runtime_error("xdg_wm_base_add_listener() failed.");
 	if(_seat == nullptr)
@@ -955,7 +967,7 @@ void VulkanWindow::init(void* data)
 	int cursorSize = 0;
 	if(cursorSizeString) {
 		auto cursorSizeLong = strtol(cursorSizeString, &endp, 10);
-		if(endp-cursorSizeString == strlen(cursorSizeString) &&
+		if(endp-cursorSizeString == ptrdiff_t(strlen(cursorSizeString)) &&
 		   cursorSizeLong > 0 && cursorSizeLong <= INT_MAX)
 		{
 			cursorSize = int(cursorSizeLong);
