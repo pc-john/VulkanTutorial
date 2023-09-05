@@ -37,7 +37,9 @@ using namespace std;
 
 class VulkanWindowPrivate : public VulkanWindow {
 public:
-#if defined(USE_PLATFORM_WAYLAND)
+#if defined(USE_PLATFORM_WIN32)
+	static LRESULT wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) noexcept;
+#elif defined(USE_PLATFORM_WAYLAND)
 	static void registryListenerGlobal(void*, wl_registry* registry, uint32_t name, const char* interface, uint32_t version);
 	static void registryListenerGlobalRemove(void*, wl_registry*, uint32_t);
 	static void xdgWmBaseListenerPing(void*, xdg_wm_base* xdg, uint32_t serial);
@@ -490,327 +492,6 @@ void VulkanWindow::init()
 	if(_windowClass)
 		return;
 
-	// window's message handling procedure
-	auto wndProc = [](HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) noexcept -> LRESULT
-	{
-		// mouse functions
-		auto handleModifiers =
-			[](VulkanWindow* w, WPARAM wParam) -> void
-			{
-				w->_mouseState.mods.set(Modifier::Ctrl,  wParam & MK_CONTROL);
-				w->_mouseState.mods.set(Modifier::Shift, wParam & MK_SHIFT);
-				w->_mouseState.mods.set(Modifier::Alt,   GetKeyState(VK_MENU) < 0);
-				w->_mouseState.mods.set(Modifier::Meta,  GetKeyState(VK_LWIN) < 0 || GetKeyState(VK_RWIN));
-			};
-		auto handleMouseMove =
-			[](VulkanWindow* w, int x, int y)
-			{
-				if(x != w->_mouseState.posX || y != w->_mouseState.posY) {
-					w->_mouseState.relX = x - w->_mouseState.posX;
-					w->_mouseState.relY = y - w->_mouseState.posY;
-					w->_mouseState.posX = x;
-					w->_mouseState.posY = y;
-					if(w->_mouseMoveCallback)
-						w->_mouseMoveCallback(*w, w->_mouseState);
-				}
-			};
-		auto handleMouseButton =
-			[](HWND hwnd, MouseButton::EnumType mouseButton, ButtonState buttonState, WPARAM wParam, LPARAM lParam) -> LRESULT
-			{
-				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
-
-				// handle mods
-				w->_mouseState.mods.set(Modifier::Ctrl,  wParam & MK_CONTROL);
-				w->_mouseState.mods.set(Modifier::Shift, wParam & MK_SHIFT);
-				w->_mouseState.mods.set(Modifier::Alt,   GetKeyState(VK_MENU) < 0);
-				w->_mouseState.mods.set(Modifier::Meta,  GetKeyState(VK_LWIN) < 0 || GetKeyState(VK_RWIN));
-
-				// handle mouse move, if any
-				int x = GET_X_LPARAM(lParam);
-				int y = GET_Y_LPARAM(lParam);
-				if(x != w->_mouseState.posX || y != w->_mouseState.posY) {
-					w->_mouseState.relX = x - w->_mouseState.posX;
-					w->_mouseState.relY = y - w->_mouseState.posY;
-					w->_mouseState.posX = x;
-					w->_mouseState.posY = y;
-					if(w->_mouseMoveCallback)
-						w->_mouseMoveCallback(*w, w->_mouseState);
-				}
-
-				// set new state and capture mouse
-				bool prevAny = w->_mouseState.buttons.any();
-				w->_mouseState.buttons.set(mouseButton, buttonState==ButtonState::Pressed);
-				bool newAny = w->_mouseState.buttons.any();
-				if(prevAny != newAny) {
-					if(newAny)
-						SetCapture(hwnd);
-					else
-						ReleaseCapture();
-				}
-
-				// callback
-				if(w->_mouseButtonCallback)
-					w->_mouseButtonCallback(*w, mouseButton, buttonState, w->_mouseState);
-
-				return 0;
-			};
-		auto getMouseXButton =
-			[](WPARAM wParam) -> MouseButton::EnumType
-			{
-				switch(GET_XBUTTON_WPARAM(wParam)) {
-				case XBUTTON1: return MouseButton::X1;
-				case XBUTTON2: return MouseButton::X2;
-				default: return MouseButton::Unknown;
-				}
-			};
-
-		switch(msg)
-		{
-			// erase background message
-			// (we ignore the message)
-			case WM_ERASEBKGND:
-				return 1;  // returning non-zero means that background should be considered erased
-
-			// paint the window message
-			// (we render the window content here)
-			case WM_PAINT: {
-
-				// render all windows in framePendingWindows list
-				// (if a window keeps its window area invalidated,
-				// WM_PAINT might be constantly received by this single window only,
-				// starving all other windows => we render all windows in framePendingWindows list)
-				VulkanWindow* window = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
-				bool windowProcessed = false;
-				for(size_t i=0; i<framePendingWindows.size(); ) {
-
-					VulkanWindow* w = framePendingWindows[i];
-					if(w == window)
-						windowProcessed = true;
-
-					// render frame
-					w->_framePendingState = FramePendingState::TentativePending;
-					w->renderFrame();
-
-					// was frame scheduled again?
-					// (it might be rescheduled again in renderFrame())
-					if(w->_framePendingState == FramePendingState::TentativePending) {
-
-						// validate window area
-						if(!ValidateRect(HWND(w->_hwnd), NULL))
-							thrownException = make_exception_ptr(runtime_error("ValidateRect(): The function failed."));
-
-						// update state to no-frame-pending
-						w->_framePendingState = FramePendingState::NotPending;
-						if(framePendingWindows.size() == 1) {
-							framePendingWindows.clear();  // all iterators are invalidated
-							break;
-						}
-						else {
-							framePendingWindows[i] = framePendingWindows.back();
-							framePendingWindows.pop_back();  // end() iterator is invalidated
-							continue;
-						}
-					}
-					i++;
-
-				}
-
-				// if window was not in framePendingWindows, process it
-				if(!windowProcessed) {
-
-					// validate window area
-					if(!ValidateRect(hwnd, NULL))
-						thrownException = make_exception_ptr(runtime_error("ValidateRect(): The function failed."));
-
-					// render frame
-					// (_framePendingState is No, but scheduleFrame() might be called inside renderFrame())
-					window->renderFrame();
-
-				}
-
-				return 0;
-			}
-
-			// mouse move
-			case WM_MOUSEMOVE: {
-				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
-				handleModifiers(w, wParam);
-				handleMouseMove(w, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
-				return 0;
-			}
-
-			// mouse buttons
-			case WM_LBUTTONDOWN: return handleMouseButton(hwnd, MouseButton::Left,   ButtonState::Pressed,  wParam, lParam);
-			case WM_LBUTTONUP:   return handleMouseButton(hwnd, MouseButton::Left,   ButtonState::Released, wParam, lParam);
-			case WM_RBUTTONDOWN: return handleMouseButton(hwnd, MouseButton::Right,  ButtonState::Pressed,  wParam, lParam);
-			case WM_RBUTTONUP:   return handleMouseButton(hwnd, MouseButton::Right,  ButtonState::Released, wParam, lParam);
-			case WM_MBUTTONDOWN: return handleMouseButton(hwnd, MouseButton::Middle, ButtonState::Pressed,  wParam, lParam);
-			case WM_MBUTTONUP:   return handleMouseButton(hwnd, MouseButton::Middle, ButtonState::Released, wParam, lParam);
-			case WM_XBUTTONDOWN: return handleMouseButton(hwnd, getMouseXButton(wParam), ButtonState::Pressed,  wParam, lParam);
-			case WM_XBUTTONUP:   return handleMouseButton(hwnd, getMouseXButton(wParam), ButtonState::Released, wParam, lParam);
-
-			// left mouse button down on non-client window area message
-			// (application freeze for several hundred of milliseconds is workarounded here)
-			case WM_NCLBUTTONDOWN: {
-				// This is a workaround for window freeze for several hundred of milliseconds
-				// if you click on its title bar. The clicking on the title bar
-				// makes execution of DefWindowProc to not return for several hundreds of milliseconds,
-				// making the application frozen for this time period.
-				// Sending extra WM_MOUSEMOVE workarounds the problem.
-				POINT point;
-				GetCursorPos(&point);
-				ScreenToClient(hwnd, &point);
-				PostMessage(hwnd, WM_MOUSEMOVE, 0, point.x | point.y<<16);
-				return DefWindowProc(hwnd, msg, wParam, lParam);
-			}
-
-			// vertical and horizontal mouse wheel
-			// (amount of wheel rotation since the last wheel message)
-			case WM_MOUSEWHEEL: {
-				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
-				handleModifiers(w, wParam);
-				POINT p{ GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
-				if(ScreenToClient(hwnd, &p) == 0)
-					thrownException = make_exception_ptr(runtime_error("ScreenToClient(): The function failed."));
-				handleMouseMove(w, p.x, p.y);
-				if(w->_mouseWheelCallback)
-					w->_mouseWheelCallback(*w, 0, GET_WHEEL_DELTA_WPARAM(wParam), w->_mouseState);
-				return 0;
-			}
-			case WM_MOUSEHWHEEL: {
-				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
-				handleModifiers(w, wParam);
-				POINT p{ GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
-				if(ScreenToClient(hwnd, &p) == 0)
-					thrownException = make_exception_ptr(runtime_error("ScreenToClient(): The function failed."));
-				handleMouseMove(w, p.x, p.y);
-				if(w->_mouseWheelCallback)
-					w->_mouseWheelCallback(*w, GET_WHEEL_DELTA_WPARAM(wParam), 0, w->_mouseState);
-				return 0;
-			}
-
-			// keyboard events
-			case WM_KEYDOWN:
-			case WM_SYSKEYDOWN:  // LeftAlt, RightAlt and F10 come through WM_SYSKEYDOWN
-			{
-				// skip auto-repeat messages
-				if(lParam & (1 << 30))
-					return 0;
-
-				// handle Alt-F4
-				if((lParam & 0xff0000) == (LPARAM(62) << 16) && GetKeyState(VK_MENU) < 0)
-					return DefWindowProc(hwnd, msg, wParam, lParam);
-
-				// callback
-				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
-				if(w->_keyCallback)
-				{
-					// scan code
-					unsigned nativeScanCode = (lParam >> 16) & 0x1ff;
-					ScanCode scanCode = translateScanCode(nativeScanCode);
-					if(scanCode == ScanCode::Unknown)
-						scanCode = getScanCodeOfSpecialKey(wParam);
-
-					// callback
-					w->_keyCallback(*w, KeyState::Pressed, scanCode);
-				}
-				return 0;
-			}
-			case WM_KEYUP:
-			case WM_SYSKEYUP:  // LeftAlt, RightAlt and F10 come through WM_SYSKEYDOWN
-			{
-				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
-				if(w->_keyCallback)
-				{
-					// scan code
-					unsigned nativeScanCode = (lParam >> 16) & 0x1ff;
-					ScanCode scanCode = translateScanCode(nativeScanCode);
-					if(scanCode == ScanCode::Unknown)
-						scanCode = getScanCodeOfSpecialKey(wParam);
-
-					// callback
-					w->_keyCallback(*w, KeyState::Released, scanCode);
-				}
-				return 0;
-			}
-
-			// window resize message
-			// (we schedule swapchain resize here)
-			case WM_SIZE: {
-				cout << "WM_SIZE message (" << LOWORD(lParam) << "x" << HIWORD(lParam) << ")" << endl;
-				if(LOWORD(lParam) != 0 && HIWORD(lParam) != 0) {
-					VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
-					w->scheduleSwapchainResize();
-				}
-				return DefWindowProc(hwnd, msg, wParam, lParam);
-			}
-
-			// window show and hide message
-			// (we set _visible variable here)
-			case WM_SHOWWINDOW: {
-				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
-				w->_visible = wParam==TRUE;
-				if(w->_visible == false) {
-
-					// store frame pending state
-					w->_hiddenWindowFramePending = w->_framePendingState == FramePendingState::Pending;
-
-					// cancel frame pending state
-					if(w->_framePendingState == FramePendingState::Pending) {
-						w->_framePendingState = FramePendingState::NotPending;
-						removeFromFramePendingWindows(w);
-					}
-
-				}
-				else {
-
-					// restore frame pending state
-					if(w->_hiddenWindowFramePending) {
-						w->_framePendingState = FramePendingState::Pending;
-						framePendingWindows.push_back(w);
-					}
-
-				}
-				return DefWindowProc(hwnd, msg, wParam, lParam);
-			}
-
-			// close window message
-			// (we call _closeCallback here if registered,
-			// otherwise we hide the window and schedule main loop exit)
-			case WM_CLOSE: {
-				cout << "WM_CLOSE message" << endl;
-				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
-				if(w->_closeCallback)
-					w->_closeCallback(*w);  // VulkanWindow object might be already destroyed when returning from the callback
-				else {
-					w->hide();
-					VulkanWindow::exitMainLoop();
-				}
-				return 0;
-			}
-
-			// destroy window message
-			// (we make sure that the window is not in framePendingWindows list)
-			case WM_DESTROY: {
-
-				cout << "WM_DESTROY message" << endl;
-
-				// remove frame pending state
-				VulkanWindow* w = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
-				if(w->_framePendingState != FramePendingState::NotPending) {
-					w->_framePendingState = FramePendingState::NotPending;
-					removeFromFramePendingWindows(w);
-				}
-
-				return 0;
-			}
-
-			// all other messages are handled by standard DefWindowProc()
-			default:
-				return DefWindowProc(hwnd, msg, wParam, lParam);
-		}
-	};
-
 	// register window class with the first window
 	_hInstance = GetModuleHandle(NULL);
 	_windowClass =
@@ -818,7 +499,7 @@ void VulkanWindow::init()
 			&(const WNDCLASSEX&)WNDCLASSEX{
 				sizeof(WNDCLASSEX),  // cbSize
 				0,                   // style
-				wndProc,             // lpfnWndProc
+				VulkanWindowPrivate::wndProc,  // lpfnWndProc
 				0,                   // cbClsExtra
 				sizeof(LONG_PTR),    // cbWndExtra
 				HINSTANCE(_hInstance),  // hInstance
@@ -2069,6 +1750,328 @@ void VulkanWindow::mainLoop()
 		if(thrownException)
 			rethrow_exception(thrownException);
 
+	}
+}
+
+
+// window's message handling procedure
+LRESULT VulkanWindowPrivate::wndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) noexcept
+{
+	// mouse functions
+	auto handleModifiers =
+		[](VulkanWindowPrivate* w, WPARAM wParam) -> void
+		{
+			w->_mouseState.mods.set(Modifier::Ctrl,  wParam & MK_CONTROL);
+			w->_mouseState.mods.set(Modifier::Shift, wParam & MK_SHIFT);
+			w->_mouseState.mods.set(Modifier::Alt,   GetKeyState(VK_MENU) < 0);
+			w->_mouseState.mods.set(Modifier::Meta,  GetKeyState(VK_LWIN) < 0 || GetKeyState(VK_RWIN));
+		};
+	auto handleMouseMove =
+		[](VulkanWindowPrivate* w, int x, int y)
+		{
+			if(x != w->_mouseState.posX || y != w->_mouseState.posY) {
+				w->_mouseState.relX = x - w->_mouseState.posX;
+				w->_mouseState.relY = y - w->_mouseState.posY;
+				w->_mouseState.posX = x;
+				w->_mouseState.posY = y;
+				if(w->_mouseMoveCallback)
+					w->_mouseMoveCallback(*w, w->_mouseState);
+			}
+		};
+	auto handleMouseButton =
+		[](HWND hwnd, MouseButton::EnumType mouseButton, ButtonState buttonState, WPARAM wParam, LPARAM lParam) -> LRESULT
+		{
+			VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(GetWindowLongPtr(hwnd, 0));
+
+			// handle mods
+			w->_mouseState.mods.set(Modifier::Ctrl,  wParam & MK_CONTROL);
+			w->_mouseState.mods.set(Modifier::Shift, wParam & MK_SHIFT);
+			w->_mouseState.mods.set(Modifier::Alt,   GetKeyState(VK_MENU) < 0);
+			w->_mouseState.mods.set(Modifier::Meta,  GetKeyState(VK_LWIN) < 0 || GetKeyState(VK_RWIN));
+
+			// handle mouse move, if any
+			int x = GET_X_LPARAM(lParam);
+			int y = GET_Y_LPARAM(lParam);
+			if(x != w->_mouseState.posX || y != w->_mouseState.posY) {
+				w->_mouseState.relX = x - w->_mouseState.posX;
+				w->_mouseState.relY = y - w->_mouseState.posY;
+				w->_mouseState.posX = x;
+				w->_mouseState.posY = y;
+				if(w->_mouseMoveCallback)
+					w->_mouseMoveCallback(*w, w->_mouseState);
+			}
+
+			// set new state and capture mouse
+			bool prevAny = w->_mouseState.buttons.any();
+			w->_mouseState.buttons.set(mouseButton, buttonState==ButtonState::Pressed);
+			bool newAny = w->_mouseState.buttons.any();
+			if(prevAny != newAny) {
+				if(newAny)
+					SetCapture(hwnd);
+				else
+					ReleaseCapture();
+			}
+
+			// callback
+			if(w->_mouseButtonCallback)
+				w->_mouseButtonCallback(*w, mouseButton, buttonState, w->_mouseState);
+
+			return 0;
+		};
+	auto getMouseXButton =
+		[](WPARAM wParam) -> MouseButton::EnumType
+		{
+			switch(GET_XBUTTON_WPARAM(wParam)) {
+			case XBUTTON1: return MouseButton::X1;
+			case XBUTTON2: return MouseButton::X2;
+			default: return MouseButton::Unknown;
+			}
+		};
+
+	switch(msg)
+	{
+		// erase background message
+		// (we ignore the message)
+		case WM_ERASEBKGND:
+			return 1;  // returning non-zero means that background should be considered erased
+
+		// paint the window message
+		// (we render the window content here)
+		case WM_PAINT: {
+
+			// render all windows in framePendingWindows list
+			// (if a window keeps its window area invalidated,
+			// WM_PAINT might be constantly received by this single window only,
+			// starving all other windows => we render all windows in framePendingWindows list)
+			VulkanWindow* window = reinterpret_cast<VulkanWindow*>(GetWindowLongPtr(hwnd, 0));
+			bool windowProcessed = false;
+			for(size_t i=0; i<framePendingWindows.size(); ) {
+
+				VulkanWindowPrivate* w = static_cast<VulkanWindowPrivate*>(framePendingWindows[i]);
+				if(w == window)
+					windowProcessed = true;
+
+				// render frame
+				w->_framePendingState = FramePendingState::TentativePending;
+				w->renderFrame();
+
+				// was frame scheduled again?
+				// (it might be rescheduled again in renderFrame())
+				if(w->_framePendingState == FramePendingState::TentativePending) {
+
+					// validate window area
+					if(!ValidateRect(HWND(w->_hwnd), NULL))
+						thrownException = make_exception_ptr(runtime_error("ValidateRect(): The function failed."));
+
+					// update state to no-frame-pending
+					w->_framePendingState = FramePendingState::NotPending;
+					if(framePendingWindows.size() == 1) {
+						framePendingWindows.clear();  // all iterators are invalidated
+						break;
+					}
+					else {
+						framePendingWindows[i] = framePendingWindows.back();
+						framePendingWindows.pop_back();  // end() iterator is invalidated
+						continue;
+					}
+				}
+				i++;
+
+			}
+
+			// if window was not in framePendingWindows, process it
+			if(!windowProcessed) {
+
+				// validate window area
+				if(!ValidateRect(hwnd, NULL))
+					thrownException = make_exception_ptr(runtime_error("ValidateRect(): The function failed."));
+
+				// render frame
+				// (_framePendingState is No, but scheduleFrame() might be called inside renderFrame())
+				window->renderFrame();
+
+			}
+
+			return 0;
+		}
+
+		// mouse move
+		case WM_MOUSEMOVE: {
+			VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(GetWindowLongPtr(hwnd, 0));
+			handleModifiers(w, wParam);
+			handleMouseMove(w, GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam));
+			return 0;
+		}
+
+		// mouse buttons
+		case WM_LBUTTONDOWN: return handleMouseButton(hwnd, MouseButton::Left,   ButtonState::Pressed,  wParam, lParam);
+		case WM_LBUTTONUP:   return handleMouseButton(hwnd, MouseButton::Left,   ButtonState::Released, wParam, lParam);
+		case WM_RBUTTONDOWN: return handleMouseButton(hwnd, MouseButton::Right,  ButtonState::Pressed,  wParam, lParam);
+		case WM_RBUTTONUP:   return handleMouseButton(hwnd, MouseButton::Right,  ButtonState::Released, wParam, lParam);
+		case WM_MBUTTONDOWN: return handleMouseButton(hwnd, MouseButton::Middle, ButtonState::Pressed,  wParam, lParam);
+		case WM_MBUTTONUP:   return handleMouseButton(hwnd, MouseButton::Middle, ButtonState::Released, wParam, lParam);
+		case WM_XBUTTONDOWN: return handleMouseButton(hwnd, getMouseXButton(wParam), ButtonState::Pressed,  wParam, lParam);
+		case WM_XBUTTONUP:   return handleMouseButton(hwnd, getMouseXButton(wParam), ButtonState::Released, wParam, lParam);
+
+		// left mouse button down on non-client window area message
+		// (application freeze for several hundred of milliseconds is workarounded here)
+		case WM_NCLBUTTONDOWN: {
+			// This is a workaround for window freeze for several hundred of milliseconds
+			// if you click on its title bar. The clicking on the title bar
+			// makes execution of DefWindowProc to not return for several hundreds of milliseconds,
+			// making the application frozen for this time period.
+			// Sending extra WM_MOUSEMOVE workarounds the problem.
+			POINT point;
+			GetCursorPos(&point);
+			ScreenToClient(hwnd, &point);
+			PostMessage(hwnd, WM_MOUSEMOVE, 0, point.x | point.y<<16);
+			return DefWindowProc(hwnd, msg, wParam, lParam);
+		}
+
+		// vertical and horizontal mouse wheel
+		// (amount of wheel rotation since the last wheel message)
+		case WM_MOUSEWHEEL: {
+			VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(GetWindowLongPtr(hwnd, 0));
+			handleModifiers(w, wParam);
+			POINT p{ GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+			if(ScreenToClient(hwnd, &p) == 0)
+				thrownException = make_exception_ptr(runtime_error("ScreenToClient(): The function failed."));
+			handleMouseMove(w, p.x, p.y);
+			if(w->_mouseWheelCallback)
+				w->_mouseWheelCallback(*w, 0, GET_WHEEL_DELTA_WPARAM(wParam), w->_mouseState);
+			return 0;
+		}
+		case WM_MOUSEHWHEEL: {
+			VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(GetWindowLongPtr(hwnd, 0));
+			handleModifiers(w, wParam);
+			POINT p{ GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+			if(ScreenToClient(hwnd, &p) == 0)
+				thrownException = make_exception_ptr(runtime_error("ScreenToClient(): The function failed."));
+			handleMouseMove(w, p.x, p.y);
+			if(w->_mouseWheelCallback)
+				w->_mouseWheelCallback(*w, GET_WHEEL_DELTA_WPARAM(wParam), 0, w->_mouseState);
+			return 0;
+		}
+
+		// keyboard events
+		case WM_KEYDOWN:
+		case WM_SYSKEYDOWN:  // LeftAlt, RightAlt and F10 come through WM_SYSKEYDOWN
+		{
+			// skip auto-repeat messages
+			if(lParam & (1 << 30))
+				return 0;
+
+			// handle Alt-F4
+			if((lParam & 0xff0000) == (LPARAM(62) << 16) && GetKeyState(VK_MENU) < 0)
+				return DefWindowProc(hwnd, msg, wParam, lParam);
+
+			// callback
+			VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(GetWindowLongPtr(hwnd, 0));
+			if(w->_keyCallback)
+			{
+				// scan code
+				unsigned nativeScanCode = (lParam >> 16) & 0x1ff;
+				ScanCode scanCode = translateScanCode(nativeScanCode);
+				if(scanCode == ScanCode::Unknown)
+					scanCode = getScanCodeOfSpecialKey(wParam);
+
+				// callback
+				w->_keyCallback(*w, KeyState::Pressed, scanCode);
+			}
+			return 0;
+		}
+		case WM_KEYUP:
+		case WM_SYSKEYUP:  // LeftAlt, RightAlt and F10 come through WM_SYSKEYDOWN
+		{
+			VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(GetWindowLongPtr(hwnd, 0));
+			if(w->_keyCallback)
+			{
+				// scan code
+				unsigned nativeScanCode = (lParam >> 16) & 0x1ff;
+				ScanCode scanCode = translateScanCode(nativeScanCode);
+				if(scanCode == ScanCode::Unknown)
+					scanCode = getScanCodeOfSpecialKey(wParam);
+
+				// callback
+				w->_keyCallback(*w, KeyState::Released, scanCode);
+			}
+			return 0;
+		}
+
+		// window resize message
+		// (we schedule swapchain resize here)
+		case WM_SIZE: {
+			cout << "WM_SIZE message (" << LOWORD(lParam) << "x" << HIWORD(lParam) << ")" << endl;
+			if(LOWORD(lParam) != 0 && HIWORD(lParam) != 0) {
+				VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(GetWindowLongPtr(hwnd, 0));
+				w->scheduleSwapchainResize();
+			}
+			return DefWindowProc(hwnd, msg, wParam, lParam);
+		}
+
+		// window show and hide message
+		// (we set _visible variable here)
+		case WM_SHOWWINDOW: {
+			VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(GetWindowLongPtr(hwnd, 0));
+			w->_visible = wParam==TRUE;
+			if(w->_visible == false) {
+
+				// store frame pending state
+				w->_hiddenWindowFramePending = w->_framePendingState == FramePendingState::Pending;
+
+				// cancel frame pending state
+				if(w->_framePendingState == FramePendingState::Pending) {
+					w->_framePendingState = FramePendingState::NotPending;
+					removeFromFramePendingWindows(w);
+				}
+
+			}
+			else {
+
+				// restore frame pending state
+				if(w->_hiddenWindowFramePending) {
+					w->_framePendingState = FramePendingState::Pending;
+					framePendingWindows.push_back(w);
+				}
+
+			}
+			return DefWindowProc(hwnd, msg, wParam, lParam);
+		}
+
+		// close window message
+		// (we call _closeCallback here if registered,
+		// otherwise we hide the window and schedule main loop exit)
+		case WM_CLOSE: {
+			cout << "WM_CLOSE message" << endl;
+			VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(GetWindowLongPtr(hwnd, 0));
+			if(w->_closeCallback)
+				w->_closeCallback(*w);  // VulkanWindow object might be already destroyed when returning from the callback
+			else {
+				w->hide();
+				VulkanWindow::exitMainLoop();
+			}
+			return 0;
+		}
+
+		// destroy window message
+		// (we make sure that the window is not in framePendingWindows list)
+		case WM_DESTROY: {
+
+			cout << "WM_DESTROY message" << endl;
+
+			// remove frame pending state
+			VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(GetWindowLongPtr(hwnd, 0));
+			if(w->_framePendingState != FramePendingState::NotPending) {
+				w->_framePendingState = FramePendingState::NotPending;
+				removeFromFramePendingWindows(w);
+			}
+
+			return 0;
+		}
+
+		// all other messages are handled by standard DefWindowProc()
+		default:
+			return DefWindowProc(hwnd, msg, wParam, lParam);
 	}
 }
 
