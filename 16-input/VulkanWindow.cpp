@@ -47,6 +47,7 @@ public:
 	static void xdgToplevelListenerConfigure(void* data, xdg_toplevel* toplevel, int32_t width, int32_t height, wl_array*);
 	static void xdgToplevelListenerClose(void* data, xdg_toplevel* xdgTopLevel);
 	static void frameListenerDone(void *data, wl_callback* cb, uint32_t time);
+	static void seatListenerCapabilities(void* data, wl_seat* seat, uint32_t capabilities);
 	static void pointerListenerEnter(void* data, wl_pointer* pointer, uint32_t serial, wl_surface* surface,
 	                                 wl_fixed_t surface_x, wl_fixed_t surface_y);
 	static void pointerListenerLeave(void* data, wl_pointer* pointer, uint32_t serial, wl_surface* surface);
@@ -59,7 +60,6 @@ public:
 	static void keyboardListenerKey(void* data, wl_keyboard* keyboard, uint32_t serial, uint32_t time, uint32_t scanCode, uint32_t state);
 	static void keyboardListenerModifiers(void* data, wl_keyboard* keyboard, uint32_t serial, uint32_t mods_depressed,
 	                                      uint32_t mods_latched, uint32_t mods_locked, uint32_t group);
-	static void seatListenerCapabilities(void* data, wl_seat* seat, uint32_t capabilities);
 #endif
 };
 
@@ -126,6 +126,156 @@ static VulkanWindow::ScanCode getScanCodeOfSpecialKey(WPARAM wParam)
 #endif
 
 
+// Xlib global variables
+#if defined(USE_PLATFORM_XLIB)
+static bool externalDisplayHandle;
+static map<Window, VulkanWindow*> vulkanWindowMap;
+static bool running;  // bool indicating that application is running and it shall not leave main loop
+#endif
+
+
+#if defined(USE_PLATFORM_WAYLAND)
+
+// Wayland global variables
+static bool externalDisplayHandle;
+static bool running;  // bool indicating that application is running and it shall not leave main loop
+static map<wl_surface*, VulkanWindow*> surface2windowMap;
+static VulkanWindowPrivate* windowUnderPointer = nullptr;
+static VulkanWindowPrivate* windowWithKbFocus = nullptr;
+
+// listeners
+static const wl_registry_listener registryListener{
+	VulkanWindowPrivate::registryListenerGlobal,
+	VulkanWindowPrivate::registryListenerGlobalRemove,
+};
+static const xdg_wm_base_listener xdgWmBaseListener{
+	VulkanWindowPrivate::xdgWmBaseListenerPing,
+};
+static const xdg_surface_listener xdgSurfaceListener{
+	VulkanWindowPrivate::xdgSurfaceListenerConfigure,
+};
+static const xdg_toplevel_listener xdgToplevelListener{
+	VulkanWindowPrivate::xdgToplevelListenerConfigure,
+	VulkanWindowPrivate::xdgToplevelListenerClose,
+};
+static const wl_callback_listener frameListener{
+	VulkanWindowPrivate::frameListenerDone,
+};
+static const wl_seat_listener seatListener{
+	VulkanWindowPrivate::seatListenerCapabilities,
+};
+static const wl_pointer_listener pointerListener{
+	VulkanWindowPrivate::pointerListenerEnter,
+	VulkanWindowPrivate::pointerListenerLeave,
+	VulkanWindowPrivate::pointerListenerMotion,
+	VulkanWindowPrivate::pointerListenerButton,
+	VulkanWindowPrivate::pointerListenerAxis,
+};
+static const wl_keyboard_listener keyboardListener{
+	VulkanWindowPrivate::keyboardListenerKeymap,
+	VulkanWindowPrivate::keyboardListenerEnter,
+	VulkanWindowPrivate::keyboardListenerLeave,
+	VulkanWindowPrivate::keyboardListenerKey,
+	VulkanWindowPrivate::keyboardListenerModifiers,
+};
+
+// registry global object notification
+void VulkanWindowPrivate::registryListenerGlobal(void*, wl_registry* registry, uint32_t name, const char* interface, uint32_t version)
+{
+	if(strcmp(interface, wl_compositor_interface.name) == 0)
+		_compositor = static_cast<wl_compositor*>(
+			wl_registry_bind(registry, name, &wl_compositor_interface, 1));
+	else if(strcmp(interface, xdg_wm_base_interface.name) == 0)
+		_xdgWmBase = static_cast<xdg_wm_base*>(
+			wl_registry_bind(registry, name, &xdg_wm_base_interface, 1));
+	else if(strcmp(interface, zxdg_decoration_manager_v1_interface.name) == 0)
+		_zxdgDecorationManagerV1 = static_cast<zxdg_decoration_manager_v1*>(
+			wl_registry_bind(registry, name, &zxdg_decoration_manager_v1_interface, 1));
+	else if(strcmp(interface, wl_seat_interface.name) == 0)
+		_seat = static_cast<wl_seat*>(wl_registry_bind(registry, name, &wl_seat_interface, 1));
+	else if(strcmp(interface, wl_shm_interface.name) == 0)
+		_shm = static_cast<wl_shm*>(wl_registry_bind(registry, name, &wl_shm_interface, 1));
+}
+
+// registry global object removal notification
+void VulkanWindowPrivate::registryListenerGlobalRemove(void*, wl_registry*, uint32_t)
+{
+}
+
+// ping-pong message
+void VulkanWindowPrivate::xdgWmBaseListenerPing(void*, xdg_wm_base* xdg, uint32_t serial)
+{
+	xdg_wm_base_pong(xdg, serial);
+};
+
+#endif
+
+
+// SDL global variables
+#if defined(USE_PLATFORM_SDL2)
+static bool sdlInitialized = false;
+static bool running;
+static constexpr const char* windowPointerName = "VulkanWindow";
+#endif
+
+
+// GLFW error handling
+#if defined(USE_PLATFORM_GLFW)
+static void throwError(const string& funcName)
+{
+	const char* errorString;
+	int errorCode = glfwGetError(&errorString);
+	throw runtime_error(string("VulkanWindow: ") + funcName + "() function failed. Error code: " +
+	                    to_string(errorCode) + ". Error string: " + errorString);
+}
+static void checkError(const string& funcName)
+{
+	const char* errorString;
+	int errorCode = glfwGetError(&errorString);
+	if(errorCode != GLFW_NO_ERROR)
+		throw runtime_error(string("VulkanWindow: ") + funcName + "() function failed. Error code: " +
+		                    to_string(errorCode) + ". Error string: " + errorString);
+}
+
+// bool indicating that application is running and it shall not leave main loop
+static bool running;
+
+// list of windows waiting for frame rendering
+// (the windows have _framePendingState set to FramePendingState::Pending or TentativePending)
+static vector<VulkanWindow*> framePendingWindows;
+#endif
+
+
+#if defined(USE_PLATFORM_QT)
+
+// QtRenderingWindow is customized QWindow class for Vulkan rendering
+class QtRenderingWindow : public QWindow {
+public:
+	VulkanWindow* vulkanWindow;
+	int timer = 0;
+	QtRenderingWindow(QWindow* parent, VulkanWindow* vulkanWindow_) : QWindow(parent), vulkanWindow(vulkanWindow_)  {}
+	bool event(QEvent* event) override;
+	void scheduleFrameTimer();
+};
+
+// Qt global variables
+static std::aligned_storage<sizeof(QGuiApplication), alignof(QGuiApplication)>::type qGuiApplicationMemory;
+static QGuiApplication* qGuiApplication = nullptr;
+static std::aligned_storage<sizeof(QVulkanInstance), alignof(QVulkanInstance)>::type qVulkanInstanceMemory;
+static QVulkanInstance* qVulkanInstance = nullptr;
+
+# if !defined(_WIN32)
+// alternative command line arguments
+// (if the user does not use VulkanWindow::init(argc, argv),
+// we get command line arguments by various API functions)
+static vector<char> altArgBuffer;
+static vector<char*> altArgv;
+static int altArgc;
+# endif
+
+#endif
+
+
 #if defined(USE_PLATFORM_WIN32) || (defined(USE_PLATFORM_GLFW) && defined(_WIN32)) || (defined(USE_PLATFORM_QT) && defined(_WIN32))
 
 static const VulkanWindow::ScanCode scanCodeConversionTable[512] = {
@@ -150,7 +300,7 @@ static const VulkanWindow::ScanCode scanCodeConversionTable[512] = {
 	/*89-95*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
 	/*96-101*/ VulkanWindow::ScanCode::KeypadEnter, VulkanWindow::ScanCode::RightControl, VulkanWindow::ScanCode::KeypadDivide, VulkanWindow::ScanCode::PrintScreen, VulkanWindow::ScanCode::RightAlt, VulkanWindow::ScanCode::Unknown,
 	/*102-108*/ VulkanWindow::ScanCode::Home, VulkanWindow::ScanCode::Up, VulkanWindow::ScanCode::PageUp, VulkanWindow::ScanCode::Left, VulkanWindow::ScanCode::Right, VulkanWindow::ScanCode::End, VulkanWindow::ScanCode::Down,
-	/*109-112*/ VulkanWindow::ScanCode::PageDown, VulkanWindow::ScanCode::Insert, VulkanWindow::ScanCode::Delete, VulkanWindow::ScanCode::Unknown, 
+	/*109-112*/ VulkanWindow::ScanCode::PageDown, VulkanWindow::ScanCode::Insert, VulkanWindow::ScanCode::Delete, VulkanWindow::ScanCode::Unknown,
 	/*113-118*/ VulkanWindow::ScanCode::Mute, VulkanWindow::ScanCode::VolumeDown, VulkanWindow::ScanCode::VolumeUp, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
 	/*119-124*/ VulkanWindow::ScanCode::PauseBreak, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
 	/*125-127*/ VulkanWindow::ScanCode::LeftGUI, VulkanWindow::ScanCode::RightGUI, VulkanWindow::ScanCode::Application,
@@ -206,7 +356,7 @@ static const VulkanWindow::ScanCode scanCodeConversionTable[512] = {
 	/*89-95*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::LeftGUI, VulkanWindow::ScanCode::RightGUI, VulkanWindow::ScanCode::Application, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
 	/*96-101*/ VulkanWindow::ScanCode::KeypadEnter, VulkanWindow::ScanCode::RightControl, VulkanWindow::ScanCode::KeypadDivide, VulkanWindow::ScanCode::PrintScreen, VulkanWindow::ScanCode::RightAlt, VulkanWindow::ScanCode::Unknown,
 	/*102-108*/ VulkanWindow::ScanCode::Home, VulkanWindow::ScanCode::Up, VulkanWindow::ScanCode::PageUp, VulkanWindow::ScanCode::Left, VulkanWindow::ScanCode::Right, VulkanWindow::ScanCode::End, VulkanWindow::ScanCode::Down,
-	/*109-112*/ VulkanWindow::ScanCode::PageDown, VulkanWindow::ScanCode::Insert, VulkanWindow::ScanCode::Delete, VulkanWindow::ScanCode::Unknown, 
+	/*109-112*/ VulkanWindow::ScanCode::PageDown, VulkanWindow::ScanCode::Insert, VulkanWindow::ScanCode::Delete, VulkanWindow::ScanCode::Unknown,
 	/*113-118*/ VulkanWindow::ScanCode::Mute, VulkanWindow::ScanCode::VolumeDown, VulkanWindow::ScanCode::VolumeUp, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
 	/*119-124*/ VulkanWindow::ScanCode::PauseBreak, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
 	/*125-127*/ VulkanWindow::ScanCode::LeftGUI, VulkanWindow::ScanCode::RightGUI, VulkanWindow::ScanCode::Application,
@@ -257,96 +407,7 @@ static VulkanWindow::ScanCode translateScanCode(int nativeScanCode)
 #endif
 
 
-// Xlib global variables
-#if defined(USE_PLATFORM_XLIB)
-static bool externalDisplayHandle;
-static map<Window, VulkanWindow*> vulkanWindowMap;
-static bool running;  // bool indicating that application is running and it shall not leave main loop
-#endif
-
-
-#if defined(USE_PLATFORM_WAYLAND)
-
-// Wayland global variables
-static bool externalDisplayHandle;
-static bool running;  // bool indicating that application is running and it shall not leave main loop
-static map<wl_surface*, VulkanWindow*> surface2windowMap;
-static VulkanWindowPrivate* windowUnderPointer = nullptr;
-static VulkanWindowPrivate* windowWithKbFocus = nullptr;
-
-// listeners
-static wl_registry_listener registryListener {
-	VulkanWindowPrivate::registryListenerGlobal,
-	VulkanWindowPrivate::registryListenerGlobalRemove,
-};
-static xdg_wm_base_listener xdgWmBaseListener {
-	VulkanWindowPrivate::xdgWmBaseListenerPing,
-};
-static xdg_surface_listener xdgSurfaceListener {
-	VulkanWindowPrivate::xdgSurfaceListenerConfigure,
-};
-static xdg_toplevel_listener xdgToplevelListener {
-	VulkanWindowPrivate::xdgToplevelListenerConfigure,
-	VulkanWindowPrivate::xdgToplevelListenerClose,
-};
-static wl_callback_listener frameListener {
-	VulkanWindowPrivate::frameListenerDone,
-};
-static wl_seat_listener seatListener {
-	VulkanWindowPrivate::seatListenerCapabilities,
-};
-static wl_pointer_listener pointerListener {
-	VulkanWindowPrivate::pointerListenerEnter,
-	VulkanWindowPrivate::pointerListenerLeave,
-	VulkanWindowPrivate::pointerListenerMotion,
-	VulkanWindowPrivate::pointerListenerButton,
-	VulkanWindowPrivate::pointerListenerAxis,
-};
-static wl_keyboard_listener keyboardListener {
-	VulkanWindowPrivate::keyboardListenerKeymap,
-	VulkanWindowPrivate::keyboardListenerEnter,
-	VulkanWindowPrivate::keyboardListenerLeave,
-	VulkanWindowPrivate::keyboardListenerKey,
-	VulkanWindowPrivate::keyboardListenerModifiers,
-};
-
-// registry global object notification
-void VulkanWindowPrivate::registryListenerGlobal(void*, wl_registry* registry, uint32_t name, const char* interface, uint32_t version)
-{
-	if(strcmp(interface, wl_compositor_interface.name) == 0)
-		_compositor = static_cast<wl_compositor*>(
-			wl_registry_bind(registry, name, &wl_compositor_interface, 1));
-	else if(strcmp(interface, xdg_wm_base_interface.name) == 0)
-		_xdgWmBase = static_cast<xdg_wm_base*>(
-			wl_registry_bind(registry, name, &xdg_wm_base_interface, 1));
-	else if(strcmp(interface, zxdg_decoration_manager_v1_interface.name) == 0)
-		_zxdgDecorationManagerV1 = static_cast<zxdg_decoration_manager_v1*>(
-			wl_registry_bind(registry, name, &zxdg_decoration_manager_v1_interface, 1));
-	else if(strcmp(interface, wl_seat_interface.name) == 0)
-		_seat = static_cast<wl_seat*>(wl_registry_bind(registry, name, &wl_seat_interface, 1));
-	else if(strcmp(interface, wl_shm_interface.name) == 0)
-		_shm = static_cast<wl_shm*>(wl_registry_bind(registry, name, &wl_shm_interface, 1));
-}
-
-// registry global object removal notification
-void VulkanWindowPrivate::registryListenerGlobalRemove(void*, wl_registry*, uint32_t)
-{
-}
-
-// ping-pong message
-void VulkanWindowPrivate::xdgWmBaseListenerPing(void*, xdg_wm_base* xdg, uint32_t serial)
-{
-	xdg_wm_base_pong(xdg, serial);
-};
-
-#endif
-
-
-// SDL global variables
 #if defined(USE_PLATFORM_SDL2)
-static bool sdlInitialized = false;
-static bool running;
-static constexpr const char* windowPointerName = "VulkanWindow";
 
 static const VulkanWindow::ScanCode scanCodeConversionTable[SDL_NUM_SCANCODES] = {
 	/*0..3*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
@@ -422,63 +483,6 @@ static VulkanWindow::ScanCode translateScanCode(int sdlScanCode)
 		return VulkanWindow::ScanCode(1000 + sdlScanCode);
 	return scanCode;
 }
-
-#endif
-
-
-// GLFW error handling
-#if defined(USE_PLATFORM_GLFW)
-static void throwError(const string& funcName)
-{
-	const char* errorString;
-	int errorCode = glfwGetError(&errorString);
-	throw runtime_error(string("VulkanWindow: ") + funcName + "() function failed. Error code: " +
-	                    to_string(errorCode) + ". Error string: " + errorString);
-}
-static void checkError(const string& funcName)
-{
-	const char* errorString;
-	int errorCode = glfwGetError(&errorString);
-	if(errorCode != GLFW_NO_ERROR)
-		throw runtime_error(string("VulkanWindow: ") + funcName + "() function failed. Error code: " +
-		                    to_string(errorCode) + ". Error string: " + errorString);
-}
-
-// bool indicating that application is running and it shall not leave main loop
-static bool running;
-
-// list of windows waiting for frame rendering
-// (the windows have _framePendingState set to FramePendingState::Pending or TentativePending)
-static vector<VulkanWindow*> framePendingWindows;
-#endif
-
-
-#if defined(USE_PLATFORM_QT)
-
-// QtRenderingWindow is customized QWindow class for Vulkan rendering
-class QtRenderingWindow : public QWindow {
-public:
-	VulkanWindow* vulkanWindow;
-	int timer = 0;
-	QtRenderingWindow(QWindow* parent, VulkanWindow* vulkanWindow_) : QWindow(parent), vulkanWindow(vulkanWindow_)  {}
-	bool event(QEvent* event) override;
-	void scheduleFrameTimer();
-};
-
-// Qt global variables
-static std::aligned_storage<sizeof(QGuiApplication), alignof(QGuiApplication)>::type qGuiApplicationMemory;
-static QGuiApplication* qGuiApplication = nullptr;
-static std::aligned_storage<sizeof(QVulkanInstance), alignof(QVulkanInstance)>::type qVulkanInstanceMemory;
-static QVulkanInstance* qVulkanInstance = nullptr;
-
-# if !defined(_WIN32)
-// alternative command line arguments
-// (if the user does not use VulkanWindow::init(argc, argv),
-// we get command line arguments by various API functions)
-static vector<char> altArgBuffer;
-static vector<char*> altArgv;
-static int altArgc;
-# endif
 
 #endif
 
