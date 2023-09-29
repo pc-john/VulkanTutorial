@@ -53,6 +53,8 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines inc
 
 		# configure for Wayland
 		find_package(Wayland REQUIRED)
+		find_package(libdecor REQUIRED)
+
 		if(Wayland_client_FOUND AND Wayland_SCANNER AND Wayland_PROTOCOLS_DIR)
 
 			add_custom_command(OUTPUT xdg-shell-client-protocol.h
@@ -73,6 +75,8 @@ macro(GuiConfigure APP_SOURCES APP_INCLUDES libs defines vulkanWindowDefines inc
 		else()
 			message(FATAL_ERROR "Not all Wayland variables were detected properly.")
 		endif()
+
+		set(${libs} ${${libs}} libdecor::libdecor)
 
 	elseif("${GUI_TYPE}" STREQUAL "SDL3")
 

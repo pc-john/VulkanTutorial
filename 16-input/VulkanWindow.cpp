@@ -11,6 +11,7 @@
 # include "xdg-shell-client-protocol.h"
 # include "xdg-decoration-client-protocol.h"
 # include <wayland-cursor.h>
+# include <libdecor-0/libdecor.h>
 # include <climits>
 # include <map>
 #elif defined(USE_PLATFORM_SDL2)
@@ -46,6 +47,11 @@ public:
 	static void xdgSurfaceListenerConfigure(void* data, xdg_surface* xdgSurface, uint32_t serial);
 	static void xdgToplevelListenerConfigure(void* data, xdg_toplevel* toplevel, int32_t width, int32_t height, wl_array*);
 	static void xdgToplevelListenerClose(void* data, xdg_toplevel* xdgTopLevel);
+	static void libdecorError(libdecor* context, libdecor_error error, const char* message);
+	static void libdecorFrameConfigure(libdecor_frame* frame, libdecor_configuration* config, void* data);
+	static void libdecorFrameClose(libdecor_frame* frame, void* data);
+	static void libdecorFrameCommit(libdecor_frame* frame, void* data);
+	static void libdecorFrameDismissPopup(libdecor_frame* frame, const char* seatName, void* data);
 	static void frameListenerDone(void *data, wl_callback* cb, uint32_t time);
 	static void seatListenerCapabilities(void* data, wl_seat* seat, uint32_t capabilities);
 	static void pointerListenerEnter(void* data, wl_pointer* pointer, uint32_t serial, wl_surface* surface,
@@ -157,6 +163,15 @@ static const xdg_surface_listener xdgSurfaceListener{
 static const xdg_toplevel_listener xdgToplevelListener{
 	VulkanWindowPrivate::xdgToplevelListenerConfigure,
 	VulkanWindowPrivate::xdgToplevelListenerClose,
+};
+static libdecor_interface libdecorInterface{
+	VulkanWindowPrivate::libdecorError,
+};
+static libdecor_frame_interface libdecorFrameInterface{
+	VulkanWindowPrivate::libdecorFrameConfigure,
+	VulkanWindowPrivate::libdecorFrameClose,
+	VulkanWindowPrivate::libdecorFrameCommit,
+	VulkanWindowPrivate::libdecorFrameDismissPopup,
 };
 static const wl_callback_listener frameListener{
 	VulkanWindowPrivate::frameListenerDone,
@@ -677,6 +692,13 @@ void VulkanWindow::init(void* data)
 	if(wl_seat_add_listener(_seat, &seatListener, nullptr))
 		throw runtime_error("wl_seat_add_listener() failed.");
 
+	// libdecor
+	if(!_zxdgDecorationManagerV1) {
+		_libdecorContext = libdecor_new(_display, &libdecorInterface);
+		if(!_libdecorContext)
+			throw runtime_error("libdecor_new() failed.");
+	}
+
 	// cursor size
 	const char* cursorSizeString = getenv("XCURSOR_SIZE");
 	char* endp = nullptr;
@@ -817,6 +839,10 @@ void VulkanWindow::finalize() noexcept
 	if(_cursorTheme) {
 		wl_cursor_theme_destroy(_cursorTheme);
 		_cursorTheme = nullptr;
+	}
+	if(_libdecorContext) {
+		libdecor_unref(_libdecorContext);
+		_libdecorContext = nullptr;
 	}
 	if(_shm) {
 		wl_shm_destroy(_shm);
@@ -2453,44 +2479,39 @@ void VulkanWindow::show()
 	if(_xdgSurface)
 		return;
 
-	// create xdg surface
-	_xdgSurface = xdg_wm_base_get_xdg_surface(_xdgWmBase, _wlSurface);
-	if(_xdgSurface == nullptr)
-		throw runtime_error("xdg_wm_base_get_xdg_surface() failed.");
-	if(xdg_surface_add_listener(_xdgSurface, &xdgSurfaceListener, this))
-		throw runtime_error("xdg_surface_add_listener() failed.");
-
-	// create xdg toplevel
-	_xdgTopLevel = xdg_surface_get_toplevel(_xdgSurface);
-	if(_xdgTopLevel == nullptr)
-		throw runtime_error("xdg_surface_get_toplevel() failed.");
-	if(_zxdgDecorationManagerV1) {
-		_decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(_zxdgDecorationManagerV1, _xdgTopLevel);
-		zxdg_toplevel_decoration_v1_set_mode(_decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+	if(_libdecorContext)
+	{
+		// create libdecor decorations
+		_libdecorFrame = libdecor_decorate(_libdecorContext, _wlSurface, &libdecorFrameInterface, this);
+		if(_libdecorFrame == nullptr)
+			throw runtime_error("VulkanWindow::show(): libdecor_decorate() failed.");
+		libdecor_frame_set_title(_libdecorFrame, _title.c_str());
+		libdecor_frame_map(_libdecorFrame);
 	}
-	xdg_toplevel_set_title(_xdgTopLevel, _title.c_str());
-	if(xdg_toplevel_add_listener(_xdgTopLevel, &xdgToplevelListener, this))
-		throw runtime_error("xdg_toplevel_add_listener() failed.");
-	wl_surface_commit(_wlSurface);
+	else
+	{
+		// create xdg surface
+		_xdgSurface = xdg_wm_base_get_xdg_surface(_xdgWmBase, _wlSurface);
+		if(_xdgSurface == nullptr)
+			throw runtime_error("xdg_wm_base_get_xdg_surface() failed.");
+		if(xdg_surface_add_listener(_xdgSurface, &xdgSurfaceListener, this))
+			throw runtime_error("xdg_surface_add_listener() failed.");
+
+		// create xdg toplevel
+		_xdgTopLevel = xdg_surface_get_toplevel(_xdgSurface);
+		if(_xdgTopLevel == nullptr)
+			throw runtime_error("xdg_surface_get_toplevel() failed.");
+		if(_zxdgDecorationManagerV1) {
+			_decoration = zxdg_decoration_manager_v1_get_toplevel_decoration(_zxdgDecorationManagerV1, _xdgTopLevel);
+			zxdg_toplevel_decoration_v1_set_mode(_decoration, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+		}
+		xdg_toplevel_set_title(_xdgTopLevel, _title.c_str());
+		if(xdg_toplevel_add_listener(_xdgTopLevel, &xdgToplevelListener, this))
+			throw runtime_error("xdg_toplevel_add_listener() failed.");
+		wl_surface_commit(_wlSurface);
+	}
 	_forcedFrame = true;
 	_swapchainResizePending = true;
-}
-
-
-void VulkanWindowPrivate::xdgSurfaceListenerConfigure(void* data, xdg_surface* xdgSurface, uint32_t serial)
-{
-	cout << "surface configure" << endl;
-	VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(data);
-	xdg_surface_ack_configure(xdgSurface, serial);
-	wl_surface_commit(w->_wlSurface);
-
-	// we need to explicitly generate frame
-	// the first frame otherwise the window is not shown
-	// and no frame callbacks will be delivered through _frameListener
-	if(w->_forcedFrame) {
-		w->_forcedFrame = false;
-		w->renderFrame();
-	}
 }
 
 
@@ -2515,7 +2536,92 @@ void VulkanWindowPrivate::xdgToplevelListenerConfigure(void* data, xdg_toplevel*
 }
 
 
+void VulkanWindowPrivate::xdgSurfaceListenerConfigure(void* data, xdg_surface* xdgSurface, uint32_t serial)
+{
+	cout << "surface configure" << endl;
+	VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(data);
+	xdg_surface_ack_configure(xdgSurface, serial);
+	wl_surface_commit(w->_wlSurface);
+
+	// we need to explicitly generate the first frame
+	// otherwise the window is not shown
+	// and no frame callbacks will be delivered through _frameListener
+	if(w->_forcedFrame) {
+		w->_forcedFrame = false;
+		w->renderFrame();
+	}
+}
+
+
+void VulkanWindowPrivate::libdecorFrameConfigure(libdecor_frame* frame, libdecor_configuration* config, void* data)
+{
+	VulkanWindowPrivate* w = static_cast<VulkanWindowPrivate*>(data);
+
+	// if width or height of the window changed,
+	// schedule swapchain resize and force new frame rendering
+	int width, height;
+	if(libdecor_configuration_get_content_size(config, frame, &width, &height))
+	{
+		if(uint32_t(width) != w->_surfaceExtent.width && width != 0) {
+			w->_surfaceExtent.width = width;
+			if(uint32_t(height) != w->_surfaceExtent.height && height != 0)
+				w->_surfaceExtent.height = height;
+			w->scheduleSwapchainResize();
+		}
+		else if(uint32_t(height) != w->_surfaceExtent.height && height != 0) {
+			w->_surfaceExtent.height = height;
+			w->scheduleSwapchainResize();
+		}
+	}
+
+	cout << "libdecor configure: " << w->_surfaceExtent.width <<"x" << w->_surfaceExtent.height << endl;
+
+	// set new window state
+	libdecor_state* state = libdecor_state_new(w->_surfaceExtent.width, w->_surfaceExtent.height);
+	libdecor_frame_commit(frame, state, config);
+	libdecor_state_free(state);
+
+	// we need to explicitly generate the first frame
+	// otherwise the window is not shown
+	// and no frame callbacks will be delivered through _frameListener
+	if(w->_forcedFrame) {
+		w->_forcedFrame = false;
+		w->renderFrame();
+	}
+}
+
+
+void VulkanWindowPrivate::libdecorFrameCommit(libdecor_frame* frame, void* data)
+{
+	cout << "libdecor commit" << endl;
+	wl_surface_commit(static_cast<VulkanWindowPrivate*>(data)->_wlSurface);
+}
+
+
+void VulkanWindowPrivate::libdecorError(libdecor* context, libdecor_error error, const char* message)
+{
+	throw runtime_error("VulkanWindow: libdecor error " + to_string(error) + ": \"" + message + "\"");
+}
+
+
+void VulkanWindowPrivate::libdecorFrameDismissPopup(libdecor_frame* frame, const char* seatName, void* data)
+{
+}
+
+
 void VulkanWindowPrivate::xdgToplevelListenerClose(void* data, xdg_toplevel* xdgTopLevel)
+{
+	VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(data);
+	if(w->_closeCallback)
+		w->_closeCallback(*w);  // VulkanWindow object might be already destroyed when returning from the callback
+	else {
+		w->hide();
+		VulkanWindow::exitMainLoop();
+	}
+}
+
+
+void VulkanWindowPrivate::libdecorFrameClose(libdecor_frame* frame, void* data)
 {
 	VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(data);
 	if(w->_closeCallback)
@@ -2538,6 +2644,10 @@ void VulkanWindow::hide()
 	if(_scheduledFrameCallback) {
 		wl_callback_destroy(_scheduledFrameCallback);
 		_scheduledFrameCallback = nullptr;
+	}
+	if(_libdecorFrame) {
+		libdecor_frame_unref(_libdecorFrame);
+		_libdecorFrame = nullptr;
 	}
 	if(_decoration) {
 		zxdg_toplevel_decoration_v1_destroy(_decoration);
@@ -2567,7 +2677,11 @@ void VulkanWindow::mainLoop()
 	running = true;
 	while(running) {
 
-		// dispatch events
+		// dispatch libdecor events
+		if(_libdecorContext)
+			libdecor_dispatch(_libdecorContext, -1);
+
+		// dispatch Wayland events
 		if(wl_display_dispatch(_display) == -1)  // it blocks if there are no events
 			throw runtime_error("wl_display_dispatch() failed.");
 

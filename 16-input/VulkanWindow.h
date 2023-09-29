@@ -111,6 +111,7 @@ protected:
 	struct xdg_surface* _xdgSurface = nullptr;
 	struct xdg_toplevel* _xdgTopLevel = nullptr;
 	struct zxdg_toplevel_decoration_v1* _decoration = nullptr;
+	struct libdecor_frame* _libdecorFrame = nullptr;
 	struct wl_callback* _scheduledFrameCallback = nullptr;
 
 	// state
@@ -123,6 +124,7 @@ protected:
 	static inline struct wl_compositor* _compositor = nullptr;
 	static inline struct xdg_wm_base* _xdgWmBase = nullptr;
 	static inline struct zxdg_decoration_manager_v1* _zxdgDecorationManagerV1 = nullptr;
+	static inline struct libdecor* _libdecorContext = nullptr;
 	static inline struct wl_shm* _shm = nullptr;
 	static inline struct wl_cursor_theme* _cursorTheme = nullptr;
 	static inline struct wl_surface* _cursorSurface = nullptr;
