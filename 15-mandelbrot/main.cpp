@@ -7,7 +7,7 @@ using namespace std;
 
 
 // constants
-constexpr const char* appName = "15-julia";
+constexpr const char* appName = "15-mandelbrot";
 
 
 // shader code in SPIR-V binary

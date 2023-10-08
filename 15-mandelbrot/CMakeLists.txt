@@ -1,4 +1,4 @@
-set(APP_NAME 15-julia)
+set(APP_NAME 15-mandelbrot)
 
 project(${APP_NAME})
 

@@ -17,7 +17,7 @@ set(PACKAGES
     12-resizableWindow
     13-spinningTriangle
     14-multiplatformWindow
-    15-julia
+    15-mandelbrot
     16-input
     ff-lag
     ff-win32AndWaylandPerfection
