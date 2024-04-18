@@ -220,6 +220,19 @@ void App::init()
 	windowList.emplace_back(instance, vk::Extent2D{800, 600}, appName);
 	windowList.emplace_back(instance, vk::Extent2D{800, 600}, appName);
 
+	// test for isVisible() returning false
+	{
+		VulkanWindow tmp;
+		if(tmp.isVisible())
+			throw runtime_error("VulkanWindow::isVisible() did not returned false immediately after VulkanWindow constructor.");
+		tmp.create(instance, vk::Extent2D{800, 600}, appName);
+		if(tmp.isVisible())
+			throw runtime_error("VulkanWindow::isVisible() did not returned false immediately after VulkanWindow::create().");
+		tmp.hide();
+		if(tmp.isVisible())
+			throw runtime_error("VulkanWindow::isVisible() did not returned false immediately after VulkanWindow::hide().");
+	}
+
 	// test for non-initialized window and for move constructors
 	{
 		VulkanWindow tmp1;
@@ -965,11 +978,13 @@ int main(int argc, char* argv[])
 			w.show();
 #if 1
 			if(!w.isVisible())
-				throw runtime_error("VulkanWindow::show() does not work properly.");
+				throw runtime_error("VulkanWindow::isVisible() did not returned true immediately after VulkanWindow::show().");
 			w.hide();
 			if(w.isVisible())
 				throw runtime_error("VulkanWindow::hide() does not work properly.");
 			w.show();
+			if(!w.isVisible())
+				throw runtime_error("VulkanWindow::isVisible() did not returned true immediately after VulkanWindow::show().");
 #endif
 		}
 

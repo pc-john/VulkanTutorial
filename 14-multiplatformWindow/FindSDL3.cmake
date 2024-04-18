@@ -1,13 +1,13 @@
 #
-# Module for finding SDL2
+# Module for finding SDL3
 #
 # It attempts to perform config-based find first. If it fails, it performs standard module-based find.
-# In config-based find succeeds, SDL2 targets are created and SDL2_DLL cache variable is set (if it was undefined).
+# In config-based find succeeds, SDL3 targets are created and SDL3_DLL cache variable is set (if it was undefined).
 # If config-based find fails, no targets are created. Instead, the following variables are defined:
-#    SDL2_FOUND
-#    SDL2_INCLUDE_DIRS
-#    SDL2_LIBRARIES
-#    SDL2_DLL (on Win32 only)
+#    SDL3_FOUND
+#    SDL3_INCLUDE_DIRS
+#    SDL3_LIBRARIES
+#    SDL3_DLL (on Win32 only)
 #
 
 
@@ -20,13 +20,12 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR AND NOT ${CMAKE_FIND_PACKAGE_NAME}
 	# initialize cache variables
 	set(${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR ${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR-NOTFOUND CACHE PATH "Path to ${CMAKE_FIND_PACKAGE_NAME} include directory.")
 	set(${CMAKE_FIND_PACKAGE_NAME}_LIBRARY ${CMAKE_FIND_PACKAGE_NAME}_LIBRARY-NOTFOUND CACHE FILEPATH "Path to ${CMAKE_FIND_PACKAGE_NAME} library.")
-	set(${CMAKE_FIND_PACKAGE_NAME}_MAIN_LIBRARY ${CMAKE_FIND_PACKAGE_NAME}_MAIN_LIBRARY-NOTFOUND CACHE FILEPATH "Path to ${CMAKE_FIND_PACKAGE_NAME} main library.")
 
-	# get SDL2_DLL
-	if(TARGET SDL2::SDL2 AND NOT SDL2_DLL AND WIN32)
-		get_target_property(SDL2_DLL SDL2::SDL2 IMPORTED_LOCATION)
-		cmake_path(NORMAL_PATH SDL2_DLL)
-		set(SDL2_DLL "${SDL2_DLL}" CACHE FILEPATH "Path to SDL2.dll that will be copied into the directory of built executable." FORCE)
+	# get SDL3_DLL
+	if(TARGET SDL3::SDL3 AND NOT SDL3_DLL AND WIN32)
+		get_target_property(SDL3_DLL SDL3::SDL3 IMPORTED_LOCATION)
+		cmake_path(NORMAL_PATH SDL3_DLL)
+		set(SDL3_DLL "${SDL3_DLL}" CACHE FILEPATH "Path to SDL3.dll that will be copied into the directory of built executable." FORCE)
 	endif()
 
 endif()
@@ -35,30 +34,18 @@ endif()
 # if config-based find did not succeed
 if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 
-	# find SDL2 include path
-	find_path(${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR SDL.h
-		PATH_SUFFIXES
-			SDL2
+	# find SDL3 include path
+	find_path(${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR SDL3/SDL.h
 		PATHS
 			/usr/include
 			/usr/local/include
 			/opt/local/include
 	)
 
-	# find SDL2 library
+	# find SDL3 library
 	find_library(${CMAKE_FIND_PACKAGE_NAME}_LIBRARY
 		NAMES
-			SDL2
-		PATHS
-			/usr/lib64
-			/usr/local/lib64
-			/usr/lib
-			/usr/lib/x86_64-linux-gnu
-			/usr/local/lib
-	)
-	find_library(${CMAKE_FIND_PACKAGE_NAME}_MAIN_LIBRARY
-		NAMES
-			SDL2main
+			SDL3
 		PATHS
 			/usr/lib64
 			/usr/local/lib64
@@ -67,23 +54,19 @@ if(NOT ${CMAKE_FIND_PACKAGE_NAME}_FOUND)
 			/usr/local/lib
 	)
 
-	# find SDL2_DLL library
+	# find SDL3_DLL library
 	if(WIN32)
 		find_file(${CMAKE_FIND_PACKAGE_NAME}_DLL
 			NAMES
-				SDL2.dll
+				SDL3.dll
 		)
 	endif()
 
 	# set output variables
 	if(${CMAKE_FIND_PACKAGE_NAME}_INCLUDE_DIR AND ${CMAKE_FIND_PACKAGE_NAME}_LIBRARY)
 		set(${CMAKE_FIND_PACKAGE_NAME}_FOUND True)
-		set(SDL2_INCLUDE_DIRS "${SDL2_INCLUDE_DIR}")
-		if(SDL2_MAIN_LIBRARY)
-			set(SDL2_LIBRARIES "${SDL2_LIBRARY}" "${SDL2_MAIN_LIBRARY}")
-		else()
-			set(SDL2_LIBRARIES "${SDL2_LIBRARY}")
-		endif()
+		set(SDL3_INCLUDE_DIRS "${SDL3_INCLUDE_DIR}")
+		set(SDL3_LIBRARIES    "${SDL3_LIBRARY}")
 	else()
 		# error message
 		message(FATAL_ERROR "Finding of package ${CMAKE_FIND_PACKAGE_NAME} failed. Make sure it is installed "
