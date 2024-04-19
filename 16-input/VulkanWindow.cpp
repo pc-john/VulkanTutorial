@@ -14,6 +14,9 @@
 # include <libdecor-0/libdecor.h>
 # include <climits>
 # include <map>
+#elif defined(USE_PLATFORM_SDL3)
+# include <SDL3/SDL.h>
+# include <SDL3/SDL_vulkan.h>
 #elif defined(USE_PLATFORM_SDL2)
 # include "SDL.h"
 # include "SDL_vulkan.h"
@@ -145,7 +148,7 @@ static bool running;  // bool indicating that application is running and it shal
 // Wayland global variables
 static bool externalDisplayHandle;
 static bool running;  // bool indicating that application is running and it shall not leave main loop
-static map<wl_surface*, VulkanWindow*> surface2windowMap;
+static map<wl_surface*, VulkanWindow*> wlSurface2windowMap;
 static VulkanWindowPrivate* windowUnderPointer = nullptr;
 static VulkanWindowPrivate* windowWithKbFocus = nullptr;
 
@@ -227,10 +230,13 @@ void VulkanWindowPrivate::xdgWmBaseListenerPing(void*, xdg_wm_base* xdg, uint32_
 
 
 // SDL global variables
-#if defined(USE_PLATFORM_SDL2)
+#if defined(USE_PLATFORM_SDL3) || defined(USE_PLATFORM_SDL2)
 static bool sdlInitialized = false;
 static bool running;
 static constexpr const char* windowPointerName = "VulkanWindow";
+#endif
+#if defined(USE_PLATFORM_SDL3)
+static vector<const char*> sdlRequiredExtensions;
 #endif
 
 
@@ -422,7 +428,7 @@ static VulkanWindow::ScanCode translateScanCode(int nativeScanCode)
 #endif
 
 
-#if defined(USE_PLATFORM_SDL2)
+#if defined(USE_PLATFORM_SDL3) || defined(USE_PLATFORM_SDL2)
 
 static const VulkanWindow::ScanCode scanCodeConversionTable[SDL_NUM_SCANCODES] = {
 	/*0..3*/ VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown, VulkanWindow::ScanCode::Unknown,
@@ -552,21 +558,26 @@ void VulkanWindow::init()
 
 	init(nullptr);
 
-#elif defined(USE_PLATFORM_SDL2)
+#elif defined(USE_PLATFORM_SDL3) || defined(USE_PLATFORM_SDL2)
 
 	// handle multiple init attempts
 	if(sdlInitialized)
 		return;
+
+	// set hints
+	SDL_SetHint("SDL_QUIT_ON_LAST_WINDOW_CLOSE", "0");   // do not send SDL_EVENT_QUIT/SDL_QUIT event when the last window closes; we shall exit main loop
+	                                                     // after VulkanWindow::exitMainLoop() is called; the hint is supported since SDL 2.0.22,
+	                                                     // therefore we pass it as string and not as define that does not exist on previous versions
+	SDL_SetHint(SDL_HINT_VIDEO_ALLOW_SCREENSAVER, "1");  // allow screensaver
 
 	// initialize SDL
 	if(SDL_InitSubSystem(SDL_INIT_VIDEO) != 0)
 		throw runtime_error(string("SDL_InitSubSystem(SDL_INIT_VIDEO) function failed. Error details: ") + SDL_GetError());
 	sdlInitialized = true;
 
-	// set hints
-	SDL_SetHint("SDL_QUIT_ON_LAST_WINDOW_CLOSE", "0");   // do not send SDL_QUIT event when the last window closes; we shall exit main loop
-	                                                     // after VulkanWindow::exitMainLoop() is called; the hint is supported since SDL 2.0.22
-	SDL_SetHint(SDL_HINT_VIDEO_ALLOW_SCREENSAVER, "1");  // allow screensaver
+	// initialize Vulkan
+	if(SDL_Vulkan_LoadLibrary(nullptr) != 0)
+		throw runtime_error(string("VulkanWindow: SDL_Vulkan_LoadLibrary(nullptr) function failed. Error details: ") + SDL_GetError());
 
 #elif defined(USE_PLATFORM_GLFW)
 
@@ -866,7 +877,7 @@ void VulkanWindow::finalize() noexcept
 	_xdgWmBase = nullptr;
 	_zxdgDecorationManagerV1 = nullptr;
 
-#elif defined(USE_PLATFORM_SDL2)
+#elif defined(USE_PLATFORM_SDL3) || defined(USE_PLATFORM_SDL2)
 
 	// finalize SDL
 	if(sdlInitialized) {
@@ -964,9 +975,14 @@ void VulkanWindow::destroy() noexcept
 #elif defined(USE_PLATFORM_WAYLAND)
 
 	// erase from global map
-	surface2windowMap.erase(_wlSurface);
+	wlSurface2windowMap.erase(_wlSurface);
+
+	// invalidate pointers to this object
+	// (maybe, leave events are sent on surface destroy and these are not necessary (?))
 	if(windowUnderPointer == this)
 		windowUnderPointer = nullptr;
+	if(windowWithKbFocus == this)
+		windowWithKbFocus = nullptr;
 
 	// release resources
 	if(_scheduledFrameCallback) {
@@ -988,6 +1004,48 @@ void VulkanWindow::destroy() noexcept
 	if(_wlSurface) {
 		wl_surface_destroy(_wlSurface);
 		_wlSurface = nullptr;
+	}
+
+#elif defined(USE_PLATFORM_SDL3)
+
+	if(_window) {
+
+		// get windowID
+		auto windowID = SDL_GetWindowID(_window);
+		assert(windowID != 0 && "SDL_GetWindowID(): The function failed.");
+
+		// destroy window
+		SDL_DestroyWindow(_window);
+		_window = nullptr;
+
+		// get all events in the queue
+		SDL_PumpEvents();
+		vector<SDL_Event> buf(16);
+		while(true) {
+			int num = SDL_PeepEvents(&buf[buf.size()-16], 16, SDL_GETEVENT, SDL_EVENT_FIRST, SDL_EVENT_LAST);
+			if(num < 0) {
+				assert(0 && "SDL_PeepEvents(): The function failed.");
+				break;
+			}
+			if(num == 16) {
+				buf.resize(buf.size() + 16);
+				continue;
+			}
+			buf.resize(buf.size() - 16 + num);
+			break;
+		};
+
+		// fill the queue again
+		// while skipping all events of deleted window
+		// (we need to skip those that are processed in VulkanWindow::mainLoop() because they might cause SIGSEGV)
+		for(SDL_Event& event : buf) {
+			if(event.type >= SDL_EVENT_WINDOW_FIRST && event.type <= SDL_EVENT_WINDOW_LAST)
+				if(event.window.windowID == windowID)
+					continue;
+			int num = SDL_PeepEvents(&event, 1, SDL_ADDEVENT, SDL_EVENT_FIRST, SDL_EVENT_LAST);
+			if(num != 1)
+				assert(0 && "SDL_PeepEvents(): The function failed.");
+		}
 	}
 
 #elif defined(USE_PLATFORM_SDL2)
@@ -1064,7 +1122,7 @@ void VulkanWindow::destroy() noexcept
 }
 
 
-VulkanWindow::VulkanWindow(VulkanWindow&& other)
+VulkanWindow::VulkanWindow(VulkanWindow&& other) noexcept
 {
 #if defined(USE_PLATFORM_WIN32)
 
@@ -1123,9 +1181,34 @@ VulkanWindow::VulkanWindow(VulkanWindow&& other)
 	_title = move(other._title);
 
 	// update global map
-	auto it = surface2windowMap.find(_wlSurface);
-	if(it != surface2windowMap.end())
+	auto it = wlSurface2windowMap.find(_wlSurface);
+	if(it != wlSurface2windowMap.end())
 		it->second = this;
+
+	// update pointers to this object
+	if(windowUnderPointer == other)
+		windowUnderPointer = this;
+	if(windowWithKbFocus == other)
+		windowWithKbFocus = this;
+
+#elif defined(USE_PLATFORM_SDL3)
+
+	// move SDL members
+	_window = other._window;
+	other._window = nullptr;
+	_framePending = other._framePending;
+	_hiddenWindowFramePending = other._hiddenWindowFramePending;
+	_visible = other._visible;
+	_minimized = other._minimized;
+
+	if(_window != nullptr)
+	{
+		// update pointer to this object
+		SDL_PropertiesID props = SDL_GetWindowProperties(_window);
+		assert(props != 0 && "VulkanWindow: SDL_GetWindowProperties() function failed while updating VulkanWindow pointer.");
+		if(SDL_SetProperty(props, windowPointerName, this) != 0)
+			assert(0 && "VulkanWindow: SDL_SetProperty() function failed while updating VulkanWindow pointer.");
+	}
 
 #elif defined(USE_PLATFORM_SDL2)
 
@@ -1245,9 +1328,34 @@ VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
 	_title = move(other._title);
 
 	// update global map
-	auto it = surface2windowMap.find(_wlSurface);
-	if(it != surface2windowMap.end())
+	auto it = wlSurface2windowMap.find(_wlSurface);
+	if(it != wlSurface2windowMap.end())
 		it->second = this;
+
+	// update pointers to this object
+	if(windowUnderPointer == other)
+		windowUnderPointer = this;
+	if(windowWithKbFocus == other)
+		windowWithKbFocus = this;
+
+#elif defined(USE_PLATFORM_SDL3)
+
+	// move SDL members
+	_window = other._window;
+	other._window = nullptr;
+	_framePending = other._framePending;
+	_hiddenWindowFramePending = other._hiddenWindowFramePending;
+	_visible = other._visible;
+	_minimized = other._minimized;
+
+	if(_window != nullptr)
+	{
+		// set pointer to this
+		SDL_PropertiesID props = SDL_GetWindowProperties(_window);
+		assert(props != 0 && "VulkanWindow: SDL_GetWindowProperties() function failed while updating VulkanWindow pointer.");
+		if(SDL_SetProperty(props, windowPointerName, this) != 0)
+			assert(0 && "VulkanWindow: SDL_SetProperty() function failed while updating VulkanWindow pointer.");
+	}
 
 #elif defined(USE_PLATFORM_SDL2)
 
@@ -1316,7 +1424,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	assert(_windowClass && "VulkanWindow class was not initialized. Call VulkanWindow::init() before VulkanWindow::create().");
 #elif defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_WAYLAND)
 	assert(_display && "VulkanWindow class was not initialized. Call VulkanWindow::init() before VulkanWindow::create().");
-#elif defined(USE_PLATFORM_SDL2)
+#elif defined(USE_PLATFORM_SDL3) || defined(USE_PLATFORM_SDL2)
 	assert(sdlInitialized && "VulkanWindow class was not initialized. Call VulkanWindow::init() before VulkanWindow::create().");
 #elif defined(USE_PLATFORM_QT)
 	assert(qGuiApplication && "VulkanWindow class was not initialized. Call VulkanWindow::init() before VulkanWindow::create().");
@@ -1424,8 +1532,8 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	if(_wlSurface == nullptr)
 		throw runtime_error("wl_compositor_create_surface() failed.");
 
-	// update surface2windowMap
-	surface2windowMap.insert_or_assign(_wlSurface, this);
+	// update wlSurface2windowMap
+	wlSurface2windowMap.insert_or_assign(_wlSurface, this);
 
 	// create surface
 	_surface =
@@ -1438,6 +1546,36 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 		);
 	if(wl_display_flush(_display) == -1)
 		throw runtime_error("wl_display_flush() failed.");
+	return _surface;
+
+#elif defined(USE_PLATFORM_SDL3)
+
+	// init variables
+	_framePending = true;
+	_hiddenWindowFramePending = false;
+	_visible = false;
+	_minimized = false;
+
+	// create Vulkan window
+	_window = SDL_CreateWindow(
+		title,  // title
+		surfaceExtent.width, surfaceExtent.height,  // w,h
+		SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN  // flags
+	);
+	if(_window == nullptr)
+		throw runtime_error(string("VulkanWindow: SDL_CreateWindow() function failed. Error details: ") + SDL_GetError());
+
+	// set pointer to this
+	SDL_PropertiesID props = SDL_GetWindowProperties(_window);
+	if(props == 0)
+		throw runtime_error(string("VulkanWindow: SDL_GetWindowProperties() function failed. Error details: ") + SDL_GetError());
+	if(SDL_SetProperty(props, windowPointerName, this) != 0)
+		throw runtime_error(string("VulkanWindow: SDL_SetProperty() function failed. Error details: ") + SDL_GetError());
+
+	// create surface
+	if(!SDL_Vulkan_CreateSurface(_window, VkInstance(instance), nullptr, reinterpret_cast<VkSurfaceKHR*>(&_surface)))
+		throw runtime_error(string("VulkanWindow: SDL_Vulkan_CreateSurface() function failed. Error details: ") + SDL_GetError());
+
 	return _surface;
 
 #elif defined(USE_PLATFORM_SDL2)
@@ -1677,6 +1815,12 @@ void VulkanWindow::renderFrame()
 #elif defined(USE_PLATFORM_WAYLAND)
 		// do nothing here
 		// because _surfaceExtent is set in _xdgToplevelListener's configure callback
+#elif defined(USE_PLATFORM_SDL3)
+		// get surface size using SDL
+		if(SDL_GetWindowSizeInPixels(_window, reinterpret_cast<int*>(&_surfaceExtent.width), reinterpret_cast<int*>(&_surfaceExtent.height)) != 0)
+			throw runtime_error(string("VulkanWindow: SDL_GetWindowSizeInPixels() function failed. Error details: ") + SDL_GetError());
+		_surfaceExtent.width  = clamp(_surfaceExtent.width,  surfaceCapabilities.minImageExtent.width,  surfaceCapabilities.maxImageExtent.width);
+		_surfaceExtent.height = clamp(_surfaceExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
 #elif defined(USE_PLATFORM_SDL2)
 		// get surface size using SDL
 		SDL_Vulkan_GetDrawableSize(_window, reinterpret_cast<int*>(&_surfaceExtent.width), reinterpret_cast<int*>(&_surfaceExtent.height));
@@ -2760,8 +2904,8 @@ void VulkanWindowPrivate::pointerListenerEnter(void* data, wl_pointer* pointer, 
 	wl_pointer_set_cursor(pointer, serial, _cursorSurface, _cursorHotspotX, _cursorHotspotY);
 
 	// get window pointer
-	auto it = surface2windowMap.find(surface);
-	if(it == surface2windowMap.end()) {
+	auto it = wlSurface2windowMap.find(surface);
+	if(it == wlSurface2windowMap.end()) {
 		// unknown window
 		windowUnderPointer = nullptr;
 		return;
@@ -2855,7 +2999,7 @@ void VulkanWindowPrivate::pointerListenerAxis(void* data, wl_pointer* pointer, u
 	}
 	if(windowUnderPointer->_mouseWheelCallback)
 		windowUnderPointer->_mouseWheelCallback(*windowUnderPointer, wheelX, wheelY,
-												windowUnderPointer->_mouseState);
+		                                        windowUnderPointer->_mouseState);
 }
 
 
@@ -2866,8 +3010,8 @@ void VulkanWindowPrivate::keyboardListenerKeymap(void* data, wl_keyboard* keyboa
 
 void VulkanWindowPrivate::keyboardListenerEnter(void* data, wl_keyboard* keyboard, uint32_t serial, wl_surface* surface, wl_array* keys)
 {
-	auto it = surface2windowMap.find(surface);
-	if(it == surface2windowMap.end()) {
+	auto it = wlSurface2windowMap.find(surface);
+	if(it == wlSurface2windowMap.end()) {
 		// unknown window
 		windowWithKbFocus = nullptr;
 		return;
@@ -2901,26 +3045,228 @@ void VulkanWindowPrivate::keyboardListenerModifiers(void* data, wl_keyboard* key
 }
 
 
+#elif defined(USE_PLATFORM_SDL3)
+
+
+const vector<const char*>& VulkanWindow::requiredExtensions()
+{
+	// SDL must be initialized to call this function
+	assert(sdlInitialized && "VulkanWindow::init() must be called before calling VulkanWindow::requiredExtensions().");
+
+	// get required instance extensions
+	Uint32 count;
+	const char* const* p = SDL_Vulkan_GetInstanceExtensions(&count);
+	if(p == nullptr)
+		throw runtime_error("VulkanWindow: SDL_Vulkan_GetInstanceExtensions() function failed.");
+	sdlRequiredExtensions.clear();
+	sdlRequiredExtensions.reserve(count);
+	for(Uint32 i=0; i<count; i++)
+		sdlRequiredExtensions.emplace_back(p[i]);
+	return sdlRequiredExtensions;
+}
+
+
+vector<const char*>& VulkanWindow::appendRequiredExtensions(vector<const char*>& v)  { auto& l=requiredExtensions(); v.insert(v.end(), l.begin(), l.end()); return v; }
+uint32_t VulkanWindow::requiredExtensionCount()  { return uint32_t(requiredExtensions().size()); }
+const char* const* VulkanWindow::requiredExtensionNames()  { return requiredExtensions().data(); }
+
+
+void VulkanWindow::show()
+{
+	// asserts for valid usage
+	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
+	assert(_recreateSwapchainCallback && "Recreate swapchain callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setRecreateSwapchainCallback() before VulkanWindow::mainLoop().");
+	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
+
+	// do nothing on already shown window
+	if(_visible)
+		return;
+
+	// show window
+	if(SDL_ShowWindow(_window) == 0)
+		_visible = true;
+	else
+		throw runtime_error(string("VulkanWindow: SDL_ShowWindow() function failed. Error details: ") + SDL_GetError());
+}
+
+
+void VulkanWindow::hide()
+{
+	// assert for valid usage
+	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
+
+	// do nothing on already hidden window
+	if(_visible == false)
+		return;
+
+	// hide window
+	// and set _visible flag immediately
+	if(SDL_HideWindow(_window) == 0)
+		_visible = false;
+	else
+		throw runtime_error(string("VulkanWindow: SDL_HideWindow() function failed. Error details: ") + SDL_GetError());
+}
+
+
+void VulkanWindow::mainLoop()
+{
+	// main loop
+	SDL_Event event;
+	running = true;
+	do {
+
+		// get event
+		// (wait for one if no events are in the queue yet)
+		if(SDL_WaitEvent(&event) == SDL_FALSE)
+			throw runtime_error(string("VulkanWindow: SDL_WaitEvent() function failed. Error details: ") + SDL_GetError());
+
+		// convert SDL_WindowID to VulkanWindow*
+		auto getWindow =
+			[](SDL_WindowID windowID) -> VulkanWindow* {
+				SDL_Window* w = SDL_GetWindowFromID(windowID);
+				SDL_PropertiesID props = SDL_GetWindowProperties(w);
+				if(props == 0)
+					throw runtime_error(string("VulkanWindow: SDL_GetWindowProperties() function failed. Error details: ") + SDL_GetError());
+				void* p = SDL_GetProperty(props, windowPointerName, nullptr);
+				if(p == nullptr)
+					throw runtime_error(string("VulkanWindow: The property holding this pointer not set for the SDL_Window."));
+				return reinterpret_cast<VulkanWindow*>(p);
+			};
+
+		// handle event
+		// (Make sure that all event types (event.type) handled here, such as SDL_WINDOWEVENT,
+		// are removed from the queue in VulkanWindow::destroy().
+		// Otherwise we might receive events of already non-existing window.)
+		switch(event.type) {
+
+		case SDL_EVENT_WINDOW_EXPOSED: {
+			VulkanWindow* w = getWindow(event.window.windowID);
+			w->_framePending = false;
+			if(w->_visible && !w->_minimized)
+				w->renderFrame();
+			break;
+		}
+
+		case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: {
+			cout << "Size changed event" << endl;
+			VulkanWindow* w = getWindow(event.window.windowID);
+			w->scheduleSwapchainResize();
+			break;
+		}
+
+		case SDL_EVENT_WINDOW_SHOWN: {
+			cout << "Shown event" << endl;
+			VulkanWindow* w = getWindow(event.window.windowID);
+			w->_visible = true;
+			w->_minimized = false;
+			if(w->_hiddenWindowFramePending) {
+				w->_hiddenWindowFramePending = false;
+				w->scheduleFrame();
+			}
+			break;
+		}
+
+		case SDL_EVENT_WINDOW_HIDDEN: {
+			cout << "Hidden event" << endl;
+			VulkanWindow* w = getWindow(event.window.windowID);
+			w->_visible = false;
+			if(w->_framePending) {
+				w->_hiddenWindowFramePending = true;
+				w->_framePending = false;
+			}
+			break;
+		}
+
+		case SDL_EVENT_WINDOW_MINIMIZED: {
+			cout << "Minimized event" << endl;
+			VulkanWindow* w = getWindow(event.window.windowID);
+			w->_minimized = true;
+			if(w->_framePending) {
+				w->_hiddenWindowFramePending = true;
+				w->_framePending = false;
+			}
+			break;
+		}
+
+		case SDL_EVENT_WINDOW_RESTORED: {
+			cout << "Restored event" << endl;
+			VulkanWindow* w = getWindow(event.window.windowID);
+			w->_minimized = false;
+			if(w->_hiddenWindowFramePending) {
+				w->_hiddenWindowFramePending = false;
+				w->scheduleFrame();
+			}
+			break;
+		}
+
+		case SDL_EVENT_WINDOW_CLOSE_REQUESTED: {
+			cout << "Close event" << endl;
+			VulkanWindow* w = getWindow(event.window.windowID);
+			if(w->_closeCallback)
+				w->_closeCallback(*w);  // VulkanWindow object might be already destroyed when returning from the callback
+			else {
+				w->hide();
+				VulkanWindow::exitMainLoop();
+			}
+			break;
+		}
+
+		case SDL_EVENT_QUIT:  // SDL_EVENT_QUIT is generated on variety of reasons,
+		                      // including SIGINT and SIGTERM, or pressing Command-Q on Mac OS X.
+		                      // By default, it would also be generated by SDL on the last window close.
+		                      // This would interfere with VulkanWindow expected behaviour to exit main loop after the call of exitMainLoop().
+		                      // So, we disabled it by SDL_HINT_QUIT_ON_LAST_WINDOW_CLOSE hint that is available since SDL 2.0.22.
+			return;
+		}
+
+	} while(running);
+}
+
+
+void VulkanWindow::exitMainLoop()
+{
+	running = false;
+}
+
+
+void VulkanWindow::scheduleFrame()
+{
+	// assert for valid usage
+	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
+
+	if(_framePending)
+		return;
+
+	// handle invisible and minimized window
+	if(_visible==false || _minimized) {
+		_hiddenWindowFramePending = true;
+		return;
+	}
+
+	_framePending = true;
+
+	SDL_Event e;
+	e.window.type = SDL_EVENT_WINDOW_EXPOSED;
+	e.window.timestamp = SDL_GetTicksNS();
+	e.window.windowID = SDL_GetWindowID(_window);
+	e.window.data1 = 0;
+	e.window.data2 = 0;
+	SDL_PushEvent(&e);
+}
+
+
 #elif defined(USE_PLATFORM_SDL2)
 
 
 const vector<const char*>& VulkanWindow::requiredExtensions()
 {
+	// SDL must be initialized to call this function
+	assert(sdlInitialized && "VulkanWindow::init() must be called before calling VulkanWindow::requiredExtensions().");
+
 	// cache the result in static local variable
 	// so extension list is constructed only once
 	static const vector<const char*> l =
 		[]() {
-
-			// init SDL video subsystem
-			struct SDL {
-				SDL() {
-					if(SDL_InitSubSystem(SDL_INIT_VIDEO) != 0)
-						throw runtime_error(string("VulkanWindow: SDL_InitSubSystem(SDL_INIT_VIDEO) function failed. Error details: ") + SDL_GetError());
-				}
-				~SDL() {
-					SDL_QuitSubSystem(SDL_INIT_VIDEO);
-				}
-			} sdl;
 
 			// create temporary Vulkan window
 			unique_ptr<SDL_Window,void(*)(SDL_Window*)> tmpWindow(
@@ -3032,7 +3378,7 @@ void VulkanWindow::mainLoop()
 
 		// get event
 		// (wait for one if no events are in the queue yet)
-		if(SDL_WaitEvent(&event) == 0)  // want for events
+		if(SDL_WaitEvent(&event) == 0)
 			throw runtime_error(string("VulkanWindow: SDL_WaitEvent() function failed. Error details: ") + SDL_GetError());
 
 		// handle event

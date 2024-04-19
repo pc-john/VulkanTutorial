@@ -79,7 +79,7 @@ protected:
 	void* _hwnd = nullptr;  // void* is used instead of HWND type to avoid #include <windows.h>
 	enum class FramePendingState { NotPending, Pending, TentativePending };
 	FramePendingState _framePendingState;
-	bool _visible;
+	bool _visible = false;
 	bool _hiddenWindowFramePending;
 
 	static inline void* _hInstance = 0;  // void* is used instead of HINSTANCE type to avoid #include <windows.h>
@@ -91,7 +91,7 @@ protected:
 
 	unsigned long _window = 0;  // unsigned long is used for Window type
 	bool _framePending;
-	bool _visible;
+	bool _visible = false;
 	bool _fullyObscured;
 	bool _iconVisible;
 	bool _minimized;
@@ -137,12 +137,12 @@ protected:
 	static inline const std::vector<const char*> _requiredInstanceExtensions =
 		{ "VK_KHR_surface", "VK_KHR_wayland_surface" };
 
-#elif defined(USE_PLATFORM_SDL2)
+#elif defined(USE_PLATFORM_SDL3) || defined(USE_PLATFORM_SDL2)
 
 	struct SDL_Window* _window = nullptr;
 	bool _framePending;
 	bool _hiddenWindowFramePending;
-	bool _visible;
+	bool _visible = false;
 	bool _minimized;
 
 #elif defined(USE_PLATFORM_GLFW)
@@ -187,7 +187,7 @@ public:
 
 	// construction and destruction
 	VulkanWindow() = default;
-	VulkanWindow(VulkanWindow&& other);
+	VulkanWindow(VulkanWindow&& other) noexcept;
 	~VulkanWindow();
 	void destroy() noexcept;
 	VulkanWindow& operator=(VulkanWindow&& rhs) noexcept;
@@ -241,6 +241,8 @@ public:
 	static inline std::exception_ptr thrownException;
 
 	// required Vulkan Instance extensions
+	// (calling VulkanWindow::requiredExtensions() requires already initialized QGuiApplication on Qt,
+	// and VulkanWindow::init(...) already called on SDL and GLFW)
 	static const std::vector<const char*>& requiredExtensions();
 	static std::vector<const char*>& appendRequiredExtensions(std::vector<const char*>& v);
 	static uint32_t requiredExtensionCount();
@@ -274,7 +276,7 @@ inline const std::function<VulkanWindow::MouseWheelCallback>& VulkanWindow::mous
 inline const std::function<VulkanWindow::KeyCallback>& VulkanWindow::keyCallback() const  { return _keyCallback; }
 inline vk::SurfaceKHR VulkanWindow::surface() const  { return _surface; }
 inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return _surfaceExtent; }
-#if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_SDL2) || defined(USE_PLATFORM_GLFW)
+#if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_SDL3) || defined(USE_PLATFORM_SDL2) || defined(USE_PLATFORM_GLFW)
 inline bool VulkanWindow::isVisible() const  { return _visible; }
 #elif defined(USE_PLATFORM_WAYLAND)
 inline bool VulkanWindow::isVisible() const  { return _xdgSurface != nullptr; }
