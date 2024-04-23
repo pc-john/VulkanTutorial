@@ -934,11 +934,17 @@ VulkanWindow::~VulkanWindow()
 
 void VulkanWindow::destroy() noexcept
 {
-	// destroy surface
-	// except Qt platform
+	// destroy surface except Qt platform
 #if !defined(USE_PLATFORM_QT)
-	if(_instance && _surface) {
-		_instance.destroy(_surface);
+	if(_instance && _surface)
+	{
+		// get function pointer
+		// (we do not store the pointer because it is used only once in life-time of the VulkanWindow)
+		PFN_vkDestroySurfaceKHR vulkanDestroySurfaceKHR =
+			reinterpret_cast<PFN_vkDestroySurfaceKHR>(_vulkanGetInstanceProcAddr(_instance, "vkDestroySurfaceKHR"));
+
+		// destroy surface
+		vulkanDestroySurfaceKHR(_instance, _surface, nullptr);
 		_surface = nullptr;
 	}
 #else
@@ -1423,7 +1429,8 @@ VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
 }
 
 
-vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title)
+vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title,
+                                    PFN_vkGetInstanceProcAddr getInstanceProcAddr)
 {
 	// asserts for valid usage
 	assert(instance && "The parameter instance must not be null.");
@@ -1446,6 +1453,15 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 
 	// set surface extent
 	_surfaceExtent = surfaceExtent;
+
+	// set Vulkan function pointers
+	_vulkanGetInstanceProcAddr = getInstanceProcAddr;
+	if(_vulkanGetInstanceProcAddr == nullptr)
+		throw runtime_error("VulkanWindow: getInstanceProcAddr parameter passed into VulkanWindow::create() must not be nullptr.");
+	_vulkanGetPhysicalDeviceSurfaceCapabilitiesKHR = reinterpret_cast<PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR>(
+		getInstanceProcAddr(_instance, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR"));
+	if(_vulkanGetPhysicalDeviceSurfaceCapabilitiesKHR == nullptr)
+		throw runtime_error("VulkanWindow: Failed to get vkGetPhysicalDeviceSurfaceCapabilitiesKHR function pointer.");
 
 #if defined(USE_PLATFORM_WIN32)
 
@@ -1476,14 +1492,26 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	SetWindowLongPtr(HWND(_hwnd), 0, LONG_PTR(this));
 
 	// create surface
-	_surface =
-		instance.createWin32SurfaceKHR(
-			vk::Win32SurfaceCreateInfoKHR(
-				vk::Win32SurfaceCreateFlagsKHR(),  // flags
+	PFN_vkCreateWin32SurfaceKHR vulkanCreateWin32SurfaceKHR =
+		reinterpret_cast<PFN_vkCreateWin32SurfaceKHR>(getInstanceProcAddr(_instance, "vkCreateWin32SurfaceKHR"));
+	if(vulkanCreateWin32SurfaceKHR == nullptr)
+		throw runtime_error("VulkanWindow: Failed to get vkCreateWin32SurfaceKHR function pointer.");
+	VkResult r =
+		vulkanCreateWin32SurfaceKHR(
+			_instance,
+			&VkWin32SurfaceCreateInfoKHR{
+				VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,  // sType
+				nullptr,  // pNext
+				0,  // flags
 				HINSTANCE(_hInstance),  // hinstance
 				HWND(_hwnd)  // hwnd
-			)
+			},
+			nullptr,
+			reinterpret_cast<VkSurfaceKHR*>(&_surface)
 		);
+	if(r != VK_SUCCESS)
+		throw runtime_error(string("VulkanWindow: vkCreateWin32SurfaceKHR() failed (return code: ") + to_string(r) + ").");
+
 	return _surface;
 
 #elif defined(USE_PLATFORM_XLIB)
@@ -1793,17 +1821,41 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 }
 
 
+void VulkanWindow::setDevice(vk::Device device, vk::PhysicalDevice physicalDevice)
+{
+	assert(_instance && "VulkanWindow::setDevice(): Call VulkanWindow::create() first.");
+
+	_physicalDevice = physicalDevice;
+	_device = device;
+
+	// initialize vkDeviceWaitIdle function pointer
+	PFN_vkGetDeviceProcAddr vulkanGetDeviceProcAddr = reinterpret_cast<PFN_vkGetDeviceProcAddr>(
+		_vulkanGetInstanceProcAddr(_instance, "vkGetDeviceProcAddr"));
+	if(vulkanGetDeviceProcAddr == nullptr)
+		throw runtime_error("VulkanWindow: Failed to get vkGetDeviceProcAddr function pointer.");
+	_vulkanDeviceWaitIdle = reinterpret_cast<PFN_vkDeviceWaitIdle>(
+		vulkanGetDeviceProcAddr(_device, "vkDeviceWaitIdle"));
+	if(_vulkanDeviceWaitIdle == nullptr)
+		throw runtime_error("VulkanWindow: Failed to get vkDeviceWaitIdle function pointer.");
+}
+
+
 void VulkanWindow::renderFrame()
 {
 	// assert for valid usage
 	assert(_surface && "VulkanWindow::_surface is null, indicating invalid VulkanWindow object. Call VulkanWindow::create() to initialize it.");
+	assert(_device && "VulkanWindow::_device is null, indicating invalid VulkanWindow object. Call VulkanWindow::setDevice() before the first frame is rendered.");
 
 	// recreate swapchain if requested
 	if(_swapchainResizePending) {
 
 		// make sure that we finished all the rendering
 		// (this is necessary for swapchain re-creation)
-		_device.waitIdle();
+		VkResult r =
+			_vulkanDeviceWaitIdle(_device);
+		if(r != VK_SUCCESS)
+			throw runtime_error(string("VulkanWindow: vkDeviceWaitIdle() failed "
+			                    "(return code: ") + to_string(r) + ").");
 
 		// get surface capabilities
 		// On Win32 and Xlib, currentExtent, minImageExtent and maxImageExtent of returned surfaceCapabilites are all equal.
@@ -1813,7 +1865,16 @@ void VulkanWindow::renderFrame()
 		// On Wayland, currentExtent might be 0xffffffff, 0xffffffff with the meaning that the window extent
 		// will be determined by the extent of the swapchain.
 		// Wayland's minImageExtent is 1,1 and maxImageExtent is the maximum supported surface size.
-		vk::SurfaceCapabilitiesKHR surfaceCapabilities(_physicalDevice.getSurfaceCapabilitiesKHR(_surface));
+		VkSurfaceCapabilitiesKHR surfaceCapabilities;
+		r =
+			_vulkanGetPhysicalDeviceSurfaceCapabilitiesKHR(
+				_physicalDevice,
+				_surface,
+				&surfaceCapabilities
+			);
+		if(r != VK_SUCCESS)
+			throw runtime_error(string("VulkanWindow: vkGetPhysicalDeviceSurfaceCapabilities() failed "
+			                    "(return code: ") + to_string(r) + ").");
 
 #if defined(USE_PLATFORM_WIN32)
 		_surfaceExtent = surfaceCapabilities.currentExtent;

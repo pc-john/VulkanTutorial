@@ -292,6 +292,9 @@ void App::init()
 	graphicsQueue = device.getQueue(graphicsQueueFamily, 0);
 	presentationQueue = device.getQueue(presentationQueueFamily, 0);
 
+	// give window Vulkan device used for rendering
+	window.setDevice(device, physicalDevice);
+
 	// print surface formats
 	cout << "Surface formats:" << endl;
 	vector<vk::SurfaceFormatKHR> availableSurfaceFormats = physicalDevice.getSurfaceFormatsKHR(surface);
@@ -925,9 +928,7 @@ int main(int argc, char* argv[])
 			)
 		);
 		app.window.setFrameCallback(
-			bind(&App::frame, &app, placeholders::_1),
-			app.physicalDevice,
-			app.device
+			bind(&App::frame, &app, placeholders::_1)
 		);
 		app.window.setMouseMoveCallback(bind(&App::mouseMove, &app, placeholders::_1, placeholders::_2));
 		app.window.setMouseButtonCallback(bind(&App::mouseButton, &app, placeholders::_1, placeholders::_2, placeholders::_3, placeholders::_4));

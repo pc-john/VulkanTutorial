@@ -167,6 +167,9 @@ protected:
 	vk::PhysicalDevice _physicalDevice;
 	vk::Device _device;
 	vk::SurfaceKHR _surface;
+	PFN_vkGetInstanceProcAddr _vulkanGetInstanceProcAddr;
+	PFN_vkDeviceWaitIdle _vulkanDeviceWaitIdle;
+	PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR _vulkanGetPhysicalDeviceSurfaceCapabilitiesKHR;
 
 	vk::Extent2D _surfaceExtent = vk::Extent2D(0,0);
 	bool _swapchainResizePending = true;
@@ -199,7 +202,9 @@ public:
 	VulkanWindow& operator=(const VulkanWindow&) = delete;
 
 	// general methods
-	vk::SurfaceKHR create(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title = "Vulkan window");
+	vk::SurfaceKHR create(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title = "Vulkan window",
+	                      PFN_vkGetInstanceProcAddr getInstanceProcAddr = ::vkGetInstanceProcAddr);
+	void setDevice(vk::Device device, vk::PhysicalDevice physicalDevice);
 	void show();
 	void hide();
 	void setVisible(bool value);
@@ -210,8 +215,8 @@ public:
 	// callbacks
 	void setRecreateSwapchainCallback(std::function<RecreateSwapchainCallback>&& cb);
 	void setRecreateSwapchainCallback(const std::function<RecreateSwapchainCallback>& cb);
-	void setFrameCallback(std::function<FrameCallback>&& cb, vk::PhysicalDevice physicalDevice, vk::Device device);
-	void setFrameCallback(const std::function<FrameCallback>& cb, vk::PhysicalDevice physicalDevice, vk::Device device);
+	void setFrameCallback(std::function<FrameCallback>&& cb);
+	void setFrameCallback(const std::function<FrameCallback>& cb);
 	void setCloseCallback(std::function<CloseCallback>&& cb);
 	void setCloseCallback(const std::function<CloseCallback>& cb);
 	void setMouseMoveCallback(std::function<MouseMoveCallback>&& cb);
@@ -257,8 +262,8 @@ public:
 inline void VulkanWindow::setVisible(bool value)  { if(value) show(); else hide(); }
 inline void VulkanWindow::setRecreateSwapchainCallback(std::function<RecreateSwapchainCallback>&& cb)  { _recreateSwapchainCallback = move(cb); }
 inline void VulkanWindow::setRecreateSwapchainCallback(const std::function<RecreateSwapchainCallback>& cb)  { _recreateSwapchainCallback = cb; }
-inline void VulkanWindow::setFrameCallback(std::function<FrameCallback>&& cb, vk::PhysicalDevice physicalDevice, vk::Device device)  { _frameCallback = std::move(cb); _physicalDevice = physicalDevice; _device = device; }
-inline void VulkanWindow::setFrameCallback(const std::function<FrameCallback>& cb, vk::PhysicalDevice physicalDevice, vk::Device device)  { _frameCallback = cb; _physicalDevice = physicalDevice; _device = device; }
+inline void VulkanWindow::setFrameCallback(std::function<FrameCallback>&& cb)  { _frameCallback = std::move(cb); }
+inline void VulkanWindow::setFrameCallback(const std::function<FrameCallback>& cb)  { _frameCallback = cb; }
 inline void VulkanWindow::setCloseCallback(std::function<CloseCallback>&& cb)  { _closeCallback = move(cb); }
 inline void VulkanWindow::setCloseCallback(const std::function<CloseCallback>& cb)  { _closeCallback = cb; }
 inline void VulkanWindow::setMouseMoveCallback(std::function<MouseMoveCallback>&& cb)  { _mouseMoveCallback = move(cb); }
