@@ -1,6 +1,11 @@
 #include "VulkanWindow.h"
 #if defined(USE_PLATFORM_WIN32)
-# define NOMINMAX  // avoid the definition of min and max macros by windows.h
+# ifndef NOMINMAX
+#  define NOMINMAX  // avoid the definition of min and max macros by windows.h
+# endif
+# ifndef WIN32_LEAN_AND_MEAN
+# define WIN32_LEAN_AND_MEAN  // reduce amount of included files by windows.h
+# endif
 # include <windows.h>
 # include <windowsx.h>
 # include <tchar.h>

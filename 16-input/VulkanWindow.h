@@ -158,6 +158,8 @@ protected:
 	class QWindow* _window = nullptr;
 	friend class QtRenderingWindow;
 
+#else
+# error "Define one of USE_PLATFORM_* macros to use VulkanWindow."
 #endif
 
 	std::function<FrameCallback> _frameCallback;
