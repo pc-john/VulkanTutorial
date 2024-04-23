@@ -148,7 +148,6 @@ static bool running;  // bool indicating that application is running and it shal
 // Wayland global variables
 static bool externalDisplayHandle;
 static bool running;  // bool indicating that application is running and it shall not leave main loop
-static map<wl_surface*, VulkanWindow*> wlSurface2windowMap;
 static VulkanWindowPrivate* windowUnderPointer = nullptr;
 static VulkanWindowPrivate* windowWithKbFocus = nullptr;
 
@@ -497,7 +496,7 @@ static VulkanWindow::ScanCode translateScanCode(int sdlScanCode)
 {
 	if(sdlScanCode <= 0)
 		return VulkanWindow::ScanCode::Unknown;
-	if(sdlScanCode >= sizeof(scanCodeConversionTable)/sizeof(VulkanWindow::ScanCode))
+	if(sdlScanCode >= int(sizeof(scanCodeConversionTable)/sizeof(VulkanWindow::ScanCode)))
 		return VulkanWindow::ScanCode(1000 + sdlScanCode);
 	VulkanWindow::ScanCode scanCode = scanCodeConversionTable[sdlScanCode];
 	if(scanCode == VulkanWindow::ScanCode::Unknown)
@@ -974,9 +973,6 @@ void VulkanWindow::destroy() noexcept
 
 #elif defined(USE_PLATFORM_WAYLAND)
 
-	// erase from global map
-	wlSurface2windowMap.erase(_wlSurface);
-
 	// invalidate pointers to this object
 	// (maybe, leave events are sent on surface destroy and these are not necessary (?))
 	if(windowUnderPointer == this)
@@ -988,6 +984,10 @@ void VulkanWindow::destroy() noexcept
 	if(_scheduledFrameCallback) {
 		wl_callback_destroy(_scheduledFrameCallback);
 		_scheduledFrameCallback = nullptr;
+	}
+	if(_libdecorFrame) {
+		libdecor_frame_unref(_libdecorFrame);
+		_libdecorFrame = nullptr;
 	}
 	if(_decoration) {
 		zxdg_toplevel_decoration_v1_destroy(_decoration);
@@ -1162,6 +1162,8 @@ VulkanWindow::VulkanWindow(VulkanWindow&& other) noexcept
 	// move Wayland members
 	_wlSurface = other._wlSurface;
 	other._wlSurface = nullptr;
+	if(_wlSurface)
+		wl_surface_set_user_data(_wlSurface, this);
 	_xdgSurface = other._xdgSurface;
 	other._xdgSurface = nullptr;
 	if(_xdgSurface)
@@ -1172,6 +1174,10 @@ VulkanWindow::VulkanWindow(VulkanWindow&& other) noexcept
 		xdg_toplevel_set_user_data(_xdgTopLevel, this);
 	_decoration = other._decoration;
 	other._decoration = nullptr;
+	_libdecorFrame = other._libdecorFrame;
+	other._libdecorFrame = nullptr;
+	if(_libdecorFrame)
+		libdecor_frame_set_user_data(_libdecorFrame, this);
 	_scheduledFrameCallback = other._scheduledFrameCallback;
 	other._scheduledFrameCallback = nullptr;
 	if(_scheduledFrameCallback)
@@ -1180,16 +1186,11 @@ VulkanWindow::VulkanWindow(VulkanWindow&& other) noexcept
 	_forcedFrame = other._forcedFrame;
 	_title = move(other._title);
 
-	// update global map
-	auto it = wlSurface2windowMap.find(_wlSurface);
-	if(it != wlSurface2windowMap.end())
-		it->second = this;
-
 	// update pointers to this object
-	if(windowUnderPointer == other)
-		windowUnderPointer = this;
-	if(windowWithKbFocus == other)
-		windowWithKbFocus = this;
+	if(windowUnderPointer == &other)
+		windowUnderPointer = static_cast<VulkanWindowPrivate*>(this);
+	if(windowWithKbFocus == &other)
+		windowWithKbFocus = static_cast<VulkanWindowPrivate*>(this);
 
 #elif defined(USE_PLATFORM_SDL3)
 
@@ -1310,6 +1311,8 @@ VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
 	// move Wayland members
 	_wlSurface = other._wlSurface;
 	other._wlSurface = nullptr;
+	if(_wlSurface)
+		wl_surface_set_user_data(_wlSurface, this);
 	_xdgSurface = other._xdgSurface;
 	other._xdgSurface = nullptr;
 	if(_xdgSurface)
@@ -1320,6 +1323,10 @@ VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
 		xdg_toplevel_set_user_data(_xdgTopLevel, this);
 	_decoration = other._decoration;
 	other._decoration = nullptr;
+	_libdecorFrame = other._libdecorFrame;
+	other._libdecorFrame = nullptr;
+	if(_libdecorFrame)
+		libdecor_frame_set_user_data(_libdecorFrame, this);
 	_scheduledFrameCallback = other._scheduledFrameCallback;
 	other._scheduledFrameCallback = nullptr;
 	if(_scheduledFrameCallback)
@@ -1327,16 +1334,11 @@ VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
 	_forcedFrame = other._forcedFrame;
 	_title = move(other._title);
 
-	// update global map
-	auto it = wlSurface2windowMap.find(_wlSurface);
-	if(it != wlSurface2windowMap.end())
-		it->second = this;
-
 	// update pointers to this object
-	if(windowUnderPointer == other)
-		windowUnderPointer = this;
-	if(windowWithKbFocus == other)
-		windowWithKbFocus = this;
+	if(windowUnderPointer == &other)
+		windowUnderPointer = static_cast<VulkanWindowPrivate*>(this);
+	if(windowWithKbFocus == &other)
+		windowWithKbFocus = static_cast<VulkanWindowPrivate*>(this);
 
 #elif defined(USE_PLATFORM_SDL3)
 
@@ -1532,8 +1534,8 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	if(_wlSurface == nullptr)
 		throw runtime_error("wl_compositor_create_surface() failed.");
 
-	// update wlSurface2windowMap
-	wlSurface2windowMap.insert_or_assign(_wlSurface, this);
+	// associate surface with VulkanWindow
+	wl_surface_set_user_data(_wlSurface, this);
 
 	// create surface
 	_surface =
@@ -2620,7 +2622,7 @@ void VulkanWindow::show()
 	assert(_frameCallback && "Frame callback need to be set before VulkanWindow::mainLoop() call. Please, call VulkanWindow::setFrameCallback() before VulkanWindow::mainLoop().");
 
 	// check for already shown window
-	if(_xdgSurface)
+	if(_xdgSurface || _libdecorFrame)
 		return;
 
 	if(_libdecorContext)
@@ -2654,6 +2656,7 @@ void VulkanWindow::show()
 			throw runtime_error("xdg_toplevel_add_listener() failed.");
 		wl_surface_commit(_wlSurface);
 	}
+
 	_forcedFrame = true;
 	_swapchainResizePending = true;
 }
@@ -2666,7 +2669,7 @@ void VulkanWindowPrivate::xdgToplevelListenerConfigure(void* data, xdg_toplevel*
 	// if width or height of the window changed,
 	// schedule swapchain resize and force new frame rendering
 	// (width and height of zero means that the compositor does not know the window dimension)
-	VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(data);
+	VulkanWindowPrivate* w = static_cast<VulkanWindowPrivate*>(data);
 	if(uint32_t(width) != w->_surfaceExtent.width && width != 0) {
 		w->_surfaceExtent.width = width;
 		if(uint32_t(height) != w->_surfaceExtent.height && height != 0)
@@ -2683,7 +2686,7 @@ void VulkanWindowPrivate::xdgToplevelListenerConfigure(void* data, xdg_toplevel*
 void VulkanWindowPrivate::xdgSurfaceListenerConfigure(void* data, xdg_surface* xdgSurface, uint32_t serial)
 {
 	cout << "surface configure" << endl;
-	VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(data);
+	VulkanWindowPrivate* w = static_cast<VulkanWindowPrivate*>(data);
 	xdg_surface_ack_configure(xdgSurface, serial);
 	wl_surface_commit(w->_wlSurface);
 
@@ -2755,7 +2758,7 @@ void VulkanWindowPrivate::libdecorFrameDismissPopup(libdecor_frame* frame, const
 
 void VulkanWindowPrivate::xdgToplevelListenerClose(void* data, xdg_toplevel* xdgTopLevel)
 {
-	VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(data);
+	VulkanWindowPrivate* w = static_cast<VulkanWindowPrivate*>(data);
 	if(w->_closeCallback)
 		w->_closeCallback(*w);  // VulkanWindow object might be already destroyed when returning from the callback
 	else {
@@ -2767,7 +2770,7 @@ void VulkanWindowPrivate::xdgToplevelListenerClose(void* data, xdg_toplevel* xdg
 
 void VulkanWindowPrivate::libdecorFrameClose(libdecor_frame* frame, void* data)
 {
-	VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(data);
+	VulkanWindowPrivate* w = static_cast<VulkanWindowPrivate*>(data);
 	if(w->_closeCallback)
 		w->_closeCallback(*w);  // VulkanWindow object might be already destroyed when returning from the callback
 	else {
@@ -2792,6 +2795,8 @@ void VulkanWindow::hide()
 	if(_libdecorFrame) {
 		libdecor_frame_unref(_libdecorFrame);
 		_libdecorFrame = nullptr;
+		wl_surface_attach(_wlSurface, NULL, 0, 0);
+		wl_surface_commit(_wlSurface);
 	}
 	if(_decoration) {
 		zxdg_toplevel_decoration_v1_destroy(_decoration);
@@ -2862,7 +2867,7 @@ void VulkanWindow::scheduleFrame()
 void VulkanWindowPrivate::frameListenerDone(void *data, wl_callback* cb, uint32_t time)
 {
 	cout << "cb" << flush;
-	VulkanWindowPrivate* w = reinterpret_cast<VulkanWindowPrivate*>(data);
+	VulkanWindowPrivate* w = static_cast<VulkanWindowPrivate*>(data);
 	w->_scheduledFrameCallback = nullptr;
 	w->renderFrame();
 }
@@ -2904,19 +2909,14 @@ void VulkanWindowPrivate::pointerListenerEnter(void* data, wl_pointer* pointer, 
 	wl_pointer_set_cursor(pointer, serial, _cursorSurface, _cursorHotspotX, _cursorHotspotY);
 
 	// get window pointer
-	auto it = wlSurface2windowMap.find(surface);
-	if(it == wlSurface2windowMap.end()) {
-		// unknown window
-		windowUnderPointer = nullptr;
-		return;
-	}
-	windowUnderPointer = static_cast<VulkanWindowPrivate*>(it->second);
+	windowUnderPointer = static_cast<VulkanWindowPrivate*>(wl_surface_get_user_data(surface));
+	assert(windowUnderPointer && "wl_surface userData does not contain pointer to VulkanWindow.");
 
 	// update mouse state
 	int x = surface_x >> 8;
 	int y = surface_y >> 8;
 	if(windowUnderPointer->_mouseState.posX != x ||
-		windowUnderPointer->_mouseState.posY != y)
+	   windowUnderPointer->_mouseState.posY != y)
 	{
 		windowUnderPointer->_mouseState.relX = 0;
 		windowUnderPointer->_mouseState.relY = 0;
@@ -2943,7 +2943,7 @@ void VulkanWindowPrivate::pointerListenerMotion(void* data, wl_pointer* pointer,
 	int x = surface_x >> 8;
 	int y = surface_y >> 8;
 	if(windowUnderPointer->_mouseState.posX != x ||
-		windowUnderPointer->_mouseState.posY != y)
+	   windowUnderPointer->_mouseState.posY != y)
 	{
 		windowUnderPointer->_mouseState.relX = x - windowUnderPointer->_mouseState.posX;
 		windowUnderPointer->_mouseState.relY = y - windowUnderPointer->_mouseState.posY;
@@ -3010,13 +3010,8 @@ void VulkanWindowPrivate::keyboardListenerKeymap(void* data, wl_keyboard* keyboa
 
 void VulkanWindowPrivate::keyboardListenerEnter(void* data, wl_keyboard* keyboard, uint32_t serial, wl_surface* surface, wl_array* keys)
 {
-	auto it = wlSurface2windowMap.find(surface);
-	if(it == wlSurface2windowMap.end()) {
-		// unknown window
-		windowWithKbFocus = nullptr;
-		return;
-	}
-	windowWithKbFocus = static_cast<VulkanWindowPrivate*>(it->second);
+	windowWithKbFocus = static_cast<VulkanWindowPrivate*>(wl_surface_get_user_data(surface));
+	assert(windowWithKbFocus && "wl_surface userData does not contain pointer to VulkanWindow.");
 }
 
 

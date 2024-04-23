@@ -279,7 +279,7 @@ inline vk::Extent2D VulkanWindow::surfaceExtent() const  { return _surfaceExtent
 #if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_SDL3) || defined(USE_PLATFORM_SDL2) || defined(USE_PLATFORM_GLFW)
 inline bool VulkanWindow::isVisible() const  { return _visible; }
 #elif defined(USE_PLATFORM_WAYLAND)
-inline bool VulkanWindow::isVisible() const  { return _xdgSurface != nullptr; }
+inline bool VulkanWindow::isVisible() const  { return _xdgSurface != nullptr || _libdecorFrame != nullptr; }
 #endif
 inline void VulkanWindow::scheduleSwapchainResize()  { _swapchainResizePending = true; scheduleFrame(); }
 #if defined(USE_PLATFORM_WIN32) || defined(USE_PLATFORM_XLIB) || defined(USE_PLATFORM_WAYLAND)
