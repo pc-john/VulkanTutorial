@@ -167,7 +167,7 @@ protected:
 	vk::PhysicalDevice _physicalDevice;
 	vk::Device _device;
 	vk::SurfaceKHR _surface;
-	PFN_vkGetInstanceProcAddr _vulkanGetInstanceProcAddr;
+	PFN_vkGetInstanceProcAddr _vulkanGetInstanceProcAddr = nullptr;
 	PFN_vkDeviceWaitIdle _vulkanDeviceWaitIdle;
 	PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR _vulkanGetPhysicalDeviceSurfaceCapabilitiesKHR;
 

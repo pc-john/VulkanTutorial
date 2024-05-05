@@ -26,6 +26,7 @@
 # include "SDL.h"
 # include "SDL_vulkan.h"
 # include <cmath>
+# include <memory>
 #elif defined(USE_PLATFORM_GLFW)
 # define GLFW_INCLUDE_NONE  // do not include OpenGL headers
 # include <GLFW/glfw3.h>
@@ -1486,7 +1487,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 			NULL, NULL, HINSTANCE(_hInstance), NULL  // hWndParent, hMenu, hInstance, lpParam
 		);
 	if(_hwnd == NULL)
-		throw runtime_error("Cannot create window.");
+		throw runtime_error("VulkanWindow: Cannot create window. The function CreateWindowEx() failed.");
 
 	// store this pointer with the window data
 	SetWindowLongPtr(HWND(_hwnd), 0, LONG_PTR(this));
@@ -1498,16 +1499,16 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 		throw runtime_error("VulkanWindow: Failed to get vkCreateWin32SurfaceKHR function pointer.");
 	VkResult r =
 		vulkanCreateWin32SurfaceKHR(
-			_instance,
-			&VkWin32SurfaceCreateInfoKHR{
+			_instance,  // instance
+			&VkWin32SurfaceCreateInfoKHR{  // pCreateInfo
 				VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,  // sType
 				nullptr,  // pNext
 				0,  // flags
 				HINSTANCE(_hInstance),  // hinstance
 				HWND(_hwnd)  // hwnd
 			},
-			nullptr,
-			reinterpret_cast<VkSurfaceKHR*>(&_surface)
+			nullptr,  // pAllocator
+			reinterpret_cast<VkSurfaceKHR*>(&_surface)  // pSurface
 		);
 	if(r != VK_SUCCESS)
 		throw runtime_error(string("VulkanWindow: vkCreateWin32SurfaceKHR() failed (return code: ") + to_string(r) + ").");
@@ -1541,19 +1542,31 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 			&attr  // attributes
 		);
 	if(vulkanWindowMap.emplace(_window, this).second == false)
-		throw runtime_error("Window already exists.");
+		throw runtime_error("VulkanWindow: The window already exists.");
 	XSetStandardProperties(_display, _window, title, title, None, NULL, 0, NULL);
 	XSetWMProtocols(_display, _window, &_wmDeleteMessage, 1);
 
 	// create surface
-	_surface =
-		instance.createXlibSurfaceKHR(
-			vk::XlibSurfaceCreateInfoKHR(
-				vk::XlibSurfaceCreateFlagsKHR(),  // flags
+	PFN_vkCreateXlibSurfaceKHR vulkanCreateXlibSurfaceKHR =
+		reinterpret_cast<PFN_vkCreateXlibSurfaceKHR>(getInstanceProcAddr(_instance, "vkCreateXlibSurfaceKHR"));
+	if(vulkanCreateXlibSurfaceKHR == nullptr)
+		throw runtime_error("VulkanWindow: Failed to get vkCreateXlibSurfaceKHR function pointer.");
+	VkResult r =
+		vulkanCreateXlibSurfaceKHR(
+			instance,  // instance
+			&(const VkXlibSurfaceCreateInfoKHR&)VkXlibSurfaceCreateInfoKHR{  // pCreateInfo
+				VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR,  // sType
+				nullptr,  // pNext
+				0,  // flags
 				_display,  // dpy
 				_window  // window
-			)
+			},
+			nullptr,  // pAllocator
+			reinterpret_cast<VkSurfaceKHR*>(&_surface)  // pSurface
 		);
+	if(r != VK_SUCCESS)
+		throw runtime_error(string("VulkanWindow: vkCreateXlibSurfaceKHR() failed (return code: ") + to_string(r) + ").");
+
 	return _surface;
 
 #elif defined(USE_PLATFORM_WAYLAND)
@@ -1565,22 +1578,33 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	// create wl surface
 	_wlSurface = wl_compositor_create_surface(_compositor);
 	if(_wlSurface == nullptr)
-		throw runtime_error("wl_compositor_create_surface() failed.");
+		throw runtime_error("VulkanWindow: wl_compositor_create_surface() failed.");
 
 	// associate surface with VulkanWindow
 	wl_surface_set_user_data(_wlSurface, this);
 
 	// create surface
-	_surface =
-		instance.createWaylandSurfaceKHR(
-			vk::WaylandSurfaceCreateInfoKHR(
-				vk::WaylandSurfaceCreateFlagsKHR(),  // flags
+	PFN_vkCreateWaylandSurfaceKHR vulkanCreateWaylandSurfaceKHR =
+		reinterpret_cast<PFN_vkCreateWaylandSurfaceKHR>(getInstanceProcAddr(_instance, "vkCreateWaylandSurfaceKHR"));
+	if(vulkanCreateWaylandSurfaceKHR == nullptr)
+		throw runtime_error("VulkanWindow: Failed to get vkCreateWaylandSurfaceKHR function pointer.");
+	VkResult r =
+		vulkanCreateWaylandSurfaceKHR(
+			instance,  // instance
+			&(const VkWaylandSurfaceCreateInfoKHR&)VkWaylandSurfaceCreateInfoKHR{  // pCreateInfo
+				VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR,  // sType
+				nullptr,  // pNext
+				0,  // flags
 				_display,  // display
 				_wlSurface  // surface
-			)
+			},
+			nullptr,  // pAllocator
+			reinterpret_cast<VkSurfaceKHR*>(&_surface)  // pSurface
 		);
+	if(r != VK_SUCCESS)
+		throw runtime_error(string("VulkanWindow: vkCreateWaylandSurfaceKHR() failed (return code: ") + to_string(r) + ").");
 	if(wl_display_flush(_display) == -1)
-		throw runtime_error("wl_display_flush() failed.");
+		throw runtime_error("VulkanWindow: wl_display_flush() failed.");
 	return _surface;
 
 #elif defined(USE_PLATFORM_SDL3)
@@ -1682,7 +1706,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 
 			w->_minimized = iconified;
 
-			if(w->_minimized)
+			if(w->_minimized) {
 				// cancel pending frame, if any, on window minimalization
 				if(w->_framePendingState != FramePendingState::NotPending) {
 					w->_framePendingState = FramePendingState::NotPending;
@@ -1693,6 +1717,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 							break;
 						}
 				}
+			}
 			else
 				// schedule frame on window un-minimalization
 				w->scheduleFrame();
@@ -2494,7 +2519,7 @@ void VulkanWindow::mainLoop()
 
 		// configure event
 		if(e.type == ConfigureNotify) {
-			if(e.xconfigure.width != w->_surfaceExtent.width || e.xconfigure.height != w->_surfaceExtent.height) {
+			if(e.xconfigure.width != int(w->_surfaceExtent.width) || e.xconfigure.height != int(w->_surfaceExtent.height)) {
 				cout << "Configure event " << e.xconfigure.width << "x" << e.xconfigure.height << endl;
 				w->scheduleSwapchainResize();
 			}
