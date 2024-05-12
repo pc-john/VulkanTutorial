@@ -33,7 +33,7 @@ public:
 	void frame(VulkanWindow& window);
 	void mouseMove(VulkanWindow& window, const VulkanWindow::MouseState& mouseState);
 	void mouseButton(VulkanWindow&, size_t button, VulkanWindow::ButtonState buttonState, const VulkanWindow::MouseState& mouseState);
-	void mouseWheel(VulkanWindow& window, int wheelX, int wheelY, const VulkanWindow::MouseState& mouseState);
+	void mouseWheel(VulkanWindow& window, float wheelX, float wheelY, const VulkanWindow::MouseState& mouseState);
 	void key(VulkanWindow& window, VulkanWindow::KeyState keyState, VulkanWindow::ScanCode scanCode);
 
 	// Vulkan instance must be destructed as the last Vulkan handle.
@@ -76,7 +76,7 @@ public:
 	float valueGradient = -1.f;
 	uint32_t windowHeight;
 	float minX, minY, maxX, maxY;
-	void setView(int coordX, int coordY, float valueX, float valueY);
+	void setView(float coordX, float coordY, float valueX, float valueY);
 
 };
 
@@ -680,17 +680,17 @@ void App::recreateSwapchain(VulkanWindow&, const vk::SurfaceCapabilitiesKHR& sur
 	// set view
 	if(valueGradient == -1.f) {
 		valueGradient = 4.f / newSurfaceExtent.height;
-		setView(newSurfaceExtent.width/2, newSurfaceExtent.height/2, 0.f, 0.f);
+		setView(float(newSurfaceExtent.width)/2, float(newSurfaceExtent.height)/2, 0.f, 0.f);
 	}
 	else {
 		valueGradient *= float(windowHeight) / newSurfaceExtent.height;
-		setView(newSurfaceExtent.width/2, newSurfaceExtent.height/2, (minX+maxX)/2, (minY+maxY)/2);
+		setView(float(newSurfaceExtent.width)/2, float(newSurfaceExtent.height)/2, (minX+maxX)/2, (minY+maxY)/2);
 	}
 	windowHeight = newSurfaceExtent.height;
 }
 
 
-void App::setView(int coordX, int coordY, float valueX, float valueY)
+void App::setView(float coordX, float coordY, float valueX, float valueY)
 {
 	vk::Extent2D windowSize = window.surfaceExtent();
 	minY = valueY - (coordY * valueGradient);
@@ -862,8 +862,8 @@ void App::mouseMove(VulkanWindow&, const VulkanWindow::MouseState& s)
 
 	if(s.buttons.test(VulkanWindow::MouseButton::Left)) {
 		vk::Extent2D windowSize = window.surfaceExtent();
-		float rx = float(s.posX-s.relX) / windowSize.width;
-		float ry = float(s.posY-s.relY) / windowSize.height;
+		float rx = (s.posX-s.relX) / windowSize.width;
+		float ry = (s.posY-s.relY) / windowSize.height;
 		setView(s.posX, s.posY, minX*(1.f-rx) + maxX*rx, minY*(1.f-ry) + maxY*ry);
 		window.scheduleFrame();
 	}
@@ -886,14 +886,14 @@ void App::mouseButton(VulkanWindow&, size_t button, VulkanWindow::ButtonState bu
 }
 
 
-void App::mouseWheel(VulkanWindow&, int wheelX, int wheelY, const VulkanWindow::MouseState& s)
+void App::mouseWheel(VulkanWindow&, float wheelX, float wheelY, const VulkanWindow::MouseState& s)
 {
 	cout << "w(" << wheelX << "," << wheelY << ")" << flush;
 
 	vk::Extent2D windowSize = window.surfaceExtent();
-	float rx = float(s.posX) / windowSize.width;
-	float ry = float(s.posY) / windowSize.height;
-	valueGradient *= powf(0.9f, float(wheelY) / 120);
+	float rx = s.posX / windowSize.width;
+	float ry = s.posY / windowSize.height;
+	valueGradient *= powf(0.9f, wheelY / 120);
 	setView(s.posX, s.posY, minX*(1.f-rx) + maxX*rx, minY*(1.f-ry) + maxY*ry);
 	window.scheduleFrame();
 }

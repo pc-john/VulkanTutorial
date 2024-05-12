@@ -37,8 +37,8 @@ public:
 		};
 	};
 	struct MouseState {
-		int posX, posY;  // position of the mouse in window client area coordinates (relative to the upper-left corner)
-		int relX, relY;  // relative against the state of previous mouse callback
+		float posX, posY;  // position of the mouse in window client area coordinates (relative to the upper-left corner)
+		float relX, relY;  // relative against the state of previous mouse callback
 		std::bitset<16> buttons;
 		std::bitset<16> mods;
 	};
@@ -69,7 +69,7 @@ public:
 	// input function prototypes
 	typedef void MouseMoveCallback(VulkanWindow& window, const MouseState& mouseState);
 	typedef void MouseButtonCallback(VulkanWindow& window, MouseButton::EnumType button, ButtonState buttonState, const MouseState& mouseState);
-	typedef void MouseWheelCallback(VulkanWindow& window, int wheelX, int wheelY, const MouseState& mouseState);
+	typedef void MouseWheelCallback(VulkanWindow& window, float wheelX, float wheelY, const MouseState& mouseState);
 	typedef void KeyCallback(VulkanWindow& window, KeyState newKeyState, ScanCode scanCode);
 
 protected:
