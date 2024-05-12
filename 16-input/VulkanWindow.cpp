@@ -789,27 +789,30 @@ void VulkanWindow::init(void* data)
 }
 
 
-void VulkanWindow::init(int& argc, char* argv[])
-{
-	// use argc and argv
-	// for QGuiApplication initialization
 #if defined(USE_PLATFORM_QT)
 
+// use argc and argv
+// for QGuiApplication initialization
+void VulkanWindow::init(int& argc, char* argv[])
+{
 	if(qGuiApplication)
 		return;
 
 	// construct QGuiApplication
 	qGuiApplication = reinterpret_cast<QGuiApplication*>(&qGuiApplicationMemory);
 	new(qGuiApplication) QGuiApplication(argc, argv);
+}
 
 #else
 
-	// on all other platforms,
-	// just perform init()
+// on all other platforms,
+// just perform init()
+void VulkanWindow::init(int&, char*[])
+{
 	init();
+}
 
 #endif
-}
 
 
 void VulkanWindow::finalize() noexcept
@@ -2463,7 +2466,7 @@ void VulkanWindow::mainLoop()
 			w->_mouseState.mods.set(VulkanWindow::Modifier::Meta,  state & Mod4Mask);
 		};
 	auto handleMouseMove =
-		[](VulkanWindow* w, int newX, int newY)
+		[](VulkanWindow* w, float newX, float newY)
 		{
 			if(w->_mouseState.posX != newX ||
 				w->_mouseState.posY != newY)
@@ -2529,13 +2532,13 @@ void VulkanWindow::mainLoop()
 		// mouse events
 		if(e.type == MotionNotify) {
 			handleModifiers(w, e.xmotion.state);
-			handleMouseMove(w, e.xmotion.x, e.xmotion.y);
+			handleMouseMove(w, float(e.xmotion.x), float(e.xmotion.y));
 			continue;
 		}
 		if(e.type == ButtonPress) {
 			cout << "state: " << e.xbutton.state << endl;
 			handleModifiers(w, e.xbutton.state);
-			handleMouseMove(w, e.xbutton.x, e.xbutton.y);
+			handleMouseMove(w, float(e.xbutton.x), float(e.xbutton.y));
 			if(e.xbutton.button < Button4 || e.xbutton.button > 7) {
 				MouseButton::EnumType button = getMouseButton(e.xbutton.button);
 				w->_mouseState.buttons.set(button, true);
@@ -2543,14 +2546,14 @@ void VulkanWindow::mainLoop()
 					w->_mouseButtonCallback(*w, button, ButtonState::Pressed, w->_mouseState);
 			}
 			else {
-				int wheelX, wheelY;
+				float wheelX, wheelY;
 				if(e.xbutton.button <= Button5) {
-					wheelX = 0;
-					wheelY = (e.xbutton.button == Button5) ? -120 : 120;
+					wheelX = 0.f;
+					wheelY = (e.xbutton.button == Button5) ? -120.f : 120.f;
 				}
 				else {
-					wheelX = (e.xbutton.button == 6) ? -120 : 120;
-					wheelY = 0;
+					wheelX = (e.xbutton.button == 6) ? -120.f : 120.f;
+					wheelY = 0.f;
 				}
 				if(w->_mouseWheelCallback)
 					w->_mouseWheelCallback(*w, wheelX, wheelY, w->_mouseState);
@@ -2559,7 +2562,7 @@ void VulkanWindow::mainLoop()
 		}
 		if(e.type == ButtonRelease) {
 			handleModifiers(w, e.xbutton.state);
-			handleMouseMove(w, e.xbutton.x, e.xbutton.y);
+			handleMouseMove(w, float(e.xbutton.x), float(e.xbutton.y));
 			if(e.xbutton.button < Button4 || e.xbutton.button > 7) {
 				MouseButton::EnumType button = getMouseButton(e.xbutton.button);
 				w->_mouseState.buttons.set(button, false);
