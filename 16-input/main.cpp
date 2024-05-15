@@ -1,4 +1,5 @@
 #include "VulkanWindow.h"
+#include <vulkan/vulkan.hpp>
 #include <algorithm>
 #include <chrono>
 #include <cmath>

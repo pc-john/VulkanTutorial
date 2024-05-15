@@ -39,7 +39,10 @@
 # include <QWheelEvent>
 # include <fstream>
 #endif
+#include <algorithm>
+#include <cassert>
 #include <stdexcept>
+#include <string>
 #include <iostream>  // for debugging
 
 using namespace std;
@@ -1433,8 +1436,8 @@ VulkanWindow& VulkanWindow::operator=(VulkanWindow&& other) noexcept
 }
 
 
-vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceExtent, const char* title,
-                                    PFN_vkGetInstanceProcAddr getInstanceProcAddr)
+VkSurfaceKHR VulkanWindow::create(VkInstance instance, VkExtent2D surfaceExtent, const char* title,
+                                  PFN_vkGetInstanceProcAddr getInstanceProcAddr)
 {
 	// asserts for valid usage
 	assert(instance && "The parameter instance must not be null.");
@@ -1503,7 +1506,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 	VkResult r =
 		vulkanCreateWin32SurfaceKHR(
 			_instance,  // instance
-			&VkWin32SurfaceCreateInfoKHR{  // pCreateInfo
+			&(const VkWin32SurfaceCreateInfoKHR&)VkWin32SurfaceCreateInfoKHR{  // pCreateInfo
 				VK_STRUCTURE_TYPE_WIN32_SURFACE_CREATE_INFO_KHR,  // sType
 				nullptr,  // pNext
 				0,  // flags
@@ -1849,7 +1852,7 @@ vk::SurfaceKHR VulkanWindow::create(vk::Instance instance, vk::Extent2D surfaceE
 }
 
 
-void VulkanWindow::setDevice(vk::Device device, vk::PhysicalDevice physicalDevice)
+void VulkanWindow::setDevice(VkDevice device, VkPhysicalDevice physicalDevice)
 {
 	assert(_instance && "VulkanWindow::setDevice(): Call VulkanWindow::create() first.");
 
@@ -1941,7 +1944,7 @@ void VulkanWindow::renderFrame()
 		else {
 			QSize size = _window->size();
 			auto ratio = _window->devicePixelRatio();
-			_surfaceExtent = vk::Extent2D(uint32_t(float(size.width()) * ratio + 0.5f), uint32_t(float(size.height()) * ratio + 0.5f));
+			_surfaceExtent = VkExtent2D{uint32_t(float(size.width()) * ratio + 0.5f), uint32_t(float(size.height()) * ratio + 0.5f)};
 			_surfaceExtent.width  = clamp(_surfaceExtent.width,  surfaceCapabilities.minImageExtent.width,  surfaceCapabilities.maxImageExtent.width);
 			_surfaceExtent.height = clamp(_surfaceExtent.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height);
 		}
@@ -1954,7 +1957,7 @@ void VulkanWindow::renderFrame()
 		// (this may happen on Win32-based and Xlib-based systems, for instance;
 		// in reality, it never happened on my KDE 5.80.0 (Kubuntu 21.04) and KDE 5.44.0 (Kubuntu 18.04.5)
 		// because window minimalizing just unmaps the window)
-		if(_surfaceExtent == vk::Extent2D(0,0))
+		if(_surfaceExtent.width == 0 && _surfaceExtent.height == 0)
 			return;  // new frame will be scheduled on the next window resize
 
 		// recreate swapchain
