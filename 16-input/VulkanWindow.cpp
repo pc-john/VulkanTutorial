@@ -3007,8 +3007,8 @@ void VulkanWindowPrivate::pointerListenerEnter(void* data, wl_pointer* pointer, 
 	assert(windowUnderPointer && "wl_surface userData does not contain pointer to VulkanWindow.");
 
 	// update mouse state
-	int x = surface_x >> 8;
-	int y = surface_y >> 8;
+	float x = float(wl_fixed_to_double(surface_x));
+	float y = float(wl_fixed_to_double(surface_y));
 	if(windowUnderPointer->_mouseState.posX != x ||
 	   windowUnderPointer->_mouseState.posY != y)
 	{
@@ -3034,8 +3034,8 @@ void VulkanWindowPrivate::pointerListenerMotion(void* data, wl_pointer* pointer,
 	if(windowUnderPointer == nullptr)
 		return;
 
-	int x = surface_x >> 8;
-	int y = surface_y >> 8;
+	float x = float(wl_fixed_to_double(surface_x));
+	float y = float(wl_fixed_to_double(surface_y));
 	if(windowUnderPointer->_mouseState.posX != x ||
 	   windowUnderPointer->_mouseState.posY != y)
 	{
@@ -3081,8 +3081,8 @@ void VulkanWindowPrivate::pointerListenerAxis(void* data, wl_pointer* pointer, u
 	if(windowUnderPointer == nullptr)
 		return;
 
-	int v = (value * 8) / 256;
-	int wheelX, wheelY;
+	float v = float(wl_fixed_to_double(value)) * 8;
+	float wheelX, wheelY;
 	if(axis == WL_POINTER_AXIS_VERTICAL_SCROLL) {
 		wheelX = 0;
 		wheelY = -v;
